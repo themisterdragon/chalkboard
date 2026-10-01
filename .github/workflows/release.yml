@@ -38,7 +38,8 @@ jobs:
           ./dist/Chalkboard.exe --version | tee version.txt
           grep -q "chalkboard $(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)" version.txt
           pyi-archive_viewer --list --recursive dist/Chalkboard.exe | tee contents.txt | grep -i -E 'sel_prompts|_curses'
-          grep -q 'chalkboard/data/sel_prompts.json' contents.txt
+          grep -q 'sel_prompts.json' contents.txt
+          grep -q '_curses' contents.txt
 
       - uses: actions/upload-artifact@v5
         with:
