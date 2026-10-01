@@ -51,23 +51,30 @@ Works completely offline: no accounts, no API calls, no internet needed.
 
 ## Install
 
-Needs Python 3.8+. Download from the
+Download from the
 [latest release](https://github.com/themisterdragon/chalkboard/releases/latest).
+
+Everything except the Windows `.exe` needs Python 3.8+ (Macs offer to install it
+the first time).
 
 **Mac (double-click app):** open `Chalkboard-<version>.dmg` and drag
 Chalkboard to Applications (or unzip `Chalkboard-macOS.zip` and do the same).
 It runs in a Terminal window. `Read Me First.txt` covers the first-launch
 prompts (Gatekeeper, Python install).
 
-**Standalone file (Linux/macOS):** copy `chalkboard.pyz` and `install.sh` to
-the machine and run `sh install.sh` (installs to `~/.local/bin/chalkboard`),
-or run it directly with `python3 chalkboard.pyz`.
+**Windows:** download `Chalkboard-<version>-windows.exe` and run it. Python is
+built in, so there's nothing else to install. It looks best in Windows Terminal.
+If "Windows protected your PC" appears, click More info > Run anyway.
+
+**Linux (or macOS from the terminal):** unpack `chalkboard-<version>-linux.tar.gz`
+(it holds `chalkboard.pyz` and `install.sh`) and run `sh install.sh` (installs to
+`~/.local/bin/chalkboard`), or run it directly with `python3 chalkboard.pyz`.
 
 **Python package (any OS, including Windows):**
 
     pipx install chalkboard_planner-1.7.0-py3-none-any.whl
 
-On Windows this pulls in `windows-curses` automatically. Use Windows Terminal.
+On Windows this pulls in `windows-curses` automatically.
 
 ## Use
 
@@ -161,5 +168,6 @@ here belong to their owners.
     pip wheel --no-deps -w dist .      # -> dist/*.whl
     python3 scripts/make_icon.py       # -> macos/Chalkboard.icns (only to change the icon)
 
-Pushing a version tag (`git tag v1.7.0 && git push --tags`) builds all of these on a
-GitHub Mac runner, tests them, and attaches them to a draft release.
+Pushing a version tag (`git tag v1.7.0 && git push --tags`) builds all of these on
+GitHub's Mac and Windows runners (the `.exe` with PyInstaller), tests them, and
+attaches them to a draft release.

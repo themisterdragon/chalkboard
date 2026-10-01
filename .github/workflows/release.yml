@@ -1,34 +1,78 @@
-# Push a tag like v1.7.0 to build every download on a Mac and attach them to a draft release.
-# Check the draft on GitHub (try the DMG), then press Publish.
+# Push a tag like v1.7.0 to build every download, test them, and attach them to a draft release.
+# Check the draft on GitHub (try the DMG and the .exe), then press Publish.
+# "Run workflow" on the Actions tab builds and tests without making a release.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build Chalkboard.exe (Python bundled in)
+        run: |
+          python -m pip install . pyinstaller pillow
+          mkdir -p build
+          python -c "from PIL import Image; Image.open('macos/Chalkboard.icns').save('build/chalkboard.ico', sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])"
+          printf 'from chalkboard.app import main\n\nmain()\n' > build/chalkboard_entry.py
+          pyinstaller --onefile --console --name Chalkboard --icon build/chalkboard.ico \
+            --collect-data chalkboard --distpath dist --workpath build/pyi build/chalkboard_entry.py
+
+      - name: Test Chalkboard.exe
+        run: |
+          ./dist/Chalkboard.exe --version | tee version.txt
+          grep -q "chalkboard $(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)" version.txt
+          pyi-archive_viewer --list --recursive dist/Chalkboard.exe | tee contents.txt | grep -i -E 'sel_prompts|_curses'
+          grep -q 'chalkboard/data/sel_prompts.json' contents.txt
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows
+          path: dist/Chalkboard.exe
+
   release:
+    needs: windows
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)
           [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME but __version__ is $version"; exit 1; }
 
       - name: Build
         run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)
           python3 scripts/build_mac.py
           python3 -m pip wheel --no-deps -w dist .
           sh scripts/build_dmg.sh
+          tar -czf "dist/chalkboard-$version-linux.tar.gz" -C dist chalkboard.pyz install.sh
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: windows
+          path: dist
 
       - name: Test the downloads
         run: |
@@ -41,13 +85,19 @@ jobs:
           python3 "$mnt/Chalkboard.app/Contents/Resources/chalkboard.pyz" --version
           plutil -lint "$mnt/Chalkboard.app/Contents/Info.plist"
           hdiutil detach "$mnt"
+          tar -tzf dist/chalkboard-*-linux.tar.gz | sort | tr '\n' ' ' | grep -q '^chalkboard.pyz install.sh $'
           python3 -m pip install dist/*.whl
           chalkboard --version
+          ls -la dist
 
       - name: Draft the release
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft --title "Chalkboard ${GITHUB_REF_NAME#v}" \
+          version=${GITHUB_REF_NAME#v}
+          mv dist/Chalkboard.exe "dist/Chalkboard-$version-windows.exe"
+          gh release create "$GITHUB_REF_NAME" --draft --title "Chalkboard $version" \
             --notes-file .github/release-notes.md \
-            dist/Chalkboard-*.dmg dist/Chalkboard-macOS.zip dist/chalkboard.pyz dist/install.sh dist/*.whl
+            dist/Chalkboard-*.dmg "dist/Chalkboard-$version-windows.exe" dist/chalkboard-*-linux.tar.gz \
+            dist/Chalkboard-macOS.zip dist/chalkboard.pyz dist/install.sh dist/*.whl
