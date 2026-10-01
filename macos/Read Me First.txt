@@ -1,0 +1,41 @@
+Chalkboard for Mac
+=====================
+
+INSTALL
+1. Drag Chalkboard.app into your Applications folder.
+2. Double-click it. It opens in a Terminal window.
+
+THE FIRST TIME YOU OPEN IT
+- "Chalkboard cannot be opened" / "Apple could not verify": the app isn't from
+  the App Store. Open System Settings > Privacy & Security, scroll down, and
+  click "Open Anyway" next to Chalkboard. (On older macOS, right-click the app
+  and choose Open instead.) Or, in Terminal, run this once:
+      xattr -dr com.apple.quarantine /Applications/Chalkboard.app
+  Copying the app over a USB drive avoids this step entirely.
+- "Chalkboard wants to control Terminal": click OK. That's how it opens its window.
+- If your Mac doesn't have Python yet, Chalkboard offers to install Apple's free
+  Command Line Developer Tools (which include Python). Let it finish, then open
+  Chalkboard again.
+- "Terminal would like to access files in your Documents folder": click OK.
+  Exports are saved to Documents/Chalkboard.
+
+KEYBOARD
+- Esc goes back. On a Mac keyboard, Delete is backspace and Fn+Delete deletes
+  forward. Control-A / Control-E jump to the start / end of a line.
+
+WHERE THINGS LIVE
+- Your lessons and assessments:
+      ~/Library/Application Support/chalkboard/data.json
+  To move your work from a Linux computer, copy its
+  ~/.local/share/chalkboard/data.json to that spot (quit Chalkboard first).
+- Exports: Documents/Chalkboard (changeable in Settings)
+
+BOARD SLIDES (PNG FOR A CLASSROOM DISPLAY)
+- In a lesson, press B, or choose BOARD SLIDE as the export format. The PNG is
+  1920x1080 and is drawn with the Mac's built-in `sips` tool, so nothing extra
+  needs to be installed.
+- For school colors, open Settings and enter SCHOOL COLOR 1 (background) and
+  SCHOOL COLOR 2 (headings) as HEX codes, like #7A0019 and #FFC72C.
+
+FROM TERMINAL (OPTIONAL)
+    python3 /Applications/Chalkboard.app/Contents/Resources/chalkboard.pyz

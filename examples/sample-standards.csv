@@ -1,0 +1,10 @@
+subject,code,grades,strand,cluster,part_of,text
+Sample English,ENG.R.1,9-10,Reading,Evidence,,Use details from a text to support what it says directly and what it suggests.
+Sample English,ENG.R.1a,9-10,Reading,Evidence,ENG.R.1,Quote or paraphrase the details that matter most.
+Sample English,ENG.R.1b,9-10,Reading,Evidence,ENG.R.1,Explain how each detail supports the point being made.
+Sample English,ENG.R.2,9-10,Reading,Theme,,Identify a central idea of a text and trace how it develops.
+Sample English,ENG.W.1,9-10,Writing,Argument,,"Write an argument that states a clear claim, gives reasons and evidence, and answers a counterclaim."
+Sample English,ENG.W.2,11-12,Writing,Research,,Gather information from several sources and cite each one.
+Sample Math,MTH.A.1,9-12,Algebra,Equations,,Find the unknown in a one-step or two-step equation and show your work.
+Sample Math,MTH.A.1.1,9-12,Algebra,Equations,MTH.A.1,Check a solution by substituting it into the original equation.
+Sample Math,MTH.G.1,K,Geometry,Shapes,,"Name circles, squares, triangles, and rectangles in the classroom."

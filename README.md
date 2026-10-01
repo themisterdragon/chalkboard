@@ -1,0 +1,159 @@
+# Chalkboard
+
+A retro green-screen lesson planner and assessment builder for the terminal.
+Works completely offline: no accounts, no API calls, no internet needed.
+
+- **Lesson plans**: title, unit, dates, standards, learning targets, success
+  criteria, materials, bell ringer, I Do / We Do / You Do, closure,
+  differentiation, checks for understanding, homework, notes
+- **SEL bell ringers**: no warm-up planned? Press `G` for a random
+  social-emotional learning prompt (137 built in). Chalkboard avoids prompts your
+  other lessons already use.
+- **Assessments & assignments**: quizzes, tests, worksheets, exit tickets, homework
+  - multiple choice, true/false, short answer, extended response (lined,
+    blank, or boxed space), fill in the blank, matching, reading passages
+    with line numbers, section headers
+  - per-question points and standards, automatic totals
+  - answer keys with circled answers and a quick key
+  - up to 4 shuffled versions (A = original order). "All of the above" style
+    choices stay put, and passages/sections act as anchors.
+- **Annotation sheets**: Name / Date, your heading (e.g. "Hamlet 4.1 Annotation"),
+  then a Line / Symbol / Reason for Annotating chart (10 rows) filling one
+  page. The .docx is the digital copy; its rows grow as students type.
+- **Bell ringer sheets**: two pages to print double-sided, Monday-Friday boxes
+  for one week per side. Leave the prompts blank or fill any day (SEL prompts
+  work here too).
+- **Worksheets inside a lesson**: the lesson's "Assessments & Worksheets"
+  field builds new quizzes and sheets (they pick up the lesson's unit, course,
+  and standards) or links ones you already made. Export All puts them in the
+  lesson's folder, and the make-up sheet lists them under What You'll Need.
+- **Default materials**: set what you always need under Settings > Default
+  Materials Needed, and every new lesson starts with it in Materials & Texts.
+- **Finding things**: filter lesson and assessment lists by unit (and
+  assessments by type), search, and sort by date modified, date created,
+  title, or unit.
+- **Standards**: import your state's, district's, or school's standards from
+  a CSV or JSON file (see [Standards files](#standards-files)), or type your
+  own in. Filter by subject and grade, search, browse, and attach them to
+  lessons, assessments, and individual questions.
+- **Export**: PDF, Word .docx (also opens in Google Docs, Pages, LibreOffice),
+  and plain text for pasting into Google Classroom or an LMS
+- **Make-up sheets**: a student-facing PDF (plus an editable .docx) for anyone who missed class, built
+  from the lesson: goals, success criteria, materials, then a checklist of
+  steps (bell ringer and exit ticket get writing lines) with Name / Date
+  Missed / Due and a Turned In / Teacher Initials line. Teacher-only fields
+  (differentiation, checks, notes) are left off.
+- **Board slides**: a 1920x1080 PNG of a lesson's standards, "I can"
+  statements, success criteria, bell ringer, materials, and homework for an
+  interactive display, projector, or TV. Text sizes itself to fit; empty sections are
+  left off. Chalkboard (dark green), whiteboard (white), or your school colors
+  (HEX codes under Settings for background, headings, and text).
+
+## Install
+
+Needs Python 3.8+.
+
+**Mac (double-click app):** unzip `Chalkboard-macOS.zip`, drag `Chalkboard.app`
+to Applications, and open it. It runs in a Terminal window. `Read Me First.txt`
+in the zip covers the first-launch prompts (Gatekeeper, Python install).
+
+**Standalone file (Linux/macOS):** copy `chalkboard.pyz` and `install.sh` to
+the machine and run `sh install.sh` (installs to `~/.local/bin/chalkboard`),
+or run it directly with `python3 chalkboard.pyz`.
+
+**Python package (any OS, including Windows):**
+
+    pipx install chalkboard_planner-1.7.0-py3-none-any.whl
+
+On Windows this pulls in `windows-curses` automatically. Use Windows Terminal.
+
+## Use
+
+    chalkboard            # with boot sequence
+    chalkboard --no-boot
+
+Everything autosaves. Number keys or arrows + Return pick items. Esc goes back.
+
+| Where | Keys |
+|-------|------|
+| Lists | `N` new, `R` rename, `C` copy, `D` delete, `X` export, `P` preview, `/` search, `U` unit filter, `T` type filter (assessments), `O` sort order |
+| Lesson | `B` board slide (PNG) and `M` make-up sheet (PDF + DOCX) in one keystroke, `G` random SEL bell ringer (press again for another), `H` annotation sheet as homework |
+| Lesson > Assessments & Worksheets | `N` build new, `L` link existing, `E` rename, `R` remove from lesson, `+`/`-` reorder |
+| Assessment | `A` add question, `S` settings (title, directions, standards), `+`/`-` move, `M` move to position, `K` preview answer key |
+| Standards library | `I` import a CSV/JSON file, `X` remove an imported subject, `A` add one by hand, `D` delete one you added |
+| Standards picker | number/Space toggle, `V` view full text, `F` subject, `G` grade, `/` search, `S` show selected (the library has `F`, `G`, and `/` too) |
+| Yes/no questions | Return or `Y` means yes; `N` or Esc means no |
+| Text editor | type freely, `- ` starts a bullet, Esc saves, Ctrl-X cancels; in Bell Ringer, Ctrl-G adds a random SEL prompt |
+
+Fill-in-the-blank: type `___` (three or more underscores) wherever a blank goes.
+
+## Where things live
+
+| What | Where |
+|------|-------|
+| Your data | `~/.local/share/chalkboard/data.json` (macOS: `~/Library/Application Support/chalkboard`, Windows: `%APPDATA%\chalkboard`). Copy this file to move your work to another computer. A `.bak` copy is kept automatically. |
+| Imported standards | a `standards` folder next to `data.json`, one JSON file per subject |
+| Exports | `~/Documents/Chalkboard` (changeable in Settings). Every export is filed by class, then unit, then lesson, like `English 10/Unit 3/The Raven/`; assessments go in their unit folder. A blank course or unit is skipped. Export All also puts a lesson's linked worksheets in its folder. |
+
+Board slides are drawn with the same engine as the PDF, then turned into a PNG
+by a tool the computer already has: `sips` on macOS (built in), or poppler's
+`pdftoppm`, `mutool`, or Ghostscript on Linux/Windows. Pick which sections
+appear under Settings > Board Slide (or from the export screen).
+
+## Standards files
+
+Chalkboard doesn't come with any standards. Standards documents are usually
+copyrighted by the state or organization that wrote them, so each teacher
+brings their own. In the Standards Library, press `I` and type (or drag in) the
+path to a `.csv` or `.json` file. Importing a subject again replaces it, and
+`X` removes one. Lessons keep the codes they already use.
+
+**CSV** (save from Excel, Numbers, or Google Sheets): the first row holds column
+names, in any order. `code` and `text` are required.
+
+| Column | Meaning |
+|--------|---------|
+| `subject` | Groups standards for the `F` filter. Blank means the file's name. |
+| `code` | Unique code, like `RL.9-10.1` |
+| `text` | The standard's full text |
+| `grades` | `K`, `5`, `9-10`, `K-12`... (used by the `G` filter; anything else always shows) |
+| `strand`, `cluster` | Optional headings shown when you view a standard |
+| `part_of` | For a lettered or numbered part: its parent's code. The part's code must be the parent's plus a letter (`RL.9-10.1a`) or `.` and a label (`MTH.A.1.1`). |
+
+[`examples/sample-standards.csv`](examples/sample-standards.csv) is a small
+made-up example to try.
+
+**JSON**: one subject, or a list of them:
+
+```json
+{
+  "subject": "English",
+  "source": "Where these came from (shown under each standard)",
+  "standards": [
+    {"code": "ENG.R.1", "grades": "9-10", "strand": "Reading", "cluster": "Evidence",
+     "text": "Use details from a text to support what it says.",
+     "subs": [["a", "Quote the details that matter most."]]}
+  ]
+}
+```
+
+Make sure you're allowed to use the standards you import. Many states let
+their own teachers copy their standards for classroom use. Chalkboard keeps
+them on your computer and never uploads them anywhere.
+
+## License
+
+Chalkboard is free software under the [GNU General Public License v3.0](LICENSE).
+You can use, study, share, and change it. If you distribute a changed version,
+you have to share its source under the same license.
+
+Chalkboard isn't affiliated with or endorsed by any state department of
+education, standards organization, or hardware maker. Product names mentioned
+here belong to their owners.
+
+## Build
+
+    python3 scripts/build_pyz.py       # -> dist/chalkboard.pyz + dist/install.sh
+    python3 scripts/build_mac.py       # -> dist/Chalkboard-macOS.zip (also rebuilds the .pyz)
+    pip wheel --no-deps -w dist .      # -> dist/*.whl
+    python3 scripts/make_icon.py       # -> macos/Chalkboard.icns (only to change the icon)
