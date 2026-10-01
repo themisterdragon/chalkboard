@@ -51,11 +51,13 @@ Works completely offline: no accounts, no API calls, no internet needed.
 
 ## Install
 
-Needs Python 3.8+.
+Needs Python 3.8+. Download from the
+[latest release](https://github.com/themisterdragon/chalkboard/releases/latest).
 
-**Mac (double-click app):** unzip `Chalkboard-macOS.zip`, drag `Chalkboard.app`
-to Applications, and open it. It runs in a Terminal window. `Read Me First.txt`
-in the zip covers the first-launch prompts (Gatekeeper, Python install).
+**Mac (double-click app):** open `Chalkboard-<version>.dmg` and drag
+Chalkboard to Applications (or unzip `Chalkboard-macOS.zip` and do the same).
+It runs in a Terminal window. `Read Me First.txt` covers the first-launch
+prompts (Gatekeeper, Python install).
 
 **Standalone file (Linux/macOS):** copy `chalkboard.pyz` and `install.sh` to
 the machine and run `sh install.sh` (installs to `~/.local/bin/chalkboard`),
@@ -155,5 +157,9 @@ here belong to their owners.
 
     python3 scripts/build_pyz.py       # -> dist/chalkboard.pyz + dist/install.sh
     python3 scripts/build_mac.py       # -> dist/Chalkboard-macOS.zip (also rebuilds the .pyz)
+    sh scripts/build_dmg.sh            # -> dist/Chalkboard-<version>.dmg (macOS only, after build_mac.py)
     pip wheel --no-deps -w dist .      # -> dist/*.whl
     python3 scripts/make_icon.py       # -> macos/Chalkboard.icns (only to change the icon)
+
+Pushing a version tag (`git tag v1.7.0 && git push --tags`) builds all of these on a
+GitHub Mac runner, tests them, and attaches them to a draft release.
