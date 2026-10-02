@@ -9,10 +9,12 @@ py=${PYTHON:-python3}
 version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$root/src/chalkboard/__init__.py")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+# --add-data, not --collect-data: chalkboard isn't pip-installed here, so --collect-data found nothing
+# and the app shipped without its SEL prompts
 printf 'from chalkboard.gui import main\n\nmain()\n' > "$work/entry.py"
 "$py" -m PyInstaller --noconfirm --windowed --name "Chalkboard Window" --target-arch universal2 \
     --icon "$root/macos/Chalkboard.icns" --osx-bundle-identifier local.chalkboard.window \
-    --paths "$root/src" --collect-data chalkboard --distpath "$work/dist" --workpath "$work/build" \
+    --paths "$root/src" --add-data "$root/src/chalkboard/data:chalkboard/data" --distpath "$work/dist" --workpath "$work/build" \
     --specpath "$work" "$work/entry.py"
 app="$work/dist/Chalkboard Window.app"
 plutil -replace CFBundleShortVersionString -string "$version" "$app/Contents/Info.plist"

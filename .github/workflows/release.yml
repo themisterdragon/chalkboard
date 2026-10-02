@@ -129,6 +129,7 @@ jobs:
           grep -q x86_64 archs.txt && grep -q arm64 archs.txt
           "$exe" --version | grep -q "chalkboard-gui $version"
           codesign --verify --deep "$mnt/Chalkboard Window.app"
+          find "$mnt/Chalkboard Window.app" -name sel_prompts.json | grep -q .
           hdiutil detach "$mnt"
           tar -tzf "dist/chalkboard-$version-linux.tar.gz" | sort | tr '\n' ' ' | grep -q '^chalkboard-gui.pyz chalkboard.pyz install.sh $'
           python3 -m pip install dist/*.whl
