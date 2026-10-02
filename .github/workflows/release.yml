@@ -39,6 +39,9 @@ jobs:
           pyinstaller --onefile --windowed --name Chalkboard-Window --icon build/chalkboard.ico \
             --collect-data chalkboard --distpath dist --workpath build/pyi-window build/window_entry.py
 
+      - name: Check the offline promise (SECURITY.md)
+        run: python scripts/check_offline.py
+
       - name: Test Chalkboard.exe
         run: |
           ./dist/Chalkboard.exe --version | tee version.txt
@@ -86,6 +89,7 @@ jobs:
           python3 scripts/build_mac.py
           python3 -m pip wheel --no-deps -w dist .
           sh scripts/build_dmg.sh
+          tar -czf "dist/chalkboard-$version-linux.tar.gz" -C dist chalkboard.pyz chalkboard-gui.pyz install.sh
 
       - name: Build the standalone Mac window app (universal2 Python from python.org)
         run: |
@@ -94,12 +98,14 @@ jobs:
           py=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
           "$py" -m pip install --quiet pyinstaller
           PYTHON="$py" sh scripts/build_mac_window.sh
-          tar -czf "dist/chalkboard-$version-linux.tar.gz" -C dist chalkboard.pyz chalkboard-gui.pyz install.sh
 
       - uses: actions/download-artifact@v6
         with:
           name: windows
           path: dist
+
+      - name: Check the offline promise (SECURITY.md)
+        run: python3 scripts/check_offline.py
 
       - name: Test the downloads
         run: |
@@ -124,7 +130,7 @@ jobs:
           "$exe" --version | grep -q "chalkboard-gui $version"
           codesign --verify --deep "$mnt/Chalkboard Window.app"
           hdiutil detach "$mnt"
-          tar -tzf dist/chalkboard-*-linux.tar.gz | sort | tr '\n' ' ' | grep -q '^chalkboard-gui.pyz chalkboard.pyz install.sh $'
+          tar -tzf "dist/chalkboard-$version-linux.tar.gz" | sort | tr '\n' ' ' | grep -q '^chalkboard-gui.pyz chalkboard.pyz install.sh $'
           python3 -m pip install dist/*.whl
           chalkboard --version
           ls -la dist

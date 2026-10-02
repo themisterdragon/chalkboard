@@ -186,6 +186,12 @@ Make sure you're allowed to use the standards you import. Many states let
 their own teachers copy their standards for classroom use. Chalkboard keeps
 them on your computer and never uploads them anywhere.
 
+## Privacy and security
+
+Chalkboard works completely offline and never sends anything anywhere. It has no
+accounts, no analytics, and no AI. Everything in it is written by you. The
+[security promise](SECURITY.md) spells this out, and says how to report a problem.
+
 ## License
 
 Chalkboard is free software under the [GNU General Public License v3.0](LICENSE).
