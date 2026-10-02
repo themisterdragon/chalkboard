@@ -106,11 +106,13 @@ def hook(event, args):
 
 sys.addaudithook(hook)
 
+# this script's own imports don't count (on Python 3.12, pathlib loads urllib.parse)
+already = set(sys.modules)
 from chalkboard import store as st  # noqa: E402
 from chalkboard.exporting import FORMAT_ORDER, ExportError, export  # noqa: E402
 import chalkboard.app  # noqa: E402,F401  (the terminal app; imports curses, not a network module)
 
-loaded = sorted(m for m in sys.modules if m.split(".")[0] in NETWORK)
+loaded = sorted(m for m in sys.modules if m.split(".")[0] in NETWORK and m not in already)
 if loaded:
     sys.exit("networking modules got loaded: " + ", ".join(loaded))
 print("ok: loading the app loads no networking module")

@@ -1,7 +1,6 @@
 """Dependency-free .docx output (opens in Word, Google Docs, LibreOffice, Pages)."""
 
 import re
-import zipfile
 from datetime import datetime, timezone
 
 from .fontmetrics import WIDTHS
@@ -410,6 +409,7 @@ def render_docx(doc, path, family="Times", page="Letter"):
                           f'relationships/hyperlink" Target="{escape(u)}" TargetMode="External"/>'
                           for n, u in enumerate(LINKS, 1)) +
                 '</Relationships>')
+    import zipfile  # here, not at the top: on Python 3.12 it loads pathlib, which loads urllib.parse
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", ctypes)
         z.writestr("_rels/.rels", rels)

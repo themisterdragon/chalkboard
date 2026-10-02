@@ -7,7 +7,6 @@ become links. Opens in PowerPoint, Keynote, LibreOffice Impress, and Google Slid
 to Drive, then Open with Google Slides).
 """
 
-import zipfile
 import zlib
 import struct
 from datetime import datetime, timezone
@@ -299,6 +298,7 @@ def render_pptx(slides, path, title="Board", link_color=(0.02, 0.39, 0.76)):
             f'<dcterms:modified xsi:type="dcterms:W3CDTF">{stamp}</dcterms:modified></cp:coreProperties>')
     app = (HEAD + '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
            f'<Application>Chalkboard</Application><Slides>{n}</Slides></Properties>')
+    import zipfile  # here, not at the top: on Python 3.12 it loads pathlib, which loads urllib.parse
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", ctypes)
         z.writestr("_rels/.rels", rels([("rId1", "officeDocument", "ppt/presentation.xml"),
