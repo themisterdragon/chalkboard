@@ -125,7 +125,7 @@ Everything autosaves. Number keys or arrows + Return pick items. Esc goes back.
 | Lesson | `B` board slide (PNG) and `M` make-up sheet (PDF + DOCX) in one keystroke, `G` random SEL bell ringer (press again for another), `H` annotation sheet as homework |
 | Lesson > Assessments & Worksheets | `N` build new, `L` link existing, `E` rename, `R` remove from lesson, `+`/`-` reorder |
 | Assessment | `A` add question, `S` settings (title, directions, standards), `+`/`-` move, `M` move to position, `K` preview answer key |
-| Standards library | `I` import a CSV/JSON file, `X` remove an imported subject, `A` add one by hand, `D` delete one you added |
+| Standards library | `I` import a CSV/JSON file, `E` export yours to share, `X` remove an imported subject, `A` add one by hand, `D` delete one you added |
 | Standards picker | number/Space toggle, `V` view full text, `F` subject, `G` grade, `/` search, `S` show selected (the library has `F`, `G`, and `/` too) |
 | Yes/no questions | Return or `Y` means yes; `N` or Esc means no |
 | Text editor | type freely, `- ` starts a bullet, Esc saves, Ctrl-X cancels; in Bell Ringer, Ctrl-G adds a random SEL prompt |
@@ -201,6 +201,12 @@ made-up example to try.
   ]
 }
 ```
+
+**Sharing with colleagues:** press `E` in the Standards Library (Export to
+Share in the window version) to save the subjects you imported, or the ones
+you typed in yourself, as a `.json` file. A colleague imports it with `I`.
+It's a file you hand over directly, on a flash drive or in an email; Chalkboard
+never sends it anywhere.
 
 Make sure you're allowed to use the standards you import. Many states let
 their own teachers copy their standards for classroom use. Chalkboard keeps

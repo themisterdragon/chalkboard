@@ -4,6 +4,9 @@ Settings > **Import Backup** brings it back on this computer or another one: eit
 (keeping your own work) or replace everything. Chalkboard saves a copy of what you had before any import.
 In the window version, they're in the File menu too.
 
+Standards you imported or typed in yourself can now be shared: Standards Library > **Export to Share** (`E` in
+the terminal) saves them as a file a colleague can import.
+
 New in 1.8 is the **window version** (`chalkboard-gui`): the whole planner with a mouse, menus, and buttons, in a
 **Bevel** or **Pinstripe** look. It shares its data file with the terminal app, so you can switch any time.
 

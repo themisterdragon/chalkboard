@@ -68,6 +68,7 @@ DEFAULT_SETTINGS = {
 BACKUP_KIND = "chalkboard-backup"
 # settings that belong to this computer, so importing a backup made on another one keeps them
 LOCAL_SETTINGS = ("export_dir", "backup_dir", "last_backup")
+MY_STANDARDS = "My Own Standards"  # the custom standards you typed in, when exported to share
 SAFETY_BACKUPS = 10  # automatic copies kept in the data folder from before each import
 
 # list sort orders: key -> menu label
@@ -617,6 +618,43 @@ class Store:
             done.append((doc["subject"], len(keep), skipped))
         self.reload_standards(rescan=True)
         return done
+
+    def shareable_subjects(self):
+        """What a teacher can export to share: subjects they imported, then their own standards.
+        Standards bundled with the app are never exported."""
+        return self.imported_subjects() + ([MY_STANDARDS] if self.data["custom_standards"] else [])
+
+    def export_standards(self, folder, subjects):
+        """Save subjects (from shareable_subjects) as a JSON file another teacher can import with
+        Standards Library > Import. Returns its path; raises OSError or ValueError."""
+        docs = []
+        for subj in subjects:
+            if subj == MY_STANDARDS:
+                docs.append({"subject": MY_STANDARDS, "source": f"Written by a teacher, shared {time.strftime('%Y-%m-%d')}.",
+                             "standards": [{"code": c["code"], "grades": "" if c.get("grades") == "Custom" else c.get("grades", ""),
+                                            "strand": "", "cluster": "", "text": c["text"], "subs": []}
+                                           for c in self.data["custom_standards"]]})
+                continue
+            doc = next((d for d in self.load_kas() if d["subject"] == subj and d.get("file")), None)
+            if doc is None:
+                raise ValueError(f"{subj} ISN'T A SUBJECT YOU IMPORTED")
+            docs.append({k: v for k, v in doc.items() if k != "file"})
+        if not docs:
+            raise ValueError("NOTHING TO EXPORT")
+        folder = clean_path(folder)
+        if os.path.exists(folder) and not os.path.isdir(folder):
+            raise OSError(f"{folder} IS A FILE, NOT A FOLDER")
+        os.makedirs(folder, exist_ok=True)
+        if len(docs) == 1:
+            name = subject_filename(docs[0]["subject"] + " standards", folder)
+        else:
+            name = subject_filename(f"standards {time.strftime('%Y-%m-%d')}", folder)
+        path = os.path.join(folder, name)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(docs[0] if len(docs) == 1 else docs, f, indent=1, ensure_ascii=False)
+        os.replace(tmp, path)
+        return path
 
     def remove_subject(self, subject):
         """Delete an imported subject's file. Lessons keep the codes they already use."""

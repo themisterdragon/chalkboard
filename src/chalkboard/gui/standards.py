@@ -1,5 +1,6 @@
 """The standards library window and the standards picker (both built on StandardsBrowser)."""
 
+import os
 import tkinter as tk
 from tkinter import filedialog
 
@@ -215,6 +216,7 @@ class StandardsLibrary:
         f.pack(fill="both", expand=True)
         bar = toolbar(f, sk)
         tool(bar, sk, "Import File…", self.import_file)
+        tool(bar, sk, "Export to Share…", self.export_file)
         tool(bar, sk, "Remove Imported Subject…", self.remove_subject)
         tool(bar, sk, "Add My Own…", self.add_custom)
         self.del_btn = tool(bar, sk, "Delete Mine", self.delete_custom)
@@ -269,6 +271,32 @@ class StandardsLibrary:
         gui.std_subject = done[0][0]
         self.build()
         W.alert(gui, "Imported", "\n".join(lines))
+
+    def export_file(self):
+        """Save imported or hand-typed standards to a file a colleague can import (bundled ones stay put)."""
+        gui = self.gui
+        opts = gui.store.shareable_subjects()
+        if not opts:
+            W.alert(gui, "Export to Share", "Only standards you imported or added yourself can be exported, and "
+                                            "there aren't any yet.")
+            return
+        choices = ([("\0all", "All of them")] if len(opts) > 1 else []) + [(o, o) for o in opts]
+        s = W.choose(gui, "Export to Share", "Save which standards to a file another teacher can import?", choices,
+                     choices[0][0])
+        if s is None:
+            return
+        start = gui.store.export_dir()
+        folder = filedialog.askdirectory(parent=gui.root, title="Save the standards file in which folder?",
+                                         initialdir=start if os.path.isdir(start) else os.path.expanduser("~"))
+        if not folder:
+            return
+        try:
+            path = gui.store.export_standards(folder, opts if s == "\0all" else [s])
+        except (ValueError, OSError) as e:
+            W.alert(gui, "Export Didn't Work", str(e)[:1].upper() + str(e)[1:].lower(), "warn")
+            return
+        W.alert(gui, "Exported", f"Saved\n{path}\n\nAnother teacher can bring it in with Standards Library > "
+                                 "Import File.")
 
     def remove_subject(self):
         gui = self.gui

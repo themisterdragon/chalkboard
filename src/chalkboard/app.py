@@ -580,6 +580,9 @@ class App:
             elif c == "x":
                 self.remove_standards()
                 return 0
+            elif c == "e":
+                self.export_standards()
+                return 0
             elif c == "d" and s:
                 if not s.get("custom"):
                     ui.msg = "?ONLY YOUR OWN CUSTOM STANDARDS CAN BE DELETED."
@@ -592,7 +595,7 @@ class App:
         ui.list_screen("STANDARDS LIBRARY", lambda: self.std_items(state["g"], state["q"], state["s"]), self.std_row,
                        on_open=lambda s, i: self.std_detail(s["code"]), on_key=on_key,
                        info_fn=lambda: self.std_filter_info(state),
-                       hints="1-0 VIEW  F SUBJECT  G GRADE  / SEARCH  I IMPORT  X REMOVE  A ADD CUSTOM  D DELETE  ESC BACK",
+                       hints="1-0 VIEW  F SUBJECT  G GRADE  / SEARCH  I IMPORT  E EXPORT  X REMOVE  A ADD CUSTOM  D DELETE  ESC BACK",
                        empty="NO STANDARDS YET. I IMPORTS A CSV OR JSON FILE OF STANDARDS; A ADDS ONE BY HAND.")
 
     def import_standards(self):
@@ -611,6 +614,30 @@ class App:
         ui.msg = "IMPORTED " + "; ".join(f"{subj.upper()}: {n}" + (f" ({skip} SKIPPED: CODE ALREADY USED)" if skip else "")
                                          for subj, n, skip in done)
         self._std_subject = done[0][0]
+
+    def export_standards(self):
+        """Save imported or hand-typed standards to a file a colleague can import (bundled ones stay put)."""
+        ui = self.ui
+        opts = self.store.shareable_subjects()
+        if not opts:
+            ui.msg = "?NOTHING TO SHARE YET: ONLY STANDARDS YOU IMPORTED OR ADDED CAN BE EXPORTED."
+            return
+        labels = [ui.tx(o) for o in opts]
+        if len(opts) > 1:
+            labels.insert(0, "ALL OF THEM")
+        j = ui.choose("EXPORT WHICH STANDARDS TO SHARE", labels)
+        if j is None:
+            return
+        pick = opts if len(opts) > 1 and j == 0 else [opts[j - (len(opts) > 1)]]
+        folder = ui.prompt("SAVE IN WHICH FOLDER (DRAG ONE HERE)", self.store.export_dir(), raw=True)
+        if not folder:
+            return
+        try:
+            path = self.store.export_standards(folder, pick)
+        except (ValueError, OSError) as e:
+            ui.msg = "?" + str(e).upper()
+            return
+        ui.msg = f"SAVED {path}  (ANOTHER TEACHER IMPORTS IT WITH I)"
 
     def remove_standards(self):
         ui = self.ui
