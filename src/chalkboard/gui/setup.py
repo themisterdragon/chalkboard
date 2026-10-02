@@ -14,11 +14,12 @@ PREVIEW = {"primary_color": "#1F5A3A", "secondary_color": "#F2E6A0", "text_color
 
 def needed(gui):
     """True for a brand-new copy: setup never ran and there's no sign of earlier use."""
-    st, d = gui.settings, gui.store.data
+    import os
+    st = gui.settings
     if st.get("setup_done"):
         return False
-    if st.get("teacher") or d["lessons"] or d["assessments"]:
-        st["setup_done"] = True  # someone who used Chalkboard before setup existed
+    if os.path.exists(gui.store.path):
+        st["setup_done"] = True  # an upgrade: this computer already has Chalkboard data, so leave it be
         return False
     return True
 
