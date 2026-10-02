@@ -33,6 +33,12 @@ jobs:
           pyinstaller --onefile --console --name Chalkboard --icon build/chalkboard.ico \
             --collect-data chalkboard --distpath dist --workpath build/pyi build/chalkboard_entry.py
 
+      - name: Build Chalkboard-Window.exe (the window version; Python and Tk bundled in)
+        run: |
+          printf 'from chalkboard.gui import main\n\nmain()\n' > build/window_entry.py
+          pyinstaller --onefile --windowed --name Chalkboard-Window --icon build/chalkboard.ico \
+            --collect-data chalkboard --distpath dist --workpath build/pyi-window build/window_entry.py
+
       - name: Test Chalkboard.exe
         run: |
           ./dist/Chalkboard.exe --version | tee version.txt
@@ -41,10 +47,22 @@ jobs:
           grep -q 'sel_prompts.json' contents.txt
           grep -q '_curses' contents.txt
 
+      - name: Test Chalkboard-Window.exe
+        run: |
+          # a windowed .exe has no console to print --version to, so check what's inside it
+          pyi-archive_viewer --list --recursive dist/Chalkboard-Window.exe > window.txt
+          grep -i -E 'tkinter|tcl|chalkboard.gui|icon.png' window.txt | head -20
+          grep -q '_tkinter' window.txt
+          grep -qi 'tcl' window.txt
+          grep -q 'icon.png' window.txt
+          grep -q 'chalkboard.gui.desktop' window.txt
+
       - uses: actions/upload-artifact@v5
         with:
           name: windows
-          path: dist/Chalkboard.exe
+          path: |
+            dist/Chalkboard.exe
+            dist/Chalkboard-Window.exe
 
   release:
     needs: windows
@@ -99,7 +117,9 @@ jobs:
         run: |
           version=${GITHUB_REF_NAME#v}
           mv dist/Chalkboard.exe "dist/Chalkboard-$version-windows.exe"
+          mv dist/Chalkboard-Window.exe "dist/Chalkboard-Window-$version-windows.exe"
           gh release create "$GITHUB_REF_NAME" --draft --title "Chalkboard $version" \
             --notes-file .github/release-notes.md \
-            dist/Chalkboard-*.dmg "dist/Chalkboard-$version-windows.exe" dist/chalkboard-*-linux.tar.gz \
+            dist/Chalkboard-*.dmg "dist/Chalkboard-$version-windows.exe" "dist/Chalkboard-Window-$version-windows.exe" \
+            dist/chalkboard-*-linux.tar.gz \
             dist/Chalkboard-macOS.zip dist/chalkboard.pyz dist/chalkboard-gui.pyz dist/install.sh dist/*.whl

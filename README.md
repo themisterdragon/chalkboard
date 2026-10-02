@@ -63,8 +63,9 @@ Chalkboard to Applications (or unzip `Chalkboard-macOS.zip` and do the same).
 It runs in a Terminal window. `Read Me First.txt` covers the first-launch
 prompts (Gatekeeper, Python install).
 
-**Windows:** download `Chalkboard-<version>-windows.exe` and run it. Python is
-built in, so there's nothing else to install. It looks best in Windows Terminal.
+**Windows:** download `Chalkboard-Window-<version>-windows.exe` for the window
+version, or `Chalkboard-<version>-windows.exe` for the terminal app (it looks best
+in Windows Terminal). Python is built in, so there's nothing else to install.
 If "Windows protected your PC" appears, click More info > Run anyway.
 
 **Linux (or macOS from the terminal):** unpack `chalkboard-<version>-linux.tar.gz`
