@@ -132,12 +132,32 @@ Everything autosaves. Number keys or arrows + Return pick items. Esc goes back.
 
 Fill-in-the-blank: type `___` (three or more underscores) wherever a blank goes.
 
+### Backups
+
+Settings > **Back Up Now** (in the window version, also File > Back Up Everything) saves
+everything into one dated file, like `chalkboard-backup-2026-10-02-1530.json`, in a
+folder you pick: a flash drive, a cloud folder, anywhere. Chalkboard remembers the
+folder for next time.
+
+Settings > **Import Backup** brings one back, two ways:
+
+- **Add what I don't have**: adds lessons, assessments, and standards that aren't here
+  yet, and takes the backup's copy of anything that changed more recently there. Your
+  settings stay as they are. Use this to bring work over from another computer.
+- **Replace everything**: swaps your lessons, assessments, standards, and settings for
+  the backup's (this computer's export and backup folders and window look stay).
+
+Either way, Chalkboard first saves what you had into a `backups` folder next to
+`data.json` (the last 10 are kept). A plain `data.json` copied from another
+computer imports the same way.
+
 ## Where things live
 
 | What | Where |
 |------|-------|
-| Your data | `~/.local/share/chalkboard/data.json` (macOS: `~/Library/Application Support/chalkboard`, Windows: `%APPDATA%\chalkboard`). Copy this file to move your work to another computer. A `.bak` copy is kept automatically. |
+| Your data | `~/.local/share/chalkboard/data.json` (macOS: `~/Library/Application Support/chalkboard`, Windows: `%APPDATA%\chalkboard`). A `.bak` copy is kept automatically. |
 | Imported standards | a `standards` folder next to `data.json`, one JSON file per subject |
+| Backups | wherever you pick (Settings > Back Up; first suggested: `~/Documents/Chalkboard/Backups`). Each is one dated `.json` file with your lessons, assessments, settings, and imported standards. |
 | Exports | `~/Documents/Chalkboard` (changeable in Settings). Every export is filed by class, then unit, then lesson, like `English 10/Unit 3/The Raven/`; assessments go in their unit folder. A blank course or unit is skipped. Export All also puts a lesson's linked worksheets in its folder. |
 
 Board slides are drawn with the same engine as the PDF, then turned into a PNG

@@ -1,6 +1,8 @@
 """Settings: you and your class, documents, board slides, and how this window looks."""
 
+import os
 import tkinter as tk
+from tkinter import filedialog
 
 from ..store import GRADE_CHOICES
 from . import widgets as W
@@ -107,9 +109,25 @@ class SettingsView:
 
         g = W.group(right, sk, "Your Data")
         g.pack(fill="x", pady=(10 * S, 0))
-        W.label(g, sk, f"Everything is saved to\n{gui.store.path}\nThe terminal version (chalkboard) uses the same "
-                       "file. Copy it to move your work to another computer.", wrap=440 * S).pack(anchor="w")
+        texts = [W.label(g, sk, f"Everything is saved to\n{gui.store.path}\nThe terminal version (chalkboard) uses "
+                                "the same file.", wrap=440 * S),
+                 W.label(g, sk, "A backup is one file with all your lessons, assessments, standards, and settings. "
+                                "Import it on another computer, or here to get your work back.", wrap=440 * S)]
+        texts[0].pack(anchor="w")
+        texts[1].pack(anchor="w", pady=(8 * S, 0))
+        row = tk.Frame(g, bg=g["bg"])
+        row.pack(anchor="w", pady=(8 * S, 0))
+        W.Button(row, sk, "Back Up Now…", lambda: backup_now(gui), small=True).pack(side="left")
+        W.Button(row, sk, "Import Backup…", lambda: import_backup(gui), small=True).pack(side="left", padx=(6 * S, 0))
+        self.last = W.label(g, sk, last_backup_text(gui), dim=True, wrap=440 * S)
+        self.last.pack(anchor="w", pady=(6 * S, 0))
+        texts.append(self.last)
+        # wrap to the column, however wide the window is
+        g.bind("<Configure>", lambda e: [t.configure(wraplength=max(200 * S, e.width - 24 * S)) for t in texts])
         gui.status("Changes save by themselves.")
+
+    def reloaded(self):
+        self.gui.show(SettingsView, push=False)
 
     def setup(self):
         from .setup import run_setup
@@ -118,3 +136,66 @@ class SettingsView:
     def set(self, **kw):
         self.gui.settings.update(kw)
         self.gui.save_soon()
+
+
+def last_backup_text(gui):
+    st = gui.settings
+    if not st.get("last_backup"):
+        return "No backups yet."
+    return f"Last backup: {st['last_backup']}, in {gui.store.backup_dir()}"
+
+
+def backup_now(gui):
+    folder = filedialog.askdirectory(parent=gui.root, initialdir=gui.store.backup_dir()
+                                     if os.path.isdir(gui.store.backup_dir()) else os.path.expanduser("~"),
+                                     title="Save a backup in which folder?")
+    if not folder or not gui.save():
+        return
+    try:
+        path = gui.store.backup(folder)
+    except OSError as e:
+        W.alert(gui, "Backup Didn't Work", f"Chalkboard couldn't save the backup:\n{e}", "warn")
+        return
+    gui.mtime = gui.file_mtime()
+    if isinstance(gui.view, SettingsView):
+        gui.view.last.configure(text=last_backup_text(gui))
+    W.alert(gui, "Backed Up", f"Everything is saved in\n{path}\n\nKeep it somewhere safe, like a flash drive or "
+                              "cloud folder.")
+
+
+def import_backup(gui):
+    path = filedialog.askopenfilename(parent=gui.root, title="Import a backup",
+                                      initialdir=gui.store.backup_dir() if os.path.isdir(gui.store.backup_dir())
+                                      else os.path.expanduser("~"),
+                                      filetypes=[("Chalkboard backups", "*.json *.JSON"), ("All files", "*")])
+    if not path:
+        return
+    how = W.choose(gui, "Import Backup", f"How should {os.path.basename(path)} come in?",
+                   [("add", "Add what I don't have (keeps all my work)"),
+                    ("replace", "Replace everything with the backup")], "add")
+    if how is None:
+        return
+    if how == "replace" and not W.confirm(
+            gui, "Replace Everything?", "Your lessons, assessments, standards, and settings will be swapped for the "
+                                        "backup's. (Chalkboard saves a copy of them first.)", yes="Replace",
+            icon="warn"):
+        return
+    if not gui.save():
+        return
+    try:
+        got = gui.store.import_backup(path, replace=how == "replace")
+    except (ValueError, OSError) as e:
+        W.alert(gui, "Import Didn't Work", str(e)[:1].upper() + str(e)[1:].lower(), "warn")
+        return
+    gui.mtime = gui.file_mtime()
+    if gui.view is not None and hasattr(gui.view, "reloaded"):
+        gui.view.reloaded()
+    n = lambda k, word, many=None: f"{got[k]} {word if got[k] == 1 else many or word + 's'}"
+    if how == "replace":
+        msg = f"Chalkboard now has the backup's {n('lessons', 'lesson')} and {n('assessments', 'assessment')}."
+    else:
+        msg = (f"Added {n('lessons', 'lesson')}, {n('assessments', 'assessment')}, {n('subjects', 'standards subject')}, "
+               f"and {n('standards', 'custom standard')}.")
+        if got["updated"]:
+            msg += f" {n('updated', 'lesson or assessment', 'lessons or assessments')} got the backup's newer copy."
+    W.alert(gui, "Backup Imported", f"{msg}\n\nWhat you had before is saved in\n{got['safety']}")

@@ -61,7 +61,14 @@ DEFAULT_SETTINGS = {
     "default_materials": "",
     "lesson_sort": "updated",
     "assess_sort": "updated",
+    "backup_dir": "",
+    "last_backup": "",
 }
+
+BACKUP_KIND = "chalkboard-backup"
+# settings that belong to this computer, so importing a backup made on another one keeps them
+LOCAL_SETTINGS = ("export_dir", "backup_dir", "last_backup")
+SAFETY_BACKUPS = 10  # automatic copies kept in the data folder from before each import
 
 # list sort orders: key -> menu label
 SORTS = {"updated": "DATE MODIFIED", "created": "DATE CREATED", "title": "TITLE (A-Z)", "unit": "UNIT"}
@@ -113,6 +120,60 @@ def clean_path(path):
     if len(path) > 1 and path[0] == path[-1] and path[0] in "'\"":
         path = path[1:-1]
     return os.path.expanduser(path.replace("\\ ", " "))
+
+
+def default_backup_dir():
+    return os.path.join(default_export_dir(), "Backups")
+
+
+def write_private(path, obj):
+    """Write JSON atomically, readable only by this user (lessons, names, school)."""
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with open(fd, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=1, ensure_ascii=False)
+    try:
+        os.chmod(tmp, 0o600)  # in case the .tmp was left over from before
+    except OSError:
+        pass
+    os.replace(tmp, path)
+
+
+def normalize_data(d):
+    """Fill in anything an older (or hand-copied) data file is missing."""
+    settings = dict(DEFAULT_SETTINGS)
+    settings.update(d.get("settings") or {})
+    d["settings"] = settings
+    for k in ("lessons", "assessments", "custom_standards"):
+        if not isinstance(d.get(k), list):
+            d[k] = []
+    for x in d["lessons"] + d["assessments"]:
+        x.setdefault("created", x.get("updated", ""))
+    for l in d["lessons"]:
+        l.setdefault("assessments", [])
+    return d
+
+
+def read_backup(path):
+    """A backup file, or a plain data.json copied from another computer -> {"data", "standards", "made"}.
+    Raises ValueError with a message for the user."""
+    path = clean_path(path)
+    if not os.path.isfile(path):
+        raise ValueError(f"NO FILE AT {path}")
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            raw = json.load(f)
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        raise ValueError(f"COULDN'T READ {os.path.basename(path)}: {e}")
+    if isinstance(raw, dict) and raw.get("kind") == BACKUP_KIND and isinstance(raw.get("data"), dict):
+        data, standards, made = raw["data"], raw.get("standards") or [], raw.get("made", "")
+    elif isinstance(raw, dict) and ("lessons" in raw or "assessments" in raw):
+        data, standards, made = raw, [], ""
+    else:
+        raise ValueError(f"{os.path.basename(path)} ISN'T A CHALKBOARD BACKUP")
+    if not all(isinstance(d, dict) and d.get("subject") and isinstance(d.get("standards"), list) for d in standards):
+        raise ValueError(f"THE STANDARDS IN {os.path.basename(path)} ARE DAMAGED")
+    return {"data": normalize_data(data), "standards": standards, "made": made}
 
 
 def subject_filename(subject, folder):
@@ -379,32 +440,14 @@ class Store:
                 pass
             self.warning = f"?COULD NOT READ DATA FILE ({e}). A COPY WAS SAVED TO {bad}"
             return
-        settings = dict(DEFAULT_SETTINGS)
-        settings.update(d.get("settings", {}))
-        d["settings"] = settings
-        for k in ("lessons", "assessments", "custom_standards"):
-            d.setdefault(k, [])
-        for x in d["lessons"] + d["assessments"]:
-            x.setdefault("created", x.get("updated", ""))
-        for l in d["lessons"]:
-            l.setdefault("assessments", [])
-        self.data = d
+        self.data = normalize_data(d)
 
     def save(self):
         os.makedirs(self.dir, exist_ok=True)
         if not self._backed_up and os.path.exists(self.path):
             shutil.copy2(self.path, self.path + ".bak")
             self._backed_up = True
-        tmp = self.path + ".tmp"
-        # only this user can read it (lessons, names, school) on a shared computer
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with open(fd, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=1, ensure_ascii=False)
-        try:
-            os.chmod(tmp, 0o600)  # in case the .tmp was left over from before
-        except OSError:
-            pass
-        os.replace(tmp, self.path)
+        write_private(self.path, self.data)
         if self._backed_up and os.path.exists(self.path + ".bak"):
             try:
                 os.chmod(self.path + ".bak", 0o600)
@@ -413,6 +456,95 @@ class Store:
 
     def export_dir(self):
         return os.path.expanduser(self.settings.get("export_dir") or default_export_dir())
+
+    # -- backups
+    def backup_dir(self):
+        return os.path.expanduser(self.settings.get("backup_dir") or default_backup_dir())
+
+    def backup(self, folder=None, remember=True):
+        """Save everything (lessons, assessments, settings, your standards) into one dated file in folder.
+        Returns its path; raises OSError."""
+        from . import __version__
+        folder = clean_path(folder) if folder else self.backup_dir()
+        if os.path.exists(folder) and not os.path.isdir(folder):
+            raise OSError(f"{folder} IS A FILE, NOT A FOLDER")
+        os.makedirs(folder, exist_ok=True)
+        stamp = time.strftime("%Y-%m-%d-%H%M")
+        name, n = f"chalkboard-backup-{stamp}.json", 2
+        while os.path.exists(os.path.join(folder, name)):
+            name, n = f"chalkboard-backup-{stamp}-{n}.json", n + 1
+        path = os.path.join(folder, name)
+        if remember:
+            self.settings["backup_dir"] = folder
+            self.settings["last_backup"] = now()
+        standards = [{k: v for k, v in doc.items() if k != "file"} for doc in self.load_kas() if doc.get("file")]
+        write_private(path, {"kind": BACKUP_KIND, "format": 1, "app": __version__, "made": now(),
+                             "data": self.data, "standards": standards})
+        if remember:
+            self.save()
+        return path
+
+    def import_backup(self, path, replace=False):
+        """Bring in a backup. replace=False adds lessons, assessments, and standards you don't have (and newer
+        copies of ones you do); replace=True swaps everything for the backup. Either way, what you had is
+        backed up first into the data folder's backups folder. Returns a summary dict; raises ValueError."""
+        b = read_backup(path)
+        try:
+            safety = self.backup(os.path.join(self.dir, "backups"), remember=False)
+            folder = os.path.dirname(safety)
+            old = sorted((os.path.join(folder, n) for n in os.listdir(folder) if n.startswith("chalkboard-backup-")),
+                         key=os.path.getmtime)
+            for p in old[:-SAFETY_BACKUPS]:
+                os.remove(p)
+        except OSError as e:
+            raise ValueError(f"COULDN'T BACK UP YOUR WORK FIRST, SO NOTHING WAS IMPORTED ({e})")
+        new, mine = b["data"], self.data
+        got = {"lessons": 0, "assessments": 0, "updated": 0, "standards": 0, "subjects": 0, "safety": safety}
+        if replace:
+            keep = {k: mine["settings"][k] for k in LOCAL_SETTINGS if k in mine["settings"]}
+            keep.update({k: v for k, v in mine["settings"].items() if k.startswith("gui_")})
+            # change the dicts in place: the screens hold on to the settings dict
+            mine["settings"].clear()
+            mine["settings"].update(new["settings"], **keep)
+            for k in ("lessons", "assessments", "custom_standards"):
+                mine[k] = new[k]
+            for k, v in new.items():
+                if k not in ("settings", "lessons", "assessments", "custom_standards"):
+                    mine[k] = v
+            got.update(lessons=len(new["lessons"]), assessments=len(new["assessments"]),
+                       standards=len(new["custom_standards"]))
+            for doc in self.load_kas():
+                if doc.get("file"):
+                    os.remove(doc["file"])
+            self.reload_standards(rescan=True)
+        else:
+            for k in ("lessons", "assessments"):
+                have = {x["id"]: i for i, x in enumerate(mine[k]) if x.get("id")}
+                for x in new[k]:
+                    i = have.get(x.get("id"))
+                    if i is None:
+                        mine[k].append(x)
+                        got[k] += 1
+                    elif (x.get("updated") or "") > (mine[k][i].get("updated") or ""):
+                        mine[k][i] = x
+                        got["updated"] += 1
+            codes = {c["code"] for c in mine["custom_standards"]}
+            for c in new["custom_standards"]:
+                if c.get("code") and c["code"] not in codes:
+                    mine["custom_standards"].append(c)
+                    codes.add(c["code"])
+                    got["standards"] += 1
+        have = set(self.imported_subjects())
+        os.makedirs(self.standards_dir(), exist_ok=True)
+        for doc in b["standards"]:
+            if doc["subject"] in have:
+                continue
+            doc = {k: v for k, v in doc.items() if k != "file"}
+            write_private(os.path.join(self.standards_dir(), subject_filename(doc["subject"], self.standards_dir())), doc)
+            got["subjects"] += 1
+        self.save()
+        self.reload_standards(rescan=True)
+        return got
 
     # -- lessons <-> assessments
     def assessment(self, aid):

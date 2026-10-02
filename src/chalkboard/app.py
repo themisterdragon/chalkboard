@@ -1326,6 +1326,43 @@ class App:
                        hints="1-0 CHANGE  ESC BACK")
 
     # ------------------------------------------------------------- settings
+    def backup_now(self):
+        ui = self.ui
+        folder = ui.prompt("SAVE A BACKUP IN WHICH FOLDER (DRAG ONE HERE)", self.store.backup_dir(), raw=True)
+        if not folder:
+            return
+        self.save()
+        try:
+            path = self.store.backup(folder)
+        except OSError as e:
+            ui.msg = f"?COULD NOT BACK UP: {e}"
+            return
+        ui.msg = f"BACKED UP TO {path}"
+
+    def import_backup(self):
+        ui = self.ui
+        path = ui.prompt("PATH TO A CHALKBOARD BACKUP .JSON FILE (DRAG IT HERE)", raw=True)
+        if not path:
+            return
+        j = ui.choose("IMPORT HOW", ["ADD WHAT I DON'T HAVE (KEEPS MY WORK)",
+                                     "REPLACE EVERYTHING WITH THE BACKUP"])
+        if j is None or (j == 1 and not ui.confirm("REPLACE ALL YOUR LESSONS, ASSESSMENTS, AND SETTINGS")):
+            return
+        self.save()
+        try:
+            got = self.store.import_backup(path, replace=j == 1)
+        except (ValueError, OSError) as e:
+            ui.msg = "?" + str(e).upper()
+            return
+        self._std_subject = None
+        ui.apply_theme()
+        if j == 1:
+            ui.msg = f"REPLACED WITH THE BACKUP: {got['lessons']} LESSONS, {got['assessments']} ASSESSMENTS."
+        else:
+            ui.msg = (f"ADDED {got['lessons']} LESSONS, {got['assessments']} ASSESSMENTS, "
+                      f"{got['subjects']} SUBJECTS, {got['standards']} CUSTOM STANDARDS; {got['updated']} UPDATED.")
+        ui.msg += f" YOUR OLD WORK IS SAVED IN {got['safety']}"
+
     def settings_screen(self):
         ui, st = self.ui, self.st
         fields = [
@@ -1345,6 +1382,8 @@ class App:
             ("theme", "SCREEN COLOR", "theme"),
             ("uppercase", "ALL-CAPS MENUS", "bool"),
             ("boot", "BOOT SEQUENCE", "bool"),
+            ("backup_dir", "BACK UP EVERYTHING NOW", "backup"),
+            ("", "IMPORT A BACKUP", "restore"),
         ]
 
         def row(f, w):
@@ -1354,6 +1393,10 @@ class App:
                 v = "ON" if v else "OFF"
             elif kind == "folder":
                 v = self.store.export_dir()
+            elif kind == "backup":
+                v = self.store.backup_dir() + (f"  (LAST: {st['last_backup']})" if st.get("last_backup") else "")
+            elif kind == "restore":
+                v = "FROM A BACKUP FILE OR ANOTHER COMPUTER'S DATA.JSON"
             elif kind == "board":
                 v = BOARD_STYLES.get(v, "") + " ..."
             elif kind == "grades":
@@ -1416,6 +1459,12 @@ class App:
                 st[key] = not st.get(key)
             elif kind == "board":
                 self.board_settings()
+            elif kind == "backup":
+                self.backup_now()
+                return i
+            elif kind == "restore":
+                self.import_backup()
+                return i
             self.save()
             return i
 

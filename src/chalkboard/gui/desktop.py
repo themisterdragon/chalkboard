@@ -254,6 +254,9 @@ class Gui:
         f.add_command(label="Import Standards…", command=self.cmd_import)
         f.add_command(label="Open Export Folder", command=self.open_export_folder)
         f.add_separator()
+        f.add_command(label="Back Up Everything…", command=lambda: self.backup("backup_now"))
+        f.add_command(label="Import Backup…", command=lambda: self.backup("import_backup"))
+        f.add_separator()
         f.add_command(label="Close Window", accelerator=f"{MOD_LABEL}+W", command=self.back)
         f.add_command(label="Quit", accelerator=f"{MOD_LABEL}+Q", command=self.quit)
 
@@ -462,6 +465,10 @@ class Gui:
         if not isinstance(self.view, StandardsLibrary):
             self.go_section("standards")
         self.view.import_file()
+
+    def backup(self, name):
+        from . import settings
+        getattr(settings, name)(self)
 
     def open_export_folder(self):
         try:
