@@ -78,7 +78,7 @@ window version), or run either directly with `python3 chalkboard.pyz`.
 
 **Python package (any OS, including Windows):**
 
-    pipx install chalkboard_planner-1.8.0-py3-none-any.whl
+    pipx install chalkboard_planner-1.8.1-py3-none-any.whl
 
 On Windows this pulls in `windows-curses` automatically.
 
