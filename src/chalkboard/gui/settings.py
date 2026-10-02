@@ -103,12 +103,17 @@ class SettingsView:
         boot = tk.BooleanVar(value=st.get("boot", True))
         boot.trace_add("write", lambda *a: self.set(boot=boot.get()))
         W.Check(g, sk, "Show the welcome screen", boot).pack(anchor="w", pady=(8 * S, 0))
+        W.Button(g, sk, "Run Setup Again…", self.setup, small=True).pack(anchor="w", pady=(8 * S, 0))
 
         g = W.group(right, sk, "Your Data")
         g.pack(fill="x", pady=(10 * S, 0))
         W.label(g, sk, f"Everything is saved to\n{gui.store.path}\nThe terminal version (chalkboard) uses the same "
                        "file. Copy it to move your work to another computer.", wrap=440 * S).pack(anchor="w")
         gui.status("Changes save by themselves.")
+
+    def setup(self):
+        from .setup import run_setup
+        self.gui.root.after_idle(lambda: run_setup(self.gui))
 
     def set(self, **kw):
         self.gui.settings.update(kw)

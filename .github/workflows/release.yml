@@ -86,6 +86,14 @@ jobs:
           python3 scripts/build_mac.py
           python3 -m pip wheel --no-deps -w dist .
           sh scripts/build_dmg.sh
+
+      - name: Build the standalone Mac window app (universal2 Python from python.org)
+        run: |
+          curl -fsSL -o python.pkg https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
+          sudo installer -pkg python.pkg -target /
+          py=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
+          "$py" -m pip install --quiet pyinstaller
+          PYTHON="$py" sh scripts/build_mac_window.sh
           tar -czf "dist/chalkboard-$version-linux.tar.gz" -C dist chalkboard.pyz chalkboard-gui.pyz install.sh
 
       - uses: actions/download-artifact@v6
@@ -95,15 +103,26 @@ jobs:
 
       - name: Test the downloads
         run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)
           python3 dist/chalkboard.pyz --version
           python3 dist/chalkboard-gui.pyz --version
-          mnt=$(hdiutil attach -nobrowse -readonly dist/Chalkboard-*.dmg | awk -F'\t' '/Volumes/ {print $NF}')
+          mnt=$(hdiutil attach -nobrowse -readonly "dist/Chalkboard-$version.dmg" | awk -F'\t' '/Volumes/ {print $NF}')
           ls -la "$mnt"
           test -L "$mnt/Applications"
           test -x "$mnt/Chalkboard.app/Contents/MacOS/Chalkboard"
           test -f "$mnt/Read Me First.txt"
           python3 "$mnt/Chalkboard.app/Contents/Resources/chalkboard.pyz" --version
           plutil -lint "$mnt/Chalkboard.app/Contents/Info.plist"
+          hdiutil detach "$mnt"
+          mnt=$(hdiutil attach -nobrowse -readonly dist/Chalkboard-Window-*.dmg | awk -F'\t' '/Volumes/ {print $NF}')
+          ls -la "$mnt"
+          test -L "$mnt/Applications"
+          test -f "$mnt/Read Me First.txt"
+          exe="$mnt/Chalkboard Window.app/Contents/MacOS/Chalkboard Window"
+          lipo -archs "$exe" | tee archs.txt
+          grep -q x86_64 archs.txt && grep -q arm64 archs.txt
+          "$exe" --version | grep -q "chalkboard-gui $version"
+          codesign --verify --deep "$mnt/Chalkboard Window.app"
           hdiutil detach "$mnt"
           tar -tzf dist/chalkboard-*-linux.tar.gz | sort | tr '\n' ' ' | grep -q '^chalkboard-gui.pyz chalkboard.pyz install.sh $'
           python3 -m pip install dist/*.whl
@@ -120,6 +139,6 @@ jobs:
           mv dist/Chalkboard-Window.exe "dist/Chalkboard-Window-$version-windows.exe"
           gh release create "$GITHUB_REF_NAME" --draft --title "Chalkboard $version" \
             --notes-file .github/release-notes.md \
-            dist/Chalkboard-*.dmg "dist/Chalkboard-$version-windows.exe" "dist/Chalkboard-Window-$version-windows.exe" \
-            dist/chalkboard-*-linux.tar.gz \
+            "dist/Chalkboard-$version.dmg" "dist/Chalkboard-$version-windows.exe" "dist/Chalkboard-Window-$version-windows.exe" \
+            dist/Chalkboard-Window-*.dmg dist/chalkboard-*-linux.tar.gz \
             dist/Chalkboard-macOS.zip dist/chalkboard.pyz dist/chalkboard-gui.pyz dist/install.sh dist/*.whl

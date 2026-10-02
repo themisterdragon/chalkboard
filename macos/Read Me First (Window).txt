@@ -1,0 +1,28 @@
+Chalkboard Window for Mac
+=========================
+
+INSTALL
+1. Drag "Chalkboard Window" into your Applications folder.
+2. Double-click it. Everything it needs is inside the app; there's nothing
+   else to install. It runs on Intel and Apple silicon Macs.
+
+THE FIRST TIME YOU OPEN IT
+- "Chalkboard Window cannot be opened" / "Apple could not verify": the app
+  isn't from the App Store. Open System Settings > Privacy & Security, scroll
+  down, and click "Open Anyway" next to Chalkboard Window. (On older macOS,
+  right-click the app and choose Open instead.) Or, in Terminal, run this once:
+      xattr -dr com.apple.quarantine "/Applications/Chalkboard Window.app"
+- "Chalkboard Window would like to access files in your Documents folder":
+  click OK. Exports are saved to Documents/Chalkboard.
+
+USING IT
+- Two looks: View > Bevel Look or Pinstripe Look (also in Settings).
+- Back and Home are at the top of every window; Esc or Command-W also go back.
+- Everything saves by itself.
+
+WHERE THINGS LIVE
+- Your lessons and assessments:
+      ~/Library/Application Support/chalkboard/data.json
+  The terminal version of Chalkboard uses the same file, so you can switch
+  between them any time.
+- Exports: Documents/Chalkboard (changeable in Settings)

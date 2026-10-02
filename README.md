@@ -58,7 +58,10 @@ Download from the
 Everything except the Windows `.exe` needs Python 3.8+ (Macs offer to install it
 the first time).
 
-**Mac (double-click app):** open `Chalkboard-<version>.dmg` and drag
+**Mac, window version:** open `Chalkboard-Window-<version>.dmg` and drag Chalkboard
+Window to Applications. Python is built in, so there's nothing else to install.
+
+**Mac, terminal app (double-click app):** open `Chalkboard-<version>.dmg` and drag
 Chalkboard to Applications (or unzip `Chalkboard-macOS.zip` and do the same).
 It runs in a Terminal window. `Read Me First.txt` covers the first-launch
 prompts (Gatekeeper, Python install).
@@ -93,6 +96,12 @@ every question type, annotation and bell ringer sheets, the standards
 library with import, settings, preview, and every export. It reads and writes
 the same data file as the terminal app, and picks up changes the other one
 saves. Close a window with its close box (top left) or Esc to go back.
+
+The first time it opens, a setup wizard asks for your name, school, main
+class, school colors, and everyday materials, then offers to install it: the
+Windows `.exe` into your Programs folder with Start-menu and desktop shortcuts,
+the Mac app from its disk image into Applications, or the Linux `.pyz` with an
+app-menu entry. Settings > Run Setup Again brings it back.
 Text size and overall size are in Settings, and sharp screens get 2× on
 their own.
 
@@ -192,6 +201,7 @@ here belong to their owners.
     python3 scripts/build_pyz.py       # -> dist/chalkboard.pyz, dist/chalkboard-gui.pyz, dist/install.sh
     python3 scripts/build_mac.py       # -> dist/Chalkboard-macOS.zip (also rebuilds the .pyz)
     sh scripts/build_dmg.sh            # -> dist/Chalkboard-<version>.dmg (macOS only, after build_mac.py)
+    sh scripts/build_mac_window.sh     # -> dist/Chalkboard-Window-<version>.dmg (macOS, needs PyInstaller)
     pip wheel --no-deps -w dist .      # -> dist/*.whl
     python3 scripts/make_icon.py       # -> macos/Chalkboard.icns (only to change the icon)
 

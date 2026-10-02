@@ -70,9 +70,14 @@ class Gui:
         for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             self.root.bind_all(seq, self.wheel, add="+")
         self.bind_keys()
-        self.show(Welcome if self.settings.get("boot", True) and not args.no_boot else Home, push=False)
+        from .setup import needed, run_setup
+        first_time = not self.store.warning and needed(self)
+        welcome = self.settings.get("boot", True) and not args.no_boot and not first_time
+        self.show(Welcome if welcome else Home, push=False)
         if self.store.warning:
             self.root.after(300, lambda: W.alert(self, "Chalkboard", self.store.warning.lstrip("?"), "warn"))
+        elif first_time:
+            self.root.after(300, lambda: run_setup(self))
         self.root.after(2000, self.watch_file)
 
     # ------------------------------------------------------------ plumbing
