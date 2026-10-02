@@ -396,9 +396,20 @@ class Store:
             shutil.copy2(self.path, self.path + ".bak")
             self._backed_up = True
         tmp = self.path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
+        # only this user can read it (lessons, names, school) on a shared computer
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with open(fd, "w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=1, ensure_ascii=False)
+        try:
+            os.chmod(tmp, 0o600)  # in case the .tmp was left over from before
+        except OSError:
+            pass
         os.replace(tmp, self.path)
+        if self._backed_up and os.path.exists(self.path + ".bak"):
+            try:
+                os.chmod(self.path + ".bak", 0o600)
+            except OSError:
+                pass
 
     def export_dir(self):
         return os.path.expanduser(self.settings.get("export_dir") or default_export_dir())
