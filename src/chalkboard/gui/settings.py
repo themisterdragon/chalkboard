@@ -9,7 +9,14 @@ from . import widgets as W
 from .common import AutoText, LineField
 from .desktop import grade_label
 from .export import STYLE_TEXT, board_options, browse, class_periods, logo_options, logo_text, periods_text
-from .skin import SKINS, TEXT_SIZES, auto_scale
+from .skin import SKINS, TEXT_SIZES, THEMES, auto_scale
+
+
+def sections_text(gui):
+    from ..store import FIXED_FIELDS, LESSON_FIELDS
+    hide = set(gui.settings.get("lesson_hide") or [])
+    off = [label for k, label, _ in LESSON_FIELDS if k in hide and k not in FIXED_FIELDS]
+    return ("Hidden from the lesson editor: " + ", ".join(off) + ".") if off else "The lesson editor shows every section."
 
 
 class SettingsView:
@@ -73,6 +80,17 @@ class SettingsView:
         W.entry(row, sk, folder, width=30).pack(side="left", fill="x", expand=True)
         W.Button(row, sk, "Browse…", lambda: browse(gui, folder), small=True).pack(side="left", padx=(6 * S, 0))
 
+        g = W.group(left, sk, "Lesson Sections")
+        g.pack(fill="x", pady=(10 * S, 0))
+        sections = W.label(g, sk, sections_text(gui), wrap=400 * S)
+        sections.pack(anchor="w")
+
+        def pick_sections():
+            from .lessons import lesson_sections
+            if lesson_sections(gui):
+                sections.configure(text=sections_text(gui))
+        W.Button(g, sk, "Choose Sections…", pick_sections, small=True).pack(anchor="w", pady=(6 * S, 0))
+
         g = W.group(right, sk, "Board Slides")
         g.pack(fill="x")
         style = tk.StringVar(value=st.get("board_style", "chalk"))
@@ -100,6 +118,13 @@ class SettingsView:
         for k, s in SKINS.items():
             W.Radio(g, sk, f"{s['name']} — {s['about']}", look, k).pack(anchor="w", padx=(12 * S, 0))
         look.trace_add("write", lambda *a: gui.root.after_idle(lambda: gui.set_look(gui_skin=look.get())))
+        W.label(g, sk, "Light or dark (every look has both):").pack(anchor="w", pady=(8 * S, 0))
+        theme = tk.StringVar(value=gui.theme())
+        row = tk.Frame(g, bg=g["bg"])
+        row.pack(anchor="w", padx=(12 * S, 0))
+        for k, t in THEMES:
+            W.Radio(row, sk, t, theme, k).pack(side="left", padx=(0, 12 * S))
+        theme.trace_add("write", lambda *a: gui.root.after_idle(lambda: gui.set_look(gui_theme=theme.get())))
         row = tk.Frame(g, bg=g["bg"])
         row.pack(anchor="w", pady=(8 * S, 0))
         W.label(row, sk, "Text size:").pack(side="left")
@@ -115,7 +140,7 @@ class SettingsView:
             side="left", padx=(6 * S, 0))
         boot = tk.BooleanVar(value=st.get("boot", True))
         boot.trace_add("write", lambda *a: self.set(boot=boot.get()))
-        W.Check(g, sk, "Show the welcome screen", boot).pack(anchor="w", pady=(8 * S, 0))
+        W.Check(g, sk, "Show the welcome screen (retro looks)", boot).pack(anchor="w", pady=(8 * S, 0))
         W.Button(g, sk, "Run Setup Again…", self.setup, small=True).pack(anchor="w", pady=(8 * S, 0))
 
         g = W.group(right, sk, "Your Data")

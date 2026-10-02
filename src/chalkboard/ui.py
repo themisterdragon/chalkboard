@@ -9,6 +9,8 @@ except ImportError:  # Windows without the windows-curses package
     sys.exit("chalkboard needs curses. On Windows run: pip install windows-curses")
 
 from .banner import APP, big  # noqa: F401  (re-exported for app.py)
+from .markup import spans, toggle
+from .mascots import hop, name as mascot_name, sprite
 
 THEMES = {
     "green": ((83, 28, 157), curses.COLOR_GREEN),
@@ -96,11 +98,21 @@ class UI:
         self.DIM = curses.color_pair(3) | extra_dim
         self.HI = curses.color_pair(4) | curses.A_BOLD | extra_hi
         self.s.bkgd(" ", self.N)
+        # Pixel art: one color pair per (top, bottom) tone, drawn with half blocks.
+        tones = {".": bg, "d": dim, "n": fg, "h": hi}
+        self.PIX = {}
+        for i, (top, bot) in enumerate((a, b) for a in tones for b in tones):
+            if curses.COLOR_PAIRS > 10 + i:
+                curses.init_pair(10 + i, tones[top], tones[bot])
+                self.PIX[top, bot] = curses.color_pair(10 + i)
+            else:  # tiny palette: a plain silhouette
+                self.PIX[top, bot] = self.N if top != "." else self.INV
 
     def dims(self):
+        """(rows, content width, left edge). Everything hugs the left edge like a plain terminal
+        app; the width stops at 110 so lines stay readable on a wide screen."""
         rows, cols = self.s.getmaxyx()
-        w = min(cols, 110)
-        return rows, w, (cols - w) // 2
+        return rows, min(cols, 110), 0
 
     def tx(self, s):
         return s.upper() if self.settings.get("uppercase", True) else s
@@ -112,9 +124,9 @@ class UI:
     def put(self, y, x, text, attr=None, raw=False):
         self.buf.append((y, x, text if raw else self.tx(text), self.N if attr is None else attr))
 
-    def center(self, y, text, attr=None, raw=False):
-        rows, w, x0 = self.dims()
-        self.put(y, x0 + max(0, (w - len(text)) // 2), text, attr, raw)
+    def line(self, y, text, attr=None, raw=False):
+        """A line of text at the left margin."""
+        self.put(y, 1, text, attr, raw)
 
     def draw(self, y, x, text, attr):
         rows, cols = self.s.getmaxyx()
@@ -156,14 +168,41 @@ class UI:
                 pass
         self.s.refresh()
 
+    def sprite_runs(self, rows):
+        """Pixel-art rows -> [(row, col, text, attr)], two pixels per cell (upper half block)."""
+        out = []
+        for r in range(0, len(rows) - 1, 2):
+            top, bot = rows[r], rows[r + 1]
+            for c, (a, b) in enumerate(zip(top, bot)):
+                if a == "." and b == ".":
+                    continue
+                if a == b:
+                    out.append((r // 2, c, "█", self.PIX[a, "."]))
+                else:
+                    out.append((r // 2, c, "▀", self.PIX[a, b]))
+        return out
+
+    def put_sprite(self, y, x, rows):
+        for dy, dx, text, attr in self.sprite_runs(rows):
+            self.put(y + dy, x + dx, text, attr, raw=True)
+
+    def draw_sprite(self, y, x, rows, clear=True):
+        """Draw a sprite right away (clear=True blanks its box first, for animation)."""
+        if clear:
+            for dy in range(len(rows) // 2):
+                self.draw(y + dy, x, " " * len(rows[0]), self.N)
+        for dy, dx, text, attr in self.sprite_runs(rows):
+            self.draw(y + dy, x + dx, text, attr)
+
     def header(self, title, raw=False):
-        rows, w, x0 = self.dims()
-        self.put(0, x0, " " * w, self.INV)
-        self.put(0, x0 + 1, APP, self.INV)
-        title = truncate(title, w - 34)
-        self.put(0, x0 + (w - len(title)) // 2, title, self.INV, raw)
+        """The title bar, across the whole screen."""
+        rows, cols = self.s.getmaxyx()
+        self.put(0, 0, " " * cols, self.INV)
+        self.put(0, 1, APP, self.INV)
+        title = truncate(title, cols - 34)
+        self.put(0, (cols - len(title)) // 2, title, self.INV, raw)
         clock = datetime.now().strftime("%a %b %d %H:%M")
-        self.put(0, x0 + w - len(clock) - 1, clock, self.INV)
+        self.put(0, cols - len(clock) - 1, clock, self.INV)
 
     def footer(self, hints):
         rows, w, x0 = self.dims()
@@ -293,11 +332,20 @@ class UI:
                 self.header("EDIT: " + title)
                 self.put(1, x0 + 1, help_text or "TYPE FREELY.  START A LINE WITH '- ' FOR A BULLET.", self.DIM)
                 self.put(2, x0, "-" * w, self.DIM)
+                attrs = self.mark_attrs(buf)
                 for i, (a, b) in enumerate(vis[top:top + body]):
-                    self.put(3 + i, x0 + 2, buf[a:b].rstrip("\n"), self.N, raw=True)
+                    line = buf[a:b].rstrip("\n")
+                    j = 0
+                    while j < len(line):  # one put per run of the same look
+                        k = j
+                        while k < len(line) and attrs[a + k] == attrs[a + j]:
+                            k += 1
+                        self.put(3 + i, x0 + 2 + j, line[j:k], attrs[a + j], raw=True)
+                        j = k
                 words = len(buf.split())
-                self.put(rows - 2, x0, f"ESC SAVE+EXIT   CTRL-X CANCEL   {fill_hint + '   ' if fill else ''}ARROWS MOVE   "
-                                       f"LINE {r + 1}/{len(vis)}   {words} WORDS", self.DIM)
+                self.put(rows - 2, x0, f"ESC SAVE+EXIT   CTRL-X CANCEL   {fill_hint + '   ' if fill else ''}"
+                                       f"^B BOLD  ^T ITALIC  ^U UNDERLINE   LINE {r + 1}/{len(vis)}   {words} WORDS",
+                         self.DIM)
                 self.show(cursor=(3 + r - top, x0 + 2 + col))
 
                 k = self.s.get_wch()
@@ -306,6 +354,9 @@ class UI:
                 if k == "\x18":
                     if buf == original or self.confirm("DISCARD CHANGES"):
                         return None
+                    continue
+                if k in ("\x02", "\x14", "\x15"):  # Ctrl-B / Ctrl-T / Ctrl-U (Ctrl-I is Tab in a terminal)
+                    buf, pos = toggle(buf, pos, {"\x02": "b", "\x14": "i", "\x15": "u"}[k])
                     continue
                 if k == "\x07" and fill:
                     if not buf.strip() or buf == filled:
@@ -357,6 +408,20 @@ class UI:
                     pos += len(k)
         finally:
             self.cursor(False)
+
+    def mark_attrs(self, buf):
+        """A curses attribute for every character of buf: formatted text shows bold, italic, or
+        underlined; the ** __ * marks themselves are dimmed."""
+        looks = {"b": curses.A_BOLD, "i": getattr(curses, "A_ITALIC", 0), "u": curses.A_UNDERLINE}
+        attrs = [self.N] * len(buf)
+        for a, b, kind in spans(buf):
+            attr = self.DIM if kind == "mark" else self.N
+            if kind != "mark":
+                for flag in kind:
+                    attr |= looks[flag]
+            for i in range(a, b):
+                attrs[i] = attr
+        return attrs
 
     def view_lines(self, title, lines, hints="ARROWS/SPACE SCROLL   ESC BACK", raw_title=False):
         """Scrollable read-only view of [(text, attr)] lines (text shown as-is)."""
@@ -485,3 +550,61 @@ class UI:
                          on_open=on_open, hints=hints, info_fn=lambda: "",
                          start=current or 0)
         return picked[0] if picked else None
+
+
+class ExportBar:
+    """progress(done, total, file) for exporting(): the mascot (or the logo) runs along a bar.
+
+    It only redraws a few rows per step, so it costs next to nothing on any machine.
+    """
+
+    def __init__(self, ui, mascot):
+        self.ui, self.mascot, self.art = ui, mascot, sprite(mascot)
+        self.x = None
+        self.frame = 0
+
+    def __call__(self, done, total, label):
+        ui = self.ui
+        rows, cols = ui.s.getmaxyx()
+        if rows < 16 or cols < 60:
+            return
+        rows, w, x0 = ui.dims()
+        if self.x is None:  # first call: the screen frame
+            ui.begin()
+            ui.header("EXPORTING")
+            ui.show()
+        y = 2
+        left, span = x0 + 1, w - 2 - 16
+        goal = left + span * done // max(1, total)
+        if self.x is None:
+            self.x = left
+        # glide to the new spot in a few hops (skipped where the console is slow)
+        steps = min(6, goal - self.x) if ui.animate else 0
+        for i in range(1, steps + 1):
+            self.draw(y, self.x + (goal - self.x) * i // steps, left, span, done, total)
+            curses.napms(12)
+        self.x = goal
+        self.draw(y, goal, left, span, done, total)
+        if done < total:
+            text = f"{done + 1} OF {total}: {label}"
+        else:
+            text = f"DONE! GO {mascot_name(self.mascot)}!" if mascot_name(self.mascot) else "DONE!"
+        ui.draw(y + 11, x0, " " * w, ui.N)
+        ui.draw(y + 11, left, truncate(text, w - 2), ui.HI if done == total else ui.N)
+        ui.s.refresh()
+        if done == total:
+            curses.napms(350)  # a beat to see it finish
+
+    def draw(self, y, x, left, span, done, total):
+        ui = self.ui
+        self.frame += 1
+        for dy in range(8):
+            ui.draw(y + dy, left, " " * (span + 16), ui.N)
+        ui.draw_sprite(y, x, hop(self.art) if self.frame % 2 else self.art, clear=False)
+        # the bar under its feet: filled up to the mascot, dim after it
+        filled = (span + 16) * (x - left) // max(1, span)
+        ui.draw(y + 8, left, "▀" * filled, ui.PIX["n", "."])
+        ui.draw(y + 8, left + filled, "▀" * (span + 16 - filled), ui.PIX["d", "."])
+        pct = f"{100 * done // max(1, total):>3}%"
+        ui.draw(y + 9, left + span + 16 - len(pct), pct, ui.DIM)
+        ui.s.refresh()

@@ -1,4 +1,4 @@
-"""The setup wizard: name, school, class, school colors, materials, look, and installing the app."""
+"""The setup wizard: name, school, class, school colors, materials, look, view, and installing the app."""
 
 import tkinter as tk
 from tkinter import colorchooser
@@ -6,7 +6,7 @@ from tkinter import colorchooser
 from ..store import GRADE_CHOICES, parse_hex
 from . import widgets as W
 from .desktop import APP, grade_label
-from .skin import SKINS
+from .skin import MAC, SKINS, THEMES
 from . import install as I
 
 PREVIEW = {"primary_color": "#1F5A3A", "secondary_color": "#F2E6A0", "text_color": "#FFFFFF"}
@@ -38,11 +38,13 @@ class Wizard:
         if not self.v["grades"].get():
             self.v["grades"].set("9-10")
         self.look = tk.StringVar(value=st.get("gui_skin", "bevel"))
+        self.theme = tk.StringVar(value=gui.theme())
+        self.mode = tk.StringVar(value=st.get("gui_mode") or "window")
         self.materials = st.get("default_materials", "")
         self.plan = I.plan()
         self.do_install = tk.BooleanVar(value=bool(self.plan))
         self.desktop = tk.BooleanVar(value=True)
-        self.pages = [self.p_welcome, self.p_you, self.p_class, self.p_colors, self.p_materials, self.p_look]
+        self.pages = [self.p_welcome, self.p_you, self.p_class, self.p_colors, self.p_materials, self.p_look, self.p_mode]
         if self.plan:
             self.pages.append(self.p_install)
         self.pages.append(self.p_done)
@@ -56,12 +58,12 @@ class Wizard:
         d.cancel_value = "skip"
         row = tk.Frame(d.body, bg=sk["window"])
         row.pack(fill="both", expand=True)
-        art = tk.Frame(row, bg=sk["sel"] if sk.bevel else sk["dark"], width=190 * S, padx=14 * S, pady=14 * S)
+        art = tk.Frame(row, bg=sk["sel"], width=190 * S, padx=14 * S, pady=14 * S)
         art.pack(side="left", fill="y")
         art.pack_propagate(False)
         tk.Label(art, image=sk.icon("logo", 6), bg=art["bg"]).pack(pady=(20 * S, 10 * S))
-        tk.Label(art, text=APP, font=sk.fbig, bg=art["bg"], fg="#FFFFFF").pack()
-        self.steps = tk.Label(art, text="", font=sk.fsmall, bg=art["bg"], fg="#FFFFFF", justify="left", anchor="w")
+        tk.Label(art, text=APP, font=sk.fbig, bg=art["bg"], fg=sk["seltext"]).pack()
+        self.steps = tk.Label(art, text="", font=sk.fsmall, bg=art["bg"], fg=sk["seltext"], justify="left", anchor="w")
         self.steps.pack(fill="x", pady=(24 * S, 0))
         self.page = tk.Frame(row, bg=sk["window"], width=560 * S, height=400 * S, padx=18 * S)
         self.page.pack(side="left", fill="both", expand=True)
@@ -88,7 +90,7 @@ class Wizard:
         self.prev.set_enabled(self.i > 0)
         self.next.set_text("Finish" if last else "Next ►")
         self.skip.set_enabled(not last)
-        names = ["Welcome", "About you", "Your class", "School colors", "Materials", "Look"] + \
+        names = ["Welcome", "About you", "Your class", "School colors", "Materials", "Look", "Window or terminal"] + \
                 (["Install"] if self.plan else []) + ["Done"]
         self.steps.configure(text="\n".join(("► " if j == self.i else "   ") + n for j, n in enumerate(names)))
         # new widgets need the dialog's key bindings (Return = Next, Esc = Skip)
@@ -202,7 +204,7 @@ class Wizard:
                       fill=col["text_color"], font=sk.f)
 
     def p_materials(self):
-        sk, S = self.gui.skin, self.gui.skin.S
+        sk = self.gui.skin
         self.head("Materials", "What do students need every day? Every new lesson starts with this list. Put each "
                                "item on its own line.")
         t = self.mat = W.textbox(self.page, sk, height=8, width=46)
@@ -216,6 +218,21 @@ class Wizard:
         self.head("Look", "Pick the look you like. You can switch any time from the View menu.")
         for k, s in SKINS.items():
             W.Radio(self.page, sk, f"{s['name']}: {s['about']}", self.look, k).pack(anchor="w", pady=2 * S)
+        W.label(self.page, sk, "Light or dark:", bold=True).pack(anchor="w", pady=(12 * S, 2 * S))
+        for k, t in THEMES:
+            W.Radio(self.page, sk, t, self.theme, k).pack(anchor="w", pady=2 * S)
+
+    def p_mode(self):
+        sk, S = self.gui.skin, self.gui.skin.S
+        self.head("Window or Terminal", "Chalkboard works two ways, on the same lessons and assessments. "
+                                        "You can switch any time from the View menu or with "
+                                        f"{'Cmd' if MAC else 'Ctrl'}+Shift+W.")
+        for k, title, about in (
+                ("window", "Window view (recommended)", "Buttons, menus, and forms you click through."),
+                ("terminal", "Terminal view", "A retro green screen you run from the keyboard: press a number "
+                                              "or letter for each choice. Pick a school mascot in its Settings.")):
+            W.Radio(self.page, sk, title, self.mode, k).pack(anchor="w", pady=(8 * S, 0))
+            W.label(self.page, sk, about, dim=True, wrap=480 * S).pack(anchor="w", padx=(24 * S, 0))
 
     def p_install(self):
         sk, S = self.gui.skin, self.gui.skin.S
@@ -273,15 +290,18 @@ class Wizard:
         gui = self.gui
         st = gui.settings
         st["setup_done"] = True
-        look = self.look.get()
-        changed_look = look != gui.skin.kind
+        terminal = self.mode.get() == "terminal"
+        look, theme = self.look.get(), self.theme.get()
+        changed_look = look != gui.skin.kind or theme != gui.theme()
         gui.save()
         if getattr(self, "installed", None) and self.plan and I.relaunch(self.plan):
             gui.quit()  # the Mac copy in Applications takes over
             return
         if changed_look:
-            gui.set_look(gui_skin=look)
+            gui.set_look(gui_skin=look, gui_theme=theme)
         else:
             gui.show(gui.current, push=False)
         if getattr(self, "installed", None):
             gui.status(self.installed)
+        if terminal:
+            gui.root.after(100, lambda: gui.enter_terminal(boot=True))

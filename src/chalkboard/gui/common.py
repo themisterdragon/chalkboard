@@ -91,6 +91,7 @@ class AutoText:
         t = self.text
         t.delete("1.0", "end")
         t.insert("1.0", value)
+        t.restyle()
         self.modified()
 
 

@@ -3,7 +3,8 @@
 import tkinter as tk
 
 from ..doc import lesson_doc
-from ..store import GOOD_THINGS_PREFIX, LESSON_FIELDS, new_lesson, now, points_of, fmt_points, SHEET_KINDS
+from ..store import (FIXED_FIELDS, GOOD_THINGS_PREFIX, LESSON_FIELDS, SHEET_KINDS, VOCAB_HINT, fmt_points,
+                     new_lesson, now, points_of, shown_fields)
 from . import widgets as W
 from .common import AutoText, ItemList, LineField, StandardsField, gap, tool, toolbar, touch
 from .desktop import first_line
@@ -12,7 +13,7 @@ LABEL = {k: label for k, label, _ in LESSON_FIELDS}
 GROUPS = [
     ("Lesson", ["title", "unit", "course", "date", "duration"]),
     ("Standards", ["standards"]),
-    ("Goals", ["targets", "success"]),
+    ("Goals", ["question", "targets", "success", "vocab"]),
     ("Getting Started", ["materials", "bell_ringer"]),
     ("Instruction", ["instruction", "guided", "independent"]),
     ("Wrapping Up", ["closure", "checks", "differentiation"]),
@@ -21,6 +22,8 @@ GROUPS = [
 ]
 assert sorted(k for _, ks in GROUPS for k in ks) == sorted(k for k, _, _ in LESSON_FIELDS)
 HINTS = {
+    "question": "The one question students can answer by the end.",
+    "vocab": VOCAB_HINT + ".",
     "targets": "One per line. “- ” starts a bullet.",
     "bell_ringer": "No warm-up planned? Click Random SEL Prompt.",
     "materials": "Settings can pre-fill this on every new lesson.",
@@ -120,6 +123,8 @@ class LessonEditor:
         tool(bar, sk, "Export…", self.cmd_export)
         tool(bar, sk, "Board Slide", lambda: self.quick("PNG"))
         tool(bar, sk, "Make-Up Sheet", lambda: self.quick("MAKEUP"))
+        gap(bar, sk)
+        tool(bar, sk, "Sections…", self.cmd_sections)
         W.label(bar, sk, "Changes save by themselves.", dim=True).pack(side="right")
         tk.Frame(f, bg=sk["dark"], height=S).pack(fill="x")
 
@@ -127,7 +132,11 @@ class LessonEditor:
         self.area.pack(fill="both", expand=True)
         form = self.area.inner
         self.fields = {}
+        shown = {k for k, _, _ in shown_fields(gui.settings, lesson)}
         for gtitle, keys in GROUPS:
+            keys = [k for k in keys if k in shown]
+            if not keys:
+                continue
             g = W.group(form, sk, gtitle)
             g.pack(fill="x", padx=12 * S, pady=(10 * S, 0))
             if gtitle == "Lesson":
@@ -165,11 +174,35 @@ class LessonEditor:
         elif key == "assessments":
             Attachments(g, self.gui, l).pack(fill="x")
         else:
-            box = AutoText(g, self.gui, l, key)
+            box = AutoText(g, self.gui, l, key, min_lines=1 if key == "question" else 2)
             box.text.pack(fill="x")
             self.fields[key] = box
             if key == "bell_ringer":
                 W.Button(head, sk, "Random SEL Prompt", self.good_thing, small=True).pack(side="right")
+            elif key == "vocab":
+                W.Button(head, sk, "Make Vocab Quiz", self.vocab_quiz, small=True).pack(side="right")
+
+    def vocab_quiz(self):
+        gui = self.gui
+        gui.save()
+        a = gui.store.vocab_quiz(self.lesson)
+        if a is None:
+            W.alert(gui, "Make Vocab Quiz", "Type at least two words with their definitions first, one per line, "
+                                            "like this:\n\nethos: an appeal to the speaker's credibility")
+            return
+        gui.save()
+        n = len(a["questions"][0]["pairs"])
+        if W.confirm(gui, "Make Vocab Quiz", f"Made “{a['title']}”, a matching quiz with {n} words, and linked it "
+                                             "to this lesson. Open it now?", "Open Quiz", "Not Now"):
+            from .assessments import open_factory
+            gui.show(open_factory(a))
+        else:
+            gui.show(editor_factory(self.lesson["id"]), push=False)
+            gui.status(f"Made “{a['title']}”. It's under Assessments & Worksheets.")
+
+    def cmd_sections(self):
+        if lesson_sections(self.gui):
+            self.gui.show(editor_factory(self.lesson["id"]), push=False)
 
     def retitle(self, t):
         self.title = "Lesson: " + (t or "untitled")
@@ -198,6 +231,36 @@ class LessonEditor:
 
     def reloaded(self):
         self.gui.show(editor_factory(self.lesson["id"]), push=False)
+
+
+def lesson_sections(gui):
+    """Settings > Lesson Sections: check the sections you use. Returns True if anything changed."""
+    sk, S = gui.skin, gui.skin.S
+    st = gui.settings
+    hide = set(st.get("lesson_hide") or [])
+    d = W.Dialog(gui, "Lesson Sections")
+    W.label(d.body, sk, "Check the sections you use. Unchecked ones are hidden from the lesson editor, so it's "
+                        "shorter. Nothing is deleted: a lesson that already has something in a hidden section "
+                        "still shows it, and it still prints.", wrap=520 * S).pack(anchor="w", pady=(0, 8 * S))
+    cols = tk.Frame(d.body, bg=sk["window"])
+    cols.pack(fill="x")
+    keys = [(k, label) for k, label, _ in LESSON_FIELDS if k not in FIXED_FIELDS]
+    vars_ = {}
+    half = (len(keys) + 1) // 2
+    for i, (k, label) in enumerate(keys):
+        vars_[k] = tk.BooleanVar(value=k not in hide)
+        W.Check(cols, sk, label, vars_[k]).grid(row=i % half, column=i // half, sticky="w", padx=(0, 18 * S))
+    W.label(d.body, sk, "Title, unit, course, dates, duration, and standards are always there.", dim=True,
+            wrap=520 * S).pack(anchor="w", pady=(8 * S, 0))
+    d.buttons([("OK", True), ("Cancel", None)])
+    if not d.run():
+        return False
+    new = [k for k, _ in keys if not vars_[k].get()]
+    if set(new) == hide:
+        return False
+    st["lesson_hide"] = new
+    gui.save()
+    return True
 
 
 class Attachments(tk.Frame):

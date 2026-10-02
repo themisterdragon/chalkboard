@@ -13,7 +13,7 @@ import sys
 
 from ..logo import png
 
-WIN_NAME = "Chalkboard Window.exe"
+WIN_NAME = "Chalkboard.exe"
 
 
 def _xdg_data():
@@ -51,7 +51,7 @@ def plan():
             return None  # already copied somewhere (Applications, Desktop, ...)
         apps = "/Applications" if os.access("/Applications", os.W_OK) else os.path.expanduser("~/Applications")
         return {"kind": "mac", "source": app, "target": os.path.join(apps, os.path.basename(app)),
-                "text": f"Chalkboard Window will be copied to your {os.path.basename(apps)} folder and reopened "
+                "text": f"Chalkboard will be copied to your {os.path.basename(apps)} folder and reopened "
                         "from there. Then you can eject the disk image."}
     pyz = _pyz()
     if pyz and sys.platform.startswith("linux"):
@@ -88,7 +88,7 @@ def install(p, desktop_shortcut=True):
             shutil.rmtree(target)
         subprocess.run(["ditto", src, target], check=True)
         subprocess.run(["xattr", "-dr", "com.apple.quarantine", target], check=False)
-        return "Chalkboard Window is in your Applications folder."
+        return "Chalkboard is in your Applications folder."
     # linux
     shutil.copy2(src, target)
     os.chmod(target, 0o755)
@@ -100,10 +100,10 @@ def install(p, desktop_shortcut=True):
     entry = os.path.join(share, "applications", "chalkboard-gui.desktop")
     os.makedirs(os.path.dirname(entry), exist_ok=True)
     with open(entry, "w", encoding="utf-8") as f:
-        f.write("[Desktop Entry]\nVersion=1.0\nName=Chalkboard (Window)\nComment=Lesson planner\n"
+        f.write("[Desktop Entry]\nVersion=1.0\nName=Chalkboard\nComment=Lesson planner\n"
                 f"Exec={target}\nTerminal=false\nType=Application\nIcon={icon}\nStartupWMClass=Chalkboard\n"
                 "Categories=Education;Office;\n")
-    return "Chalkboard is in your app menu as “Chalkboard (Window)”."
+    return "Chalkboard is in your app menu."
 
 
 def relaunch(p):

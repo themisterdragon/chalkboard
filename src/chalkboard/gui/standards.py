@@ -211,7 +211,7 @@ class StandardsLibrary:
 
     def __init__(self, gui, parent):
         self.gui = gui
-        sk, S = gui.skin, gui.skin.S
+        sk = gui.skin
         f = tk.Frame(parent, bg=sk["window"])
         f.pack(fill="both", expand=True)
         bar = toolbar(f, sk)
@@ -223,7 +223,7 @@ class StandardsLibrary:
         self.build(f)
 
     def build(self, f=None):
-        sk, S = self.gui.skin, self.gui.skin.S
+        S = self.gui.skin.S
         if f is None:
             self.browser.destroy()
             f = self.parent

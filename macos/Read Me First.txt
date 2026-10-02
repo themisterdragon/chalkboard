@@ -1,8 +1,8 @@
-Chalkboard for Mac
-=====================
+Chalkboard Terminal for Mac
+===========================
 
 INSTALL
-1. Drag Chalkboard.app into your Applications folder.
+1. Drag Chalkboard Terminal into your Applications folder.
 2. Double-click it. It opens in a Terminal window.
 
 THE FIRST TIME YOU OPEN IT
@@ -10,7 +10,7 @@ THE FIRST TIME YOU OPEN IT
   the App Store. Open System Settings > Privacy & Security, scroll down, and
   click "Open Anyway" next to Chalkboard. (On older macOS, right-click the app
   and choose Open instead.) Or, in Terminal, run this once:
-      xattr -dr com.apple.quarantine /Applications/Chalkboard.app
+      xattr -dr com.apple.quarantine "/Applications/Chalkboard Terminal.app"
   Copying the app over a USB drive avoids this step entirely.
 - "Chalkboard wants to control Terminal": click OK. That's how it opens its window.
 - If your Mac doesn't have Python yet, Chalkboard offers to install Apple's free
@@ -38,4 +38,4 @@ BOARD SLIDES (PNG FOR A CLASSROOM DISPLAY)
   SCHOOL COLOR 2 (headings) as HEX codes, like #7A0019 and #FFC72C.
 
 FROM TERMINAL (OPTIONAL)
-    python3 /Applications/Chalkboard.app/Contents/Resources/chalkboard.pyz
+    python3 "/Applications/Chalkboard Terminal.app/Contents/Resources/chalkboard.pyz"

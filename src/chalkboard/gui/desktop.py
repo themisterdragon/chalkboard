@@ -1,4 +1,4 @@
-"""Chalkboard in a window: the same planner and data file as the terminal app, in a retro desktop look."""
+"""Chalkboard in a window: the same planner and data file as the terminal app, in a retro or modern look."""
 
 import argparse
 import os
@@ -10,14 +10,16 @@ try:
 except ImportError:  # Linux without the Tk package; main() explains
     tk = None
 
-from .. import __version__
+from .. import __version__, offline, plugins
 from ..banner import APP, big
 from ..exporting import open_path
 from ..export_txt import render_lines
-from ..store import ALL, Store, now, sort_items
+from ..markup import plain
+from ..store import ALL, Store, now
 
 if tk:
-    from .skin import MAC, TEXT_SIZES, Skin, SKINS, auto_scale
+    from .skin import (MAC, TEXT_SIZES, THEMES, Skin, SKINS, auto_scale, native_title_bar, system_accent,
+                       system_dark)
     from . import widgets as W
 
 MOD = "Command" if sys.platform == "darwin" else "Control"
@@ -35,7 +37,7 @@ def grade_label(g):
 
 
 def first_line(s):
-    return next((line.strip() for line in (s or "").split("\n") if line.strip()), "")
+    return plain(next((line.strip() for line in (s or "").split("\n") if line.strip()), ""))
 
 
 def plural(n, word, many=None):
@@ -46,6 +48,8 @@ class Gui:
     def __init__(self, args):
         self.args = args
         self.store = Store()
+        if not getattr(args, "no_plugins", False):
+            plugins.load(self.store.dir)
         self.root = tk.Tk(className=APP)
         self.root.title(APP)
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
@@ -56,6 +60,7 @@ class Gui:
         self.modals = []       # open dialogs, innermost last
         self.scrollers = {}    # ScrollArea canvases, for the mouse wheel
         self.pending = None    # after() id of a scheduled save
+        self.term = None       # the terminal view, while it's showing
         self.maximized = bool(self.settings.get("gui_maximized", False))
         self.mtime = self.file_mtime()
         self.apply_skin(first=True)
@@ -72,13 +77,21 @@ class Gui:
         self.bind_keys()
         from .setup import needed, run_setup
         first_time = not self.store.warning and needed(self)
-        welcome = self.settings.get("boot", True) and not args.no_boot and not first_time
+        terminal = self.settings.get("gui_mode") == "terminal" and not first_time and not self.store.warning
+        welcome = (self.settings.get("boot", True) and not args.no_boot and not first_time and not self.skin.modern
+                   and not terminal)
         self.show(Welcome if welcome else Home, push=False)
+        if terminal:
+            self.root.after(50, lambda: self.enter_terminal(boot=not args.no_boot))
         if self.store.warning:
             self.root.after(300, lambda: W.alert(self, "Chalkboard", self.store.warning.lstrip("?"), "warn"))
+        elif plugins.problems:
+            note = "\n".join(p.capitalize() for p in plugins.take_problems())
+            self.root.after(300, lambda: W.alert(self, "Plugins", note, "warn"))
         elif first_time:
             self.root.after(300, lambda: run_setup(self))
         self.root.after(2000, self.watch_file)
+        self.root.after(3000, self.watch_os_look)
 
     # ------------------------------------------------------------ plumbing
     @property
@@ -93,10 +106,23 @@ class Gui:
         v = self.settings.get("gui_text", 13)
         return v if v in TEXT_SIZES else 13
 
+    def theme(self):
+        v = self.settings.get("gui_theme", "system")
+        return v if v in dict(THEMES) else "system"
+
+    def os_look(self):
+        """What the window follows from the OS: dark mode (when matching the computer), and Modern's accent color."""
+        follow = self.theme() == "system"
+        modern = self.settings.get("gui_skin") == "modern"
+        return (system_dark() if follow else None, system_accent() if modern else None)
+
     def apply_skin(self, first=False):
-        """(Re)build everything for the current skin and sizes."""
+        """(Re)build everything for the current skin, light or dark, and sizes."""
         st = self.settings
-        self.skin = Skin(self.root, st.get("gui_skin", "bevel"), self.scale(), self.text_px())
+        self.seen_os_look = os_dark, accent = self.os_look()
+        dark = os_dark if self.theme() == "system" else self.theme() == "dark"
+        self.skin = Skin(self.root, st.get("gui_skin", "bevel"), self.scale(), self.text_px(), dark, accent)
+        native_title_bar(self.root, dark, self.theme() == "system")
         self.skin.style_ttk()
         self.root.configure(bg=self.skin["desk"])
         self.root.option_add("*Menu.tearOff", 0)
@@ -127,15 +153,22 @@ class Gui:
     def place_window(self):
         if not self.window:
             return
-        m = 0 if self.maximized else 14 * self.skin.S
-        self.window.place(x=m, y=m, relwidth=1, relheight=1, width=-2 * m - (0 if self.skin.bevel else 2 * self.skin.S),
-                          height=-2 * m - (0 if self.skin.bevel else 2 * self.skin.S))
+        flat = self.skin.kind != "pinstripe"  # Pinstripe leaves room for its drop shadow
+        m = 0 if self.maximized or self.skin.modern else 14 * self.skin.S
+        self.window.place(x=m, y=m, relwidth=1, relheight=1, width=-2 * m - (0 if flat else 2 * self.skin.S),
+                          height=-2 * m - (0 if flat else 2 * self.skin.S))
         if self.shadow:
             S2 = 2 * self.skin.S
             self.shadow.place(x=m + S2, y=m + S2, relwidth=1, relheight=1, width=-2 * m - S2, height=-2 * m - S2)
             self.shadow.lower(self.window)
 
     def toggle_zoom(self):
+        if self.skin.modern:  # the real OS window
+            try:
+                self.root.state("normal" if self.root.state() == "zoomed" else "zoomed")
+            except tk.TclError:  # X11
+                self.root.attributes("-zoomed", not self.root.attributes("-zoomed"))
+            return
         self.maximized = not self.maximized
         self.settings["gui_maximized"] = self.maximized
         self.place_window()
@@ -176,7 +209,7 @@ class Gui:
     def watch_file(self):
         """Pick up changes saved by the terminal Chalkboard (or another window)."""
         m = self.file_mtime()
-        if m != self.mtime and not self.pending and not self.modals:
+        if m != self.mtime and not self.pending and not self.modals and not self.term:
             self.mtime = m
             self.store.load()
             self.store.reload_standards()
@@ -185,7 +218,18 @@ class Gui:
             self.status("Loaded changes saved by another Chalkboard window.")
         self.root.after(2000, self.watch_file)
 
+    def watch_os_look(self):
+        """Switch light/dark (and Modern's accent color) when the computer's setting changes."""
+        if self.theme() == "system" or self.skin.modern:
+            look = self.os_look()
+            if look != self.seen_os_look and not self.modals and not self.pending and not self.term:
+                self.set_look()
+        self.root.after(3000, self.watch_os_look)
+
     def quit(self):
+        if self.term:  # let the terminal view finish up first; it calls back here
+            self.term.request("quit")
+            return
         while self.modals:
             self.modals[-1].close(None)
         self.save()
@@ -194,6 +238,10 @@ class Gui:
     def status(self, text, right=None):
         if self.window:
             self.window.status(text, right)
+
+    def progress(self, frac):
+        if self.window:
+            self.window.progress(frac)
 
     def wheel(self, e):
         """The mouse wheel scrolls whichever scroll area is under the pointer."""
@@ -253,6 +301,7 @@ class Gui:
         f.add_separator()
         f.add_command(label="Import Standards…", command=self.cmd_import)
         f.add_command(label="Open Export Folder", command=self.open_export_folder)
+        f.add_command(label="Export Everything…", command=lambda: self.top_level(self.export_everything))
         f.add_separator()
         f.add_command(label="Back Up Everything…", command=lambda: self.backup("backup_now"))
         f.add_command(label="Import Backup…", command=lambda: self.backup("import_backup"))
@@ -275,10 +324,19 @@ class Gui:
             g.add_command(label=label, accelerator=f"{MOD_LABEL}+{i}", command=lambda k=key: self.go_section(k))
 
         v = menu("View")
+        v.add_command(label="Switch to Terminal View", accelerator=f"{MOD_LABEL}+Shift+W",
+                      command=lambda: self.top_level(self.enter_terminal))
+        v.add_separator()
         self.skin_var = tk.StringVar(value=sk.kind)
         for key, s in SKINS.items():
             v.add_radiobutton(label=f"{s['name']} Look", value=key, variable=self.skin_var,
                               command=lambda: self.set_look(gui_skin=self.skin_var.get()))
+        v.add_separator()
+        self.theme_var = tk.StringVar(value=self.theme())
+        for key, label in (("system", "Light or Dark: Match My Computer"), ("light", "Light Mode"),
+                           ("dark", "Dark Mode")):
+            v.add_radiobutton(label=label, value=key, variable=self.theme_var,
+                              command=lambda: self.set_look(gui_theme=self.theme_var.get()))
         v.add_separator()
         v.add_command(label="Bigger Text", accelerator=f"{MOD_LABEL}+=", command=lambda: self.zoom(1))
         v.add_command(label="Smaller Text", accelerator=f"{MOD_LABEL}+-", command=lambda: self.zoom(-1))
@@ -306,6 +364,8 @@ class Gui:
         for k, name in keys.items():
             r.bind_all(f"<{MOD}-{k}>", lambda e, n=name: self.dispatch(n, e))
         r.bind_all(f"<{MOD}-Shift-N>", lambda e: self.top_level(self.cmd_new_assessment))
+        for k in ("W", "w"):
+            r.bind_all(f"<{MOD}-Shift-{k}>", lambda e: self.top_level(self.enter_terminal))
         r.bind_all(f"<{MOD}-w>", lambda e: self.top_level(self.back))
         r.bind_all(f"<{MOD}-q>", lambda e: self.quit())
         r.bind_all(f"<{MOD}-equal>", lambda e: self.top_level(lambda: self.zoom(1)))
@@ -317,12 +377,12 @@ class Gui:
         r.bind_all("<Escape>", lambda e: self.top_level(self.escape), add="+")
 
     def top_level(self, fn):
-        if not self.modals:
+        if not self.modals and not self.term:
             fn()
         return "break"
 
     def dispatch(self, name, e=None):
-        if self.modals:
+        if self.modals or self.term:
             return "break"
         fn = getattr(self.view, name, None)
         if fn is None and name == "cmd_new":
@@ -336,6 +396,41 @@ class Gui:
             return
         if self.stack:
             self.back()
+
+    def enter_terminal(self, boot=False):
+        """Swap the windows for the terminal view (the terminal app, running on this same data)."""
+        if self.term or self.modals:
+            return
+        self.save()
+        self.settings["gui_mode"] = "terminal"
+        self.save()
+        from .term import TermHost
+        self.term = TermHost(self)
+        self.term_text = self.text_px()
+        try:
+            self.term.start(boot)
+        except Exception as e:  # noqa: BLE001 - never leave the window stuck without its views
+            self.term.close()
+            self.term = None
+            self.settings["gui_mode"] = "window"
+            W.alert(self, "Terminal View", f"The terminal view couldn't start:\n{e}", "warn")
+
+    def left_terminal(self, why, crash=None):
+        """Called by the terminal view when it closes: back to the windows, or quit."""
+        self.term = None
+        self.view = None  # its boxes still hold what they showed before; the terminal view may have changed it
+        self.mtime = self.file_mtime()
+        if why == "quit":
+            self.quit()
+            return
+        self.settings["gui_mode"] = "window"
+        self.save()
+        self.stack, self.trail = [], []
+        self.show(Home, push=False)  # what was open may have changed in the terminal view
+        if self.text_px() != getattr(self, "term_text", self.text_px()):
+            self.set_look()  # the text size changed in the terminal view
+        if crash is not None:
+            W.alert(self, "Terminal View", f"The terminal view stopped because of an error:\n{crash}", "warn")
 
     def zoom(self, d):
         i = TEXT_SIZES.index(self.text_px()) + d
@@ -365,7 +460,7 @@ class Gui:
                 self.trail.append(self.current_title)
         sk = self.skin
         if self.window is None:
-            self.shadow = None if sk.bevel else tk.Frame(self.desk, bg=sk["dark"])
+            self.shadow = tk.Frame(self.desk, bg=sk["dark"]) if sk.kind == "pinstripe" else None
             self.window = W.Window(self.desk, sk, APP, on_close=self.back, on_zoom=self.toggle_zoom,
                                    on_min=self.root.iconify if sk.bevel else None)
             self.place_window()
@@ -416,6 +511,8 @@ class Gui:
 
     def set_title(self, title):
         self.current_title = title
+        # the OS title bar names the window in Modern (and screen magnifiers and task switchers show it)
+        self.root.title(f"{title} – {APP}" if self.skin.modern and title != APP else APP)
         if self.window:
             self.window.set_title(title)
         if self.crumb is not None:
@@ -470,6 +567,10 @@ class Gui:
         from . import settings
         getattr(settings, name)(self)
 
+    def export_everything(self):
+        from .export import export_everything_dialog
+        export_everything_dialog(self)
+
     def open_export_folder(self):
         try:
             os.makedirs(self.store.export_dir(), exist_ok=True)
@@ -507,6 +608,8 @@ class Gui:
                 ("Ctrl+F", "Search"), ("Ctrl+W / Esc", "Close this window (go back)"),
                 ("Ctrl+0 … 4", "Home, Lessons, Assessments, Standards, Settings"),
                 ("Ctrl+= / Ctrl+-", "Bigger / smaller text"), ("Tab", "Next field"),
+                ("Ctrl+B / Ctrl+I / Ctrl+U", "Bold, italic, or underline the word (or what's selected)"),
+                ("Ctrl+Shift+W", "Switch between the window view and the terminal view"),
                 ("Ctrl+Q", "Quit (everything is already saved)")]
         grid = tk.Frame(d.body, bg=sk["window"])
         grid.pack(fill="x")
@@ -523,7 +626,7 @@ class Gui:
         d = W.Dialog(self, "Preview: " + (title or doc.get("title") or "Untitled"), size=(0.78, 0.86))
         page = tk.Frame(d.body, bg=sk["dark"], padx=S, pady=S)
         page.pack(fill="both", expand=True)
-        t = tk.Text(page, wrap="none", font=sk.fmono, bg="#FFFFFF", fg="#000000", relief="flat", bd=0,
+        t = tk.Text(page, wrap="none", font=sk.fmono, bg=sk["field"], fg=sk["text"], relief="flat", bd=0,
                     padx=24 * S, pady=18 * S, highlightthickness=0, selectbackground=sk["sel"],
                     selectforeground=sk["seltext"])
         sb = ttk.Scrollbar(page, orient="vertical", command=t.yview)
@@ -624,7 +727,7 @@ class Home:
             cell.bind("<Right>", lambda e, i=i: self.pick(i + 1))
             cell.bind("<FocusIn>", lambda e, i=i: self.mark(i))
             self.cells.append((cell, lab))
-        W.label(box, sk, "Double-click an icon to open it.", dim=True).pack(pady=(26 * S, 0))
+        W.label(box, sk, "Double-click an icon (or use the arrow keys and Return) to open it.", dim=True).pack(pady=(26 * S, 0))
         d = gui.store.data
         gui.status(f"{plural(len(d['lessons']), 'lesson plan')}   ·   {plural(len(d['assessments']), 'assessment')}",
                    f"{gui.store.kas_count:,} standards")
@@ -664,7 +767,9 @@ def main():
     ap = argparse.ArgumentParser(prog="chalkboard-gui", description="Chalkboard in a window")
     ap.add_argument("--no-boot", action="store_true", help="skip the startup screen")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    ap.add_argument("--no-plugins", action="store_true", help="start without plugins")
     args = ap.parse_args()
+    offline.enforce()  # before anything else runs, plugins included
     if tk is None:
         sys.exit("chalkboard-gui needs Tk. On Arch: sudo pacman -S tk  On Debian/Ubuntu: sudo apt install python3-tk")
     if sys.platform == "win32":

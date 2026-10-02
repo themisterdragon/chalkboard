@@ -15,6 +15,7 @@ from .export_txt import render_txt
 FORMATS = {"PDF": (".pdf", render_pdf), "DOCX": (".docx", render_docx), "TXT": (".txt", render_txt),
            "PNG": (".png", render_png)}
 FORMAT_ORDER = {"lesson": ["PDF", "DOCX", "TXT", "PNG", "MAKEUP", "ALL"], "assessment": ["PDF", "DOCX", "TXT", "ALL"]}
+PLUGIN_FORMATS = {}  # key -> label, for formats plugins add (see plugins.py); ALL leaves them out
 
 
 class ExportError(Exception):
@@ -40,8 +41,8 @@ def export_subdirs(kind, obj):
     return [safe_name(x) for x in parts if x]
 
 
-def export_folder(store, kind, obj):
-    return os.path.join(store.export_dir(), *export_subdirs(kind, obj))
+def export_folder(store, kind, obj, root=None):
+    return os.path.join(root or store.export_dir(), *export_subdirs(kind, obj))
 
 
 def open_path(path):
@@ -72,19 +73,21 @@ def assessment_docs(store, a):
     return docs
 
 
-def export(store, kind, obj, fmt):
+def export(store, kind, obj, fmt, progress=None, root=None):
     """Write the files for a lesson or assessment in one format (or ALL); returns their paths.
 
+    progress(done, total, file name) is called before each file and once more at the end.
+    root: the top folder (default: the export folder in Settings).
     Raises ExportError with a message for the user.
     """
     st = store.settings
-    folder = export_folder(store, kind, obj)
+    folder = export_folder(store, kind, obj, root)
     try:
         os.makedirs(folder, exist_ok=True)
     except OSError as e:
         raise ExportError(f"CANNOT CREATE FOLDER: {e}") from e
     base = safe_name(obj.get("title"))
-    fmts = [f for f in FORMAT_ORDER[kind] if f != "ALL"] if fmt == "ALL" else [fmt]
+    fmts = [f for f in FORMAT_ORDER[kind] if f != "ALL" and f not in PLUGIN_FORMATS] if fmt == "ALL" else [fmt]
     docs = []
     if kind == "lesson":
         if "MAKEUP" in fmts:
@@ -105,16 +108,59 @@ def export(store, kind, obj, fmt):
                 docs += [(name, d, ["PDF", "DOCX"]) for name, d in assessment_docs(store, a)]
     else:
         docs = assessment_docs(store, obj)
+    jobs = [(name, d, f) for name, d, *only in docs for f in (only[0] if only else fmts)]
     files = []
     try:
-        for name, d, *only in docs:
-            for f in (only[0] if only else fmts):
-                ext, fn = FORMATS[f]
-                path = os.path.join(folder, name + ext)
-                fn(d, path, family=st["font"], page=st["page"])
-                files.append(path)
+        for i, (name, d, f) in enumerate(jobs):
+            ext, fn = FORMATS[f]
+            if progress:
+                progress(i, len(jobs), name + ext)
+            path = os.path.join(folder, name + ext)
+            wrote = fn(d, path, item=obj) if f in PLUGIN_FORMATS else fn(d, path, family=st["font"], page=st["page"])
+            files += wrote if isinstance(wrote, list) else [path]
+        if progress:
+            progress(len(jobs), len(jobs), "")
+        from .plugins import after_export
+        after_export(files)
     except BoardError as e:
         raise ExportError(str(e)) from e
     except OSError as e:
         raise ExportError(f"EXPORT FAILED: {e}") from e
     return files
+
+
+def export_everything(store, parent, progress=None):
+    """Every lesson and assessment as PDF and Word, plus a backup file, in one new dated folder
+    inside parent: a complete copy to keep, or to drag into Google Drive or another cloud folder.
+    Returns (folder, files, problems); one item that won't export is listed in problems and the
+    rest still go."""
+    import time
+    parent = os.path.expanduser(parent)
+    name, n = f"Chalkboard {time.strftime('%Y-%m-%d')}", 2
+    while os.path.exists(os.path.join(parent, name)):
+        name, n = f"Chalkboard {time.strftime('%Y-%m-%d')} ({n})", n + 1
+    folder = os.path.join(parent, name)
+    try:
+        os.makedirs(folder)
+    except OSError as e:
+        raise ExportError(f"CANNOT CREATE FOLDER: {e}") from e
+    jobs = [("lesson", x) for x in store.data["lessons"]] + [("assessment", x) for x in store.data["assessments"]]
+    files, problems = [], []
+    for i, (kind, obj) in enumerate(jobs):
+        if progress:
+            progress(i, len(jobs) + 1, obj.get("title") or "Untitled")
+        for fmt in ("PDF", "DOCX"):
+            try:
+                files += export(store, kind, obj, fmt, root=folder)
+            except ExportError as e:
+                problems.append(f"{obj.get('title') or 'Untitled'}: {e}")
+                break
+    if progress:
+        progress(len(jobs), len(jobs) + 1, "backup file")
+    try:
+        files.append(store.backup(folder, remember=False))
+    except OSError as e:
+        problems.append(f"BACKUP FILE: {e}")
+    if progress:
+        progress(len(jobs) + 1, len(jobs) + 1, "")
+    return folder, files, problems

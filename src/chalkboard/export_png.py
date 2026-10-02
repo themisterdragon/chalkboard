@@ -13,6 +13,8 @@ import sys
 import tempfile
 
 from .export_pdf import B, I, R, Canvas, Fonts, _write
+from .export_pptx import SlideCanvas, render_pptx
+from .markup import plain
 
 W, H = 1920, 1080
 PAD = 64           # outer margin
@@ -84,8 +86,18 @@ class BoardError(RuntimeError):
     pass
 
 
+_LAID = {}  # (id(blocks), size, width) -> lay() result; cleared for each slide deck
+
+
 def lay(blocks, f, size, width):
-    """Lay out text blocks; returns (height, [(dx, baseline_dy, text, style)])."""
+    key = (id(blocks), size, width)
+    if key not in _LAID:
+        _LAID[key] = (_lay(blocks, f, size, width), blocks)  # holding blocks keeps its id from being reused
+    return _LAID[key][0]
+
+
+def _lay(blocks, f, size, width):
+    """Lay out text blocks; returns (height, [(dx, baseline_dy, [(piece, style, underline)])])."""
     out, y = [], 0.0
     lead = size * 1.24
     prev = None
@@ -95,18 +107,19 @@ def lay(blocks, f, size, width):
         prev = b["t"]
         if b["t"] == "bullet":
             ind = size * (1.05 + 1.05 * b.get("indent", 0))
-            lines = f.wrap(b["text"], R, size, width - ind)
-            out.append((ind - size * 0.8, y + size, "•", R))
-            out += [(ind, y + size + i * lead, ln, R) for i, ln in enumerate(lines)]
+            lines = f.rich_wrap(b["text"], R, size, width - ind)
+            out.append((ind - size * 0.8, y + size, [("•", R, False)]))
+            out += [(ind, y + size + i * lead, ln) for i, ln in enumerate(lines)]
         elif b["t"] == "kv":
             label = b["label"] + "  "
             lw = f.width(label, B, size)
-            lines = f.wrap(b["text"], R, size, width, first_width=width - lw) if b["text"] else [""]
-            out.append((0, y + size, label.strip(), B))
-            out += [(lw if i == 0 else 0, y + size + i * lead, ln, R) for i, ln in enumerate(lines)]
+            lines = f.rich_wrap(b["text"], R, size, width, first_width=width - lw) if b["text"] else [[]]
+            out.append((0, y + size, [(plain(label.strip()), B, False)]))
+            out += [(lw if i == 0 else 0, y + size + i * lead, ln) for i, ln in enumerate(lines)]
         else:
-            lines = f.wrap(b["text"], R, size, width)
-            out += [(0, y + size + i * lead, ln, R) for i, ln in enumerate(lines)]
+            base = B if b.get("style") == "bold" else R
+            lines = f.rich_wrap(b["text"], base, size, width)
+            out += [(0, y + size + i * lead, ln) for i, ln in enumerate(lines)]
         y += size + (len(lines) - 1) * lead + size * 0.28  # room for descenders
     return y, out
 
@@ -115,27 +128,67 @@ def label_size(s):
     return max(20.0, min(34.0, s * 0.62))
 
 
-def fit_column(sections, f, width, height):
-    """Largest scale where every panel fits; returns (scale, [(section, size, layout_h, items)])."""
+def plan_column(sections, f, width, s):
+    """Lay every panel out at base size s; returns (total height, plan). Standards shrink a bit first."""
     inner = width - 2 * INSET
-    plan = None
-    for s in range(64, 13, -1):
-        for std in (1.0, 0.85):
-            plan, total = [], GAP * (len(sections) - 1)
-            for sec in sections:
+    best = None
+    for std in (1.0, 0.85):
+        plan, total = [], GAP * (len(sections) - 1)
+        for sec in sections:
+            if sec.get("short") is sec["blocks"]:  # standards as codes only: short, so full size
+                size = s
+            else:
                 size = s * WEIGHT.get(sec["key"], 0.9) * (std if sec["key"] == "standards" else 1)
-                h, items = lay(sec["blocks"], f, size, inner)
-                plan.append((sec, size, h, items))
-                total += 2 * INSET + label_size(s) * 1.5 + h
-            if total <= height:
-                return s, plan
-    return 14, plan  # too much text even at the smallest size; panels clip
+            h, items = lay(sec["blocks"], f, size, inner)
+            plan.append((sec, size, h, items))
+            total += 2 * INSET + label_size(s) * 1.5 + h
+        if best is None or total < best[0]:
+            best = (total, plan)
+    return best
 
 
-def draw_column(c, f, sections, x, top, width, height, col):
+def fit_column(sections, f, width, height, cap=64):
+    """Largest base size (14..cap) where every panel fits; returns (size, plan)."""
+    if not sections:
+        return cap, []
+    lo, hi = 14, cap
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if plan_column(sections, f, width, mid)[0] <= height:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo, plan_column(sections, f, width, lo)[1]
+
+
+def split_columns(secs, f, full, height):
+    """Which panels go in which column, and how wide, for the biggest text both columns can share.
+    Returns (size, left, right, left width).
+
+    Panels keep their order; their sides from BOARD_SECTIONS are only the starting point
+    (they win ties), so a column crowded with short panels hands some to the roomier one."""
+    if len(secs) < 2:
+        return fit_column(secs, f, full, height)[0], list(secs), [], full
+    home = [1 if x.get("col") == "right" else 0 for x in secs]
+    best = None
+    for mask in range(1, (1 << len(secs)) - 1):
+        side = [(mask >> i) & 1 for i in range(len(secs))]
+        a = [x for x, k in zip(secs, side) if not k]
+        b = [x for x, k in zip(secs, side) if k]
+        moved = sum(k != h for k, h in zip(side, home))
+        for share in (0.56, 0.5, 0.62, 0.44):
+            lw = (full - GAP) * share
+            size = min(fit_column(a, f, lw, height)[0], fit_column(b, f, full - lw - GAP, height)[0])
+            score = (size, -moved, share == 0.56)
+            if best is None or score > best[0]:
+                best = (score, a, b, lw)
+    return best[0][0], best[1], best[2], best[3]
+
+
+def draw_column(c, f, sections, x, top, width, height, col, cap=64):
     if not sections:
         return
-    s, plan = fit_column(sections, f, width, height)
+    s, plan = fit_column(sections, f, width, height, cap)
     ls = label_size(s)
     need = [2 * INSET + ls * 1.5 + h for _, _, h, _ in plan]
     spare = max(0.0, height - GAP * (len(plan) - 1) - sum(need)) / len(plan)
@@ -146,22 +199,114 @@ def draw_column(c, f, sections, x, top, width, height, col):
         c.fill(x, y - ph, 8, ph, col["label"])
         c.text(x + INSET, y - INSET - ls * 0.85, sec["label"].upper(), B, ls, col["label"])
         body = y - INSET - ls * 1.5
+        if getattr(c, "editable", False):  # the slideshow: one text box PowerPoint wraps itself
+            c.blocks(x + INSET, body, width - 2 * INSET, body - (y - ph) - INSET / 2, sec["blocks"], size,
+                     col["ink"], name=sec["label"])
+            y -= ph + GAP
+            continue
         c.clip(x, y - ph, width, ph)
-        for dx, dy, text, style in items:
-            c.text(x + INSET + dx, body - dy, text, style, size, col["ink"])
+        for dx, dy, line in items:
+            xx = x + INSET + dx
+            for piece, style, under in line:
+                c.text(xx, body - dy, piece, style, size, col["ink"])
+                pw = f.width(piece, style, size)
+                if under:
+                    c.line(xx, body - dy - size * 0.13, xx + pw, body - dy - size * 0.13, size * 0.06, col["ink"])
+                xx += pw
         c.unclip()
         y -= ph + GAP
 
 
-def board_pdf(doc, path):
-    f = Fonts("Helvetica")
-    if doc.get("style") == "school":
-        col = school_palette(*doc.get("colors", ()))
-    else:
-        col = STYLES.get(doc.get("style"), STYLES["chalk"])
-    c = Canvas()
-    c.fill(0, 0, W, H, col["bg"])
+def draw_codes(c, f, sec, x_right, base, col, size=34):
+    """Class codes on one line in the bottom-right corner: 'Class Code: abc123   Remind: @xyz'."""
+    parts = []
+    for b in sec["blocks"]:
+        if b["t"] == "kv":
+            parts.append((b["label"] + " ", b["text"]))
+        else:
+            parts.append(("", b["text"]))
+    if len(parts) == 1 and not parts[0][0]:
+        parts = [("Class Code: ", parts[0][1])]
+    while size > 20:
+        w = sum(f.width(lab, B, size) + f.width(txt, B, size) for lab, txt in parts) + 40 * (len(parts) - 1)
+        if w <= W * 0.6:
+            break
+        size -= 2
+    x = x_right - w
+    if getattr(c, "editable", False):
+        pieces = []
+        for k, (lab, txt) in enumerate(parts):
+            pieces += [("   " if k else "", R, size, col["dim"]), (lab, R, size, col["dim"]), (txt, B, size, col["label"])]
+        c.textbox(x, base + size * 0.905, None, size * 1.2, [[p for p in pieces if p[0]]], name="Class codes")
+        return size
+    for lab, txt in parts:
+        c.text(x, base, lab, R, size, col["dim"])
+        x += f.width(lab, B, size)
+        c.text(x, base, txt, B, size, col["label"])
+        x += f.width(txt, B, size) + 40
+    return size
 
+
+def draw_banner(c, f, sec, x, top, width, col):
+    """One full-width panel with big text (at most two lines); returns its height."""
+    text = plain(" ".join(b["text"] for b in sec["blocks"]))
+    inner = width - 2 * INSET
+    for size in range(46, 25, -2):
+        lines = f.wrap(text, B, size, inner)
+        if len(lines) <= 2:
+            break
+    lines = lines[:2]
+    ls = label_size(size)
+    lead = size * 1.2
+    ph = 2 * INSET + ls * 1.5 + size + (len(lines) - 1) * lead
+    c.fill(x, top - ph, width, ph, col["panel"])
+    c.fill(x, top - ph, 8, ph, col["label"])
+    c.text(x + INSET, top - INSET - ls * 0.85, sec["label"].upper(), B, ls, col["label"])
+    body = top - INSET - ls * 1.5
+    if getattr(c, "editable", False):
+        c.textbox(x + INSET, body - size * 0.9 + size * 0.905, inner, ph - 2 * INSET - ls * 1.5 + size * 0.3,
+                  [[(text, B, size, col["ink"])]], name=sec["label"])
+        return ph
+    for i, ln in enumerate(lines):
+        c.text(x + INSET, body - size * 0.9 - i * lead, ln, B, size, col["ink"])
+    return ph
+
+
+MIN_SIZE = 30   # smallest base text size that still reads from the back of a classroom
+
+
+def codes_only(secs):
+    return [dict(x, blocks=x["short"]) if x.get("short") else x for x in secs]
+
+
+def plan_slides(secs, f, full, first_h, rest_h):
+    """Panels for each slide: [(size, left, right, left width)].
+
+    When the text would be too small to read, first standards drop to their codes, and only then
+    do panels continue on another slide (in order, as many per slide as stay readable)."""
+    if not secs:
+        return [(0, [], [], full)]
+    one = split_columns(secs, f, full, first_h)
+    if one[0] >= MIN_SIZE:
+        return [one]
+    secs = codes_only(secs)
+    one = split_columns(secs, f, full, first_h)
+    if one[0] >= MIN_SIZE or len(secs) == 1:
+        return [one]
+    slides, height = [], first_h
+    while secs:
+        for k in range(len(secs), 0, -1):
+            plan = split_columns(secs[:k], f, full, height)
+            if plan[0] >= MIN_SIZE or k == 1:
+                break
+        slides.append(plan)
+        secs, height = secs[k:], rest_h
+    return slides
+
+
+def draw_header(c, f, doc, col, note=""):
+    """Background, logo, title, date and course; returns the y of the rule under it."""
+    c.fill(0, 0, W, H, col["bg"])
     # header: [logo] title on the left, date + course/unit on the right [or logo]
     logo, lw, lh = doc.get("logo"), 0, 0
     if logo:
@@ -170,19 +315,24 @@ def board_pdf(doc, path):
     on_left = doc.get("logo_place", "left") != "right"
     x_title = PAD + (lw + GAP if logo and on_left else 0)
     x_right = W - PAD - (lw + GAP if logo and not on_left else 0)
-    right = [(doc["date"], B, 46, col["label"]), (doc["meta"], I, 28, col["dim"])]
+    meta = "  |  ".join(x for x in (doc["meta"], note) if x)
+    right = [(doc["date"], B, 46, col["label"]), (meta, I, 28, col["dim"])]
     right = [r for r in right if r[0]]
     rw = max([f.width(t, st, sz) for t, st, sz, _ in right] + [0])
     tw = x_right - x_title - (rw + GAP if rw else 0)
     for ts in range(76, 39, -2):
-        lines = f.wrap(doc["title"], B, ts, tw)
+        lines = f.wrap(plain(doc["title"]), B, ts, tw)
         if len(lines) == 1 or (ts <= 56 and len(lines) <= 2):
             break
     lines = lines[:2]
     y = H - PAD
-    for i, ln in enumerate(lines):
-        c.text(x_title, y - ts * 0.82 - i * ts * 1.1, ln, B, ts, col["ink"])
     title_h = ts * 0.82 + (len(lines) - 1) * ts * 1.1 + ts * 0.25
+    if getattr(c, "editable", False):
+        c.textbox(x_title, y - ts * 0.82 + ts * 0.905, tw, title_h + ts * 0.3, [[(plain(doc["title"]), B, ts, col["ink"])]],
+                  name="Title")
+    else:
+        for i, ln in enumerate(lines):
+            c.text(x_title, y - ts * 0.82 - i * ts * 1.1, ln, B, ts, col["ink"])
     ry = y
     for t, st, sz, color in right:
         ry -= sz * 0.95
@@ -193,24 +343,67 @@ def board_pdf(doc, path):
         c.image(logo, PAD if on_left else W - PAD - lw, y - (head_h + lh) / 2, lw, lh)
     rule_y = y - head_h - 18
     c.line(PAD, rule_y, W - PAD, rule_y, 2.5, col["label"])
+    return rule_y
 
-    bottom = PAD
+
+def draw_footer(c, f, doc, codes, col):
+    """Teacher/school on the left, class codes big on the right; returns the bottom of the panel area."""
+    if codes:  # a strip along the bottom, big enough to read from the back row
+        size = draw_codes(c, f, codes, W - PAD, PAD - 8, col)
+        if doc.get("footer"):
+            c.text(PAD, PAD - 8, doc["footer"], I, 22, col["dim"])
+        return PAD + size + 4
     if doc.get("footer"):
         c.text(PAD, PAD - 30, doc["footer"], I, 22, col["dim"])
-    top = rule_y - 30
-    height = top - bottom
-    left, rightcol = doc["left"], doc["right"]
+    return PAD
+
+
+def palette(doc):
+    if doc.get("style") == "school":
+        return school_palette(*doc.get("colors", ()))
+    return STYLES.get(doc.get("style"), STYLES["chalk"])
+
+
+def board_slides(doc, make=Canvas):
+    """One slide's canvas, or more when the lesson has too much to read on one.
+    make=SlideCanvas lays the same slides out as editable slideshow shapes."""
+    _LAID.clear()
+    f = Fonts("Helvetica")
+    col = palette(doc)
+    secs = list(doc["left"]) + list(doc["right"])
+    codes = next((x for x in secs if x["key"] == "class_codes"), None)
+    secs = [x for x in secs if x is not codes]
     full = W - 2 * PAD
-    if left and rightcol:
-        lw = (full - GAP) * 0.56
-        draw_column(c, f, left, PAD, top, lw, height, col)
-        draw_column(c, f, rightcol, PAD + lw + GAP, top, full - lw - GAP, height, col)
-    elif left or rightcol:
-        draw_column(c, f, left or rightcol, PAD, top, full, height, col)
-    else:
-        msg = "Add a standard, I can statement, or bell ringer to fill this slide."
-        c.text((W - f.width(msg, I, 34)) / 2, top - height / 2, msg, I, 34, col["dim"])
-    _write([c], path, f, W, H, doc["title"])
+
+    # measure the header, footer, and Essential Question banner once on a scratch canvas
+    scratch = Canvas()
+    top = draw_header(scratch, f, doc, col, "1 of 2") - 30
+    bottom = draw_footer(scratch, f, doc, codes, col)
+    rest_h = top - bottom
+    for sec in doc.get("top") or []:
+        top -= draw_banner(scratch, f, sec, PAD, top, full, col) + GAP
+    slides = plan_slides(secs, f, full, top - bottom, rest_h)
+
+    out = []
+    for n, (size, left, right, lw) in enumerate(slides):
+        c = make()
+        note = f"{n + 1} of {len(slides)}" if len(slides) > 1 else ""
+        top = draw_header(c, f, doc, col, note) - 30
+        bottom = draw_footer(c, f, doc, codes, col)
+        if n == 0:
+            for sec in doc.get("top") or []:  # the Essential Question: a banner across the whole slide
+                top -= draw_banner(c, f, sec, PAD, top, full, col) + GAP
+        height = top - bottom
+        if left and right:
+            draw_column(c, f, left, PAD, top, lw, height, col, size)
+            draw_column(c, f, right, PAD + lw + GAP, top, full - lw - GAP, height, col, size)
+        elif left or right:
+            draw_column(c, f, left or right, PAD, top, full, height, col)
+        elif not doc.get("top"):
+            msg = "Add a standard, I can statement, or bell ringer to fill this slide."
+            c.text((W - f.width(msg, I, 34)) / 2, top - height / 2, msg, I, 34, col["dim"])
+        out.append(c)
+    return f, out
 
 
 def png_size(path):
@@ -235,6 +428,38 @@ def _rasterizers(pdf, png):
     for gs in ("gs", "gswin64c", "gswin32c"):
         yield [gs, "-q", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=png16m", "-r72",
                "-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-sOutputFile=" + png, pdf]
+    if sys.platform == "win32":  # Windows 10/11's own PDF renderer, so nothing extra has to be installed
+        yield ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+               "-EncodedCommand", _windows_script(pdf, png)]
+
+
+def _windows_script(pdf, png):
+    """PowerShell that renders page 1 of pdf to png with Windows.Data.Pdf (base64 UTF-16, as -EncodedCommand wants)."""
+    import base64
+    q = lambda p: "'" + p.replace("'", "''") + "'"  # noqa: E731 - a PowerShell string literal
+    script = f"""
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
+$null = [Windows.Data.Pdf.PdfDocument, Windows.Data.Pdf, ContentType = WindowsRuntime]
+$ext = [System.WindowsRuntimeSystemExtensions].GetMethods()
+$op1 = ($ext | ? {{ $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+                   $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' }})[0]
+$act = ($ext | ? {{ $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+                   $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction' }})[0]
+function Get($op, $type) {{ $t = $op1.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait() | Out-Null; $t.Result }}
+$file = Get ([Windows.Storage.StorageFile]::GetFileFromPathAsync({q(pdf)})) ([Windows.Storage.StorageFile])
+$doc = Get ([Windows.Data.Pdf.PdfDocument]::LoadFromFileAsync($file)) ([Windows.Data.Pdf.PdfDocument])
+$dir = Get ([Windows.Storage.StorageFolder]::GetFolderFromPathAsync({q(os.path.dirname(png))})) ([Windows.Storage.StorageFolder])
+$out = Get ($dir.CreateFileAsync({q(os.path.basename(png))}, [Windows.Storage.CreationCollisionOption]::ReplaceExisting)) ([Windows.Storage.StorageFile])
+$stream = Get ($out.OpenAsync([Windows.Storage.FileAccessMode]::ReadWrite)) ([Windows.Storage.Streams.IRandomAccessStream])
+$opts = New-Object Windows.Data.Pdf.PdfPageRenderOptions
+$opts.DestinationWidth = {W}
+$opts.DestinationHeight = {H}
+$act.Invoke($null, @($doc.GetPage(0).RenderToStreamAsync($stream, $opts))).Wait() | Out-Null
+$stream.Dispose()
+"""
+    return base64.b64encode(script.encode("utf-16-le")).decode("ascii")
 
 
 def rasterize(pdf, png):
@@ -247,7 +472,8 @@ def rasterize(pdf, png):
         tried = True
         try:
             subprocess.run([exe] + cmd[1:], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, timeout=60, check=True)
+                           stderr=subprocess.DEVNULL, timeout=60, check=True,
+                           creationflags=0x08000000 if sys.platform == "win32" else 0)  # no console window flash
         except (OSError, subprocess.SubprocessError):
             continue
         size = png_size(made)
@@ -263,7 +489,20 @@ def rasterize(pdf, png):
 
 
 def render_png(doc, path, **_):
+    """Write the slide to path; a lesson too full for one slide adds 'name 2.png', 'name 3.png'.
+    Returns every file written."""
+    f, slides = board_slides(doc)
+    paths = [path] + [f"{path[:-4]} {i}.png" for i in range(2, len(slides) + 1)]
     with tempfile.TemporaryDirectory(prefix="chalkboard-") as tmp:
-        pdf = os.path.join(tmp, "board.pdf")
-        board_pdf(doc, pdf)
-        shutil.copyfile(rasterize(pdf, os.path.join(tmp, "board.png")), path)
+        for i, (c, out) in enumerate(zip(slides, paths)):
+            pdf = os.path.join(tmp, f"board{i}.pdf")
+            _write([c], pdf, f, W, H, doc["title"])
+            shutil.copyfile(rasterize(pdf, os.path.join(tmp, f"board{i}.png")), out)
+    for i in range(len(slides) + 1, 10):  # a slide left over from an earlier, fuller export
+        old = f"{path[:-4]} {i}.png"
+        if os.path.exists(old):
+            os.remove(old)
+    # the same slides as an editable slideshow for PowerPoint, Keynote, or Google Slides
+    deck = path[:-4] + ".pptx"
+    render_pptx(board_slides(doc, SlideCanvas)[1], deck, doc["title"], palette(doc)["ink"])
+    return paths + [deck]

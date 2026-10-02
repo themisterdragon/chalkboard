@@ -4,25 +4,29 @@ import copy
 import tkinter as tk
 
 from ..doc import LETTERS, assessment_doc
-from ..store import (ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, GOOD_THINGS_PREFIX, GRADE_CHOICES, QUESTION_TYPES,
-                     SHEET_KINDS, TYPE_TAG, WEEKDAYS, fmt_points, new_assessment, new_question, points_of)
+from ..store import (ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, CHART_DIRECTIONS, CHART_PRESETS, CHART_SIZES,
+                     GOOD_THINGS_PREFIX, GRADE_CHOICES, QUESTION_TYPES, SHEET_KINDS, TYPE_TAG, WEEKDAYS,
+                     chart_preset, chart_size_label, fmt_points, new_assessment, new_question, parse_points, points_of)
 from . import widgets as W
 from .common import AutoText, ItemList, LineField, StandardsField, gap, tool, toolbar, touch
 from .desktop import first_line, grade_label
 from .lessons import size_text
 
 TYPE_TEXT = {"mc": "Multiple choice", "tf": "True / false", "short": "Short answer", "essay": "Extended response",
-             "fill": "Fill in the blank", "match": "Matching", "passage": "Reading passage", "section": "Section header"}
+             "fill": "Fill in the blank", "match": "Matching", "chart": "Chart / organizer",
+             "passage": "Reading passage", "section": "Section header"}
 TYPE_HELP = {"mc": "A prompt and lettered choices.", "tf": "A statement students mark True or False.",
              "short": "A prompt and a few writing lines.", "essay": "A prompt and lined, blank, or boxed space.",
              "fill": "Type ___ (three underscores) wherever a blank goes.",
              "match": "Terms and their matches. Matches are shuffled on the student copy.",
+             "chart": "A chart, Venn diagram, idea web, or other organizer for students to fill in.",
              "passage": "A text block with line numbers. Not scored.",
              "section": "A titled part with its own directions. Not scored."}
 assert set(TYPE_TEXT) == {t for t, _, _ in QUESTION_TYPES}
 KIND_HELP = {ANNOTATION: "Name/date, a heading, and a Line / Symbol / Reason chart on one page.",
              BELL_SHEET: "Monday–Friday boxes, one week per side. Print double-sided."}
 SPACE_TEXT = {"lines": "Lined", "blank": "Blank space", "box": "Bordered box"}
+PRESET_TEXT = {k: label for k, label, _ in CHART_PRESETS}
 
 
 def open_factory(a):
@@ -277,8 +281,12 @@ class AssessmentEditor:
             warn = ""
             if (t == "mc" and (q.get("answer") is None or not q.get("choices"))) or (t == "tf" and q.get("answer") is None):
                 warn = "   (no answer key yet)"
+            prompt = first_line(q.get("prompt"))
+            if t == "chart":
+                kind = PRESET_TEXT.get(q.get("preset"), "Chart")
+                prompt = f"[{kind}]  " + (prompt or CHART_DIRECTIONS.get(q.get("layout"), ""))
             rows.append((q, [f"{n}.", TYPE_TAG[t], fmt_points(points_of(q)),
-                             (first_line(q.get("prompt")) or "(no prompt)") + warn, q.get("standard") or ""]))
+                             (prompt or "(no prompt)") + warn, q.get("standard") or ""]))
         self.list.set_rows(rows, keep=select,
                            empty_text="No questions yet. Click Add Question to write the first one.")
         pts = sum(points_of(q) for q in qs)
@@ -394,14 +402,6 @@ class AssessmentEditor:
         self.gui.show(open_factory(self.a), push=False)
 
 
-def parse_points(s, old):
-    try:
-        v = float(s)
-        return int(v) if v.is_integer() else v
-    except (TypeError, ValueError):
-        return old
-
-
 def question_dialog(gui, a, q, new=False):
     """Edit a copy of q. Returns the edited question, or None if cancelled."""
     q = copy.deepcopy(q)
@@ -439,6 +439,8 @@ def question_dialog(gui, a, q, new=False):
         num = tk.BooleanVar(value=q.get("numbered", True))
         W.Check(body, sk, "Number the lines on the PDF", num).pack(anchor="w", pady=(6 * S, 0))
         texts["numbered"] = num.get
+    elif t == "chart":
+        first = text("Directions (optional; left blank, a short default prints)", "prompt", 2)
     else:
         first = text("Question" if t != "match" else "Directions for the matching set", "prompt", 4 if t != "fill" else 3)
 
@@ -515,6 +517,9 @@ def question_dialog(gui, a, q, new=False):
         text("Rubric / key notes (only on the key)", "answer", 3)
     elif t == "fill":
         line("Answer(s) for the key", "answer")
+    elif t == "chart":
+        chart_fields(gui, d, body, q, texts)
+        text("Key notes (only on the key)", "answer", 2)
     pair_rows = []
     if t == "match":
         W.label(body, sk, "Terms and matches (up to 10)", bold=True).pack(anchor="w", pady=(8 * S, 2 * S))
@@ -555,6 +560,8 @@ def question_dialog(gui, a, q, new=False):
         W.entry(row, sk, pts, width=5).pack(side="left", padx=(6 * S, 4 * S))
         if t == "match":
             W.label(row, sk, "(0 = one per pair)", dim=True).pack(side="left")
+        if t == "chart":
+            W.label(row, sk, "(0 = not scored)", dim=True).pack(side="left")
         W.label(row, sk, "     Standard:").pack(side="left")
         pool = list(a.get("standards") or [])
         if q.get("standard") and q["standard"] not in pool:
@@ -586,6 +593,111 @@ def question_dialog(gui, a, q, new=False):
     if t == "match":
         q["pairs"] = [[tv.get().strip(), mv.get().strip()] for tv, mv in pair_rows if tv.get().strip()]
     return q
+
+
+def list_text(v):
+    return "\n".join(v or [])
+
+
+def text_list(s):
+    return [x.strip() for x in s.split("\n")] if s.strip() else []
+
+
+def chart_fields(gui, d, body, q, texts):
+    """The organizer part of the question dialog. Picking a different kind rebuilds the fields below it."""
+    sk, S = gui.skin, gui.skin.S
+    row = tk.Frame(body, bg=sk["window"])
+    row.pack(anchor="w", pady=(8 * S, 0))
+    W.label(row, sk, "Kind:", bold=True).pack(side="left", padx=(0, 6 * S))
+    preset = tk.StringVar(value=q.get("preset") or "chart")
+    holder = tk.Frame(body, bg=sk["window"])
+    keys = []  # the texts keys the current fields own
+
+    def num(parent, label, key, lo, hi):
+        W.label(parent, sk, label).pack(side="left")
+        v = tk.StringVar(value=str(q.get(key) or lo))
+        W.Dropdown(parent, sk, [(str(n), str(n)) for n in range(lo, hi + 1)], v, width=3).pack(
+            side="left", padx=(6 * S, 16 * S))
+        own(key, lambda: int(v.get()))
+
+    def lines_box(label, key, h=3):
+        W.label(holder, sk, label, bold=True).pack(anchor="w", pady=(6 * S, 2 * S))
+        box = W.textbox(holder, sk, height=h, width=64)
+        box.insert("1.0", list_text(q.get(key)))
+        box.pack(fill="x")
+        box.bind("<Tab>", lambda e: (box.tk_focusNext().focus_set(), "break")[1])
+        own(key, lambda: text_list(box.get("1.0", "end-1c").strip()))
+
+    def center(label):
+        W.label(holder, sk, label, bold=True).pack(anchor="w", pady=(6 * S, 2 * S))
+        v = tk.StringVar(value=q.get("center") or "")
+        W.entry(holder, sk, v, width=40).pack(anchor="w")
+        own("center", v.get)
+
+    def own(key, get):
+        texts[key] = get
+        keys.append(key)
+
+    def build():
+        for w in holder.winfo_children():
+            w.destroy()
+        lay = q.get("layout", "table")
+        r = tk.Frame(holder, bg=sk["window"])
+        r.pack(anchor="w", pady=(4 * S, 0))
+        if lay == "table":
+            num(r, "Columns:", "cols", 1, 8)
+            num(r, "Rows:", "rows", 1, 20)
+            lines_box("Column headings (one per line; leave blank for none)", "heads")
+            side = tk.BooleanVar(value=bool(q.get("sidecol")))
+            W.Check(holder, sk, "Label each row too (a matrix)", side).pack(anchor="w", pady=(6 * S, 0))
+            own("sidecol", side.get)
+            lines_box("Row labels (one per line; optional)", "side")
+        elif lay == "venn":
+            W.label(r, sk, "Circles:").pack(side="left")
+            v = tk.StringVar(value=str(q.get("circles") or 2))
+            for n in ("2", "3"):
+                W.Radio(r, sk, n, v, n).pack(side="left", padx=(6 * S, 4 * S))
+            own("circles", lambda: int(v.get()))
+            lines_box("Circle labels (one per line; a line after the last circle labels the middle)", "heads")
+        elif lay == "web":
+            num(r, "Bubbles:", "rows", 3, 8)
+            center("Center topic (optional)")
+            lines_box("Bubble labels (one per line; optional)", "heads")
+        elif lay == "sequence":
+            num(r, "Boxes:", "rows", 2, 8)
+            lines_box("Box labels (one per line; blank boxes are numbered)", "heads")
+        elif lay == "frayer":
+            center("Word in the middle (optional)")
+            lines_box("Corner labels (four lines)", "heads", 4)
+        elif lay == "plot":
+            lines_box("Stage labels (five lines)", "heads", 5)
+        r2 = tk.Frame(holder, bg=sk["window"])
+        r2.pack(anchor="w", pady=(8 * S, 0))
+        W.label(r2, sk, "Size:").pack(side="left")
+        size = tk.StringVar(value=str(q.get("lines") or 0))
+        sizes = CHART_SIZES + ([int(size.get())] if int(size.get()) not in CHART_SIZES else [])
+        W.Dropdown(r2, sk, [(str(n), chart_size_label(n)) for n in sizes], size, width=26).pack(
+            side="left", padx=6 * S)
+        own("lines", lambda: int(size.get()))
+        tag = f"dlg{id(d)}"  # widgets made after the dialog opened still need its Esc/Return keys
+        for w in W.descendants(holder):
+            if tag not in w.bindtags():
+                w.bindtags(w.bindtags() + (tag,))
+
+    def pick(key):
+        for k in keys:   # keep what was typed for the fields the new kind shares
+            q[k] = texts.pop(k)()
+        keys.clear()
+        chart_preset(q, key)
+        build()
+        if d.win.winfo_ismapped():
+            d.place()
+
+    W.Dropdown(row, sk, [(k, label) for k, label, _ in CHART_PRESETS], preset, command=pick, width=30).pack(side="left")
+    W.label(body, sk, "Picking a kind fills in its usual labels; change any of them below.", dim=True,
+            small=True).pack(anchor="w", pady=(2 * S, 0))
+    holder.pack(fill="x")
+    build()
 
 
 # ================================================================ annotation & bell ringer sheets

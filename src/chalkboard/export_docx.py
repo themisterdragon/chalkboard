@@ -3,9 +3,16 @@
 import re
 import zipfile
 from datetime import datetime, timezone
-from xml.sax.saxutils import escape
 
 from .fontmetrics import WIDTHS
+from .markup import links, plain, runs as mark_runs
+from .organizers import has_heads, heads_of, shapes, table_cols, table_rows
+
+
+def escape(s):
+    """XML-safe text. (Not xml.sax.saxutils: importing that pulls in Python's networking modules.)"""
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
 
 PAGES = {"Letter": (12240, 15840), "A4": (11906, 16838)}
 MARGIN = 1080            # 0.75in in twips
@@ -16,19 +23,43 @@ GRAY = "666666"
 _BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 W_NS = ('xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
-        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"')
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" '
+        'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"')
+EMU = 12700  # per point
 
 
 def x(s):
     return escape(_BAD.sub("", s or ""))
 
 
-def run(text, b=False, i=False, size=None, color=None):
+LINKS = []  # web addresses in the document being written; render_docx turns them into relationships
+
+
+def rich(text, b=False, i=False, size=None, color=None):
+    """Runs for text with **bold**, *italic*, __underline__ marks; web addresses become links."""
+    out = []
+    for piece, bold, italic, under in mark_runs(text or ""):
+        for part, url in links(piece):
+            if url:
+                LINKS.append(url)
+                out.append(f'<w:hyperlink r:id="rIdLink{len(LINKS)}" w:history="1">'
+                           f'{run(part, b or bold, i or italic, size, "0563C1", True)}</w:hyperlink>')
+            else:
+                out.append(run(part, b or bold, i or italic, size, color, under))
+    return "".join(out)
+
+
+def run(text, b=False, i=False, size=None, color=None, u=False):
     rpr = ""
     if b:
         rpr += "<w:b/>"
     if i:
         rpr += "<w:i/>"
+    if u:
+        rpr += '<w:u w:val="single"/>'
     if color:
         rpr += f'<w:color w:val="{color}"/>'
     if size:
@@ -84,6 +115,84 @@ def shaded_cell(content, width):
             f'<w:vAlign w:val="center"/></w:tcPr>{content}</w:tc>')
 
 
+def organizer_table(b, width, height):
+    """A table-layout organizer as a real Word table, so students can type in it."""
+    cols, rows = table_cols(b), table_rows(b)
+    side = (b.get("side") or [])[:rows]
+    sidecol = b.get("sidecol") or any(s.strip() for s in side)
+    sw = width * (24 if cols <= 3 else 18) // 100 if sidecol else 0
+    cw = (width - sw) // cols
+    widths = ([sw] if sidecol else []) + [cw] * cols
+    out = []
+    head = 440 if has_heads(b) else 0
+    if head:
+        cells = [cell(para([], after=0, keep=True), sw)] if sidecol else []
+        cells += [shaded_cell(para([run(h, b=True)], align="center", after=0, keep=True), cw)
+                  for h in heads_of(b, cols)]
+        out.append(row(cells, head))
+    rh = max(400, (height - head) // rows)
+    for r in range(rows):
+        keep = r < rows - 1  # keepNext in every row but the last holds the chart on one page
+        label = side[r] if r < len(side) else ""
+        blank = para([], after=0, keep=keep)
+        cells = [cell(para([run(label, b=True)], after=0, keep=keep) if label.strip() else blank, sw)] if sidecol else []
+        cells += [cell(blank, cw) for _ in range(cols)]
+        out.append(f'<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="{rh}" w:hRule="atLeast"/></w:trPr>'
+                   + "".join(cells) + "</w:tr>")
+    return table(out, widths, indent=QIND, borders=True)
+
+
+def organizer_drawing(b, width, height, ids):
+    """Any other organizer as one inline group of Word shapes (ovals, boxes, lines, text boxes)."""
+    wpt, hpt = width / 20, height / 20
+    kids = []
+
+    def emu(v):
+        return int(round(v * EMU))
+
+    def sp(geom, x, y, w, h, line_w=0.0, fill=None, txt="", flip="", arrow=False):
+        ids[0] += 1
+        fill_xml = (f'<a:solidFill><a:srgbClr val="{"%02X%02X%02X" % tuple(int(c * 255) for c in fill)}"/></a:solidFill>'
+                    if fill else "<a:noFill/>")
+        ln = (f'<a:ln w="{emu(line_w)}"><a:solidFill><a:srgbClr val="000000"/></a:solidFill>'
+              + ('<a:tailEnd type="triangle" w="med" len="med"/>' if arrow else "") + "</a:ln>"
+              if line_w else "<a:ln><a:noFill/></a:ln>")
+        body = ('<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t">'
+                '<a:noAutofit/></wps:bodyPr>')
+        box = f"<wps:txbx><w:txbxContent>{txt}</w:txbxContent></wps:txbx>" if txt else ""
+        kids.append(f'<wps:wsp><wps:cNvPr id="{ids[0]}" name="Shape {ids[0]}"/><wps:cNvSpPr/>'
+                    f'<wps:spPr><a:xfrm{flip}><a:off x="{emu(x)}" y="{emu(y)}"/><a:ext cx="{max(emu(w), 1)}" '
+                    f'cy="{max(emu(h), 1)}"/></a:xfrm><a:prstGeom prst="{geom}"><a:avLst/></a:prstGeom>'
+                    f"{fill_xml}{ln}</wps:spPr>{box}{body}</wps:wsp>")
+
+    sp("rect", 0, 0, wpt, hpt)  # an invisible frame, so apps that size a group by its contents keep the shape
+    for s in shapes(b, wpt, hpt):
+        k = s["k"]
+        if k == "rect":
+            sp("rect", s["x"], s["y"], s["w"], s["h"], s["lw"], s["fill"])
+        elif k == "oval":
+            sp("ellipse", s["cx"] - s["rx"], s["cy"] - s["ry"], 2 * s["rx"], 2 * s["ry"], s["lw"], s["fill"])
+        elif k == "line":
+            pts = s["pts"]
+            for i, ((x1, y1), (x2, y2)) in enumerate(zip(pts, pts[1:])):
+                flip = (' flipH="1"' if x2 < x1 else "") + (' flipV="1"' if y2 < y1 else "")
+                sp("line", min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1), s["lw"], flip=flip,
+                   arrow=s["arrow"] and i == len(pts) - 2)
+        elif k == "text":
+            align = "center" if s["align"] == "center" else None
+            txt = para([run(plain(s["text"]), b=s["bold"], size=s["size"])], align=align, after=0)
+            sp("rect", s["x"], s["y"], s["w"], s["size"] * 3.6, txt=txt)
+    ids[0] += 1
+    cx, cy = emu(wpt), emu(hpt)
+    group = (f'<wpg:wgp><wpg:cNvGrpSpPr/><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/>'
+             f'<a:chOff x="0" y="0"/><a:chExt cx="{cx}" cy="{cy}"/></a:xfrm></wpg:grpSpPr>{"".join(kids)}</wpg:wgp>')
+    drawing = (f'<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{cx}" cy="{cy}"/>'
+               f'<wp:docPr id="{ids[0]}" name="Organizer {ids[0]}"/><wp:cNvGraphicFramePr/>'
+               f'<a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">'
+               f"{group}</a:graphicData></a:graphic></wp:inline></w:drawing>")
+    return f"<w:p><w:pPr><w:spacing w:before=\"60\" w:after=\"60\"/><w:ind w:left=\"{QIND}\"/></w:pPr><w:r>{drawing}</w:r></w:p>"
+
+
 def fill_height(used, body_h):
     """Twips left on the page for a fill block, leaving room for Word's closing paragraph."""
     return max(1440, body_h - used - 700)
@@ -93,16 +202,18 @@ def body_xml(blocks, width, body_h):
     out = []
     used = 0  # rough twips used on the current page, for the blocks fixed-layout sheets put above a fill
     new_page = False
+    ids = [0]  # drawing object ids, unique in the document
     for i, b in enumerate(blocks):
         t = b["t"]
         used += {"title": 520, "subtitle": 460, "fields": 800, "h1": 600}.get(t, 0)
         if t == "p":
             used += 360 * (len(b["text"]) // 95 + 1)
         if t == "title":
-            out.append(para([run(b["text"], b=True, size=17)], align="center", after=40, keep=True, new_page=new_page))
+            out.append(para([run(plain(b["text"]), b=True, size=17)], align="center", after=40, keep=True,
+                            new_page=new_page))
             new_page = False
         elif t == "subtitle":
-            out.append(para([run(b["text"], i=True, size=10.5, color=GRAY)], align="center", after=200))
+            out.append(para([run(plain(b["text"]), i=True, size=10.5, color=GRAY)], align="center", after=200))
         elif t == "fields" and b.get("shares"):
             # label + underlined blank per item, sized like the PDF's shares
             cells, widths = [], []
@@ -123,23 +234,23 @@ def body_xml(blocks, width, body_h):
                 runs.append(run("_" * sizes.get(k, 12) + "     "))
             out.append(para(runs, after=200))
         elif t == "h1":
-            out.append(para([run(b["text"], b=True, size=12.5)], before=240, after=100, keep=True, border=True))
+            out.append(para([run(plain(b["text"]), b=True, size=12.5)], before=240, after=100, keep=True, border=True))
         elif t == "p":
             st = b.get("style", "normal")
-            out.append(para([run(b["text"], b=st == "bold", i=st in ("italic", "small"),
+            out.append(para([rich(b["text"], b=st == "bold", i=st in ("italic", "small"),
                                  size=9.5 if st == "small" else None, color=GRAY if st == "small" else None)],
                             left=b.get("pad", 0) * 20))
         elif t == "check":
-            out.append(para([run("\u2610", size=15), run("\t" + b["text"], b=True, size=11.5)],
+            out.append(para([run("\u2610", size=15), run("\t" + plain(b["text"]), b=True, size=11.5)],
                             left=360, hanging=360, before=160, after=60, keep=True, tabs=[("left", 360)]))
         elif t == "bullet":
             left = 360 + 360 * b.get("indent", 0) + b.get("pad", 0) * 20
-            out.append(para([run("•\t"), run(b["text"])], left=left, hanging=240, after=60,
+            out.append(para([run("•\t"), rich(b["text"])], left=left, hanging=240, after=60,
                             tabs=[("left", left)]))
         elif t == "kv":
-            out.append(para([run(b["label"] + " ", b=True), run(b["text"])]))
+            out.append(para([run(plain(b["label"]) + " ", b=True), rich(b["text"])]))
         elif t == "q":
-            runs = [run(b["num"], b=True), run("\t" + b["text"])]
+            runs = [run(b["num"], b=True), run("\t"), rich(b["text"])]
             if b.get("points"):
                 runs.append(run("  " + b["points"], i=True, color=GRAY))
             out.append(para(runs, left=QIND, hanging=QIND, before=160, after=60, keep=True,
@@ -147,7 +258,7 @@ def body_xml(blocks, width, body_h):
         elif t == "choice":
             c = RED if b["correct"] else None
             label = ("✔ " if b["correct"] else "") + b["label"]
-            out.append(para([run(label, b=b["correct"], color=c), run("  " + b["text"], b=b["correct"], color=c)],
+            out.append(para([run(label, b=b["correct"], color=c), run("  "), rich(b["text"], b=b["correct"], color=c)],
                             left=QIND + 640, hanging=400, after=40, keep=not b.get("last")))
         elif t == "choice_inline":
             runs = []
@@ -165,7 +276,7 @@ def body_xml(blocks, width, body_h):
                 out.append(table([row([cell(None, w)], LINE_H * b["n"])], [w], indent=QIND, borders=(t == "box")))
             out.append(para([], after=0))
         elif t == "answer":
-            out.append(para([run("Answer: ", b=True, i=True, color=RED), run(b["text"], i=True, color=RED)],
+            out.append(para([run("Answer: ", b=True, i=True, color=RED), rich(b["text"], i=True, color=RED)],
                             left=QIND))
         elif t == "match":
             lw = (width - QIND) * 42 // 100
@@ -177,19 +288,28 @@ def body_xml(blocks, width, body_h):
                 right = b["right"][i] if i < len(b["right"]) else ""
                 if left:
                     blank = [run(f"  {b['key'][i]}  ", b=True, color=RED)] if b["key"] else [run("______")]
-                    lp = para(blank + [run("   " + left)], after=60)
+                    lp = para(blank + [run("   "), rich(left)], after=60)
                 else:
                     lp = None
-                rp = para([run(f"{'ABCDEFGHIJ'[i] if i < 10 else '?'}. ", b=True), run(right)], after=60) if right else None
+                rp = para([run(f"{'ABCDEFGHIJ'[i] if i < 10 else '?'}. ", b=True), rich(right)], after=60) if right else None
                 rows.append(row([cell(lp, lw), cell(rp, rw)]))
             out.append(table(rows, [lw, rw], indent=QIND))
             out.append(para([], after=0))
+        elif t == "organizer":
+            # "fill the page" can't be measured in Word; use a big chart that still fits under a heading
+            h = min(LINE_H * (max(b["n"], 22) if b.get("fill") else b["n"]), body_h - 1600)
+            if b.get("layout") == "table":
+                out.append(organizer_table(b, width - QIND, h))
+                out.append(para([], after=0))
+            else:
+                out.append(organizer_drawing(b, width - QIND, h, ids))
         elif t == "passage":
             if b.get("title"):
-                out.append(para([run(b["title"], b=True, size=12)], align="center", before=200, after=100, keep=True))
+                out.append(para([run(plain(b["title"]), b=True, size=12)], align="center", before=200, after=100,
+                                keep=True))
             for p in (b.get("text") or "").split("\n"):
                 if p.strip():
-                    out.append(para([run(p.strip())], left=360, right=360, first=360, after=80))
+                    out.append(para([rich(p.strip())], left=360, right=360, first=360, after=80))
         elif t == "grid":
             widths = [int(width * share) for _, share in b["cols"]]
             head = row([shaded_cell(para([run(label, b=True)], align="center", after=0), w)
@@ -206,7 +326,7 @@ def body_xml(blocks, width, body_h):
                 content = para([run(label, b=True, size=12), run("\t"), run("Date: ", b=True, size=10),
                                 run("____________", size=10)], after=60, tabs=[("right", width - 160)])
                 if prompt.strip():
-                    content += para([run(prompt.strip(), i=True)], after=60)
+                    content += para([rich(prompt.strip(), i=True)], after=60)
                 rows.append(row([cell(content, width)], bh))
             out.append(table(rows, [width], borders=True))
         elif t == "space":
@@ -228,6 +348,7 @@ def render_docx(doc, path, family="Times", page="Letter"):
     font = "Times New Roman" if family == "Times" else "Arial"
     pw, ph = PAGES.get(page, PAGES["Letter"])
     width = pw - 2 * MARGIN
+    LINKS.clear()
     body = body_xml(doc["blocks"], width, ph - 2 * MARGIN)
     sect = (f'<w:sectPr><w:footerReference w:type="default" r:id="rId2"/>'
             f'<w:pgSz w:w="{pw}" w:h="{ph}"/>'
@@ -285,6 +406,9 @@ def render_docx(doc, path, family="Times", page="Letter"):
                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
                 '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
                 '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>'
+                + "".join(f'<Relationship Id="rIdLink{n}" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                          f'relationships/hyperlink" Target="{escape(u)}" TargetMode="External"/>'
+                          for n, u in enumerate(LINKS, 1)) +
                 '</Relationships>')
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", ctypes)

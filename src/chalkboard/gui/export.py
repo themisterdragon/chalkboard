@@ -6,13 +6,15 @@ import tkinter as tk
 from tkinter import filedialog
 
 from ..images import read_image
-from ..exporting import FORMAT_ORDER, ExportError, export, export_folder, open_path
+from .. import plugins
+from ..exporting import (FORMAT_ORDER, PLUGIN_FORMATS, ExportError, export, export_everything, export_folder,
+                         open_path)
 from ..store import BOARD_SECTIONS, BOARD_STYLES, SHEET_KINDS
 from . import widgets as W
 
 FORMAT_TEXT = {
     "PDF": "PDF", "DOCX": "Word (.docx, also opens in Google Docs)", "TXT": "Plain text (for Google Classroom)",
-    "PNG": "Board slide (1920×1080 PNG for a classroom display)",
+    "PNG": "Board slide (1920×1080 PNG + editable slideshow for PowerPoint, Keynote, Google Slides)",
     "MAKEUP": "Make-up sheet for absent students (PDF + Word)", "ALL": "All of the above",
 }
 INCLUDE_TEXT = {"BOTH": "Student copy and answer key", "STUDENT": "Student copy only", "KEY": "Answer key only"}
@@ -22,14 +24,24 @@ assert set(STYLE_TEXT) == set(BOARD_STYLES)
 
 def run_export(gui, kind, obj, fmt):
     gui.save()
+
+    def progress(done, total, name):
+        gui.status(f"Exporting {done + 1} of {total}: {name}" if done < total else "Exported.")
+        gui.progress(done / max(1, total))
+        gui.root.update_idletasks()
     gui.status("Exporting…")
+    gui.progress(0.0)
     gui.root.update_idletasks()
     try:
-        files = export(gui.store, kind, obj, fmt)
+        files = export(gui.store, kind, obj, fmt, progress=progress)
     except ExportError as e:
         W.alert(gui, "Export Didn't Work", str(e)[:1].upper() + str(e)[1:].lower(), "warn")
         gui.status("")
         return
+    finally:
+        gui.progress(None)
+    if plugins.problems:
+        W.alert(gui, "Plugins", "\n".join(p.capitalize() for p in plugins.take_problems()), "warn")
     export_done(gui, files)
 
 
@@ -51,7 +63,7 @@ def export_dialog(gui, kind, obj):
     g = W.group(left, sk, "Format")
     g.pack(fill="x", anchor="n")
     for f in formats:
-        W.Radio(g, sk, FORMAT_TEXT[f], fmt, f).pack(anchor="w")
+        W.Radio(g, sk, FORMAT_TEXT.get(f) or PLUGIN_FORMATS.get(f, f), fmt, f).pack(anchor="w")
     linked = gui.store.attached(obj) if kind == "lesson" else []
     note = W.label(g, sk, "", dim=True, small=True, wrap=330 * S)
     if linked:
@@ -177,7 +189,7 @@ def board_options(gui):
     secs = {}
     for i, (key, label, col) in enumerate(BOARD_SECTIONS):
         v = secs[key] = tk.BooleanVar(value=key in on)
-        W.Check(g, sk, f"{label}  ({col} side)", v).grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 18 * S))
+        W.Check(g, sk, f"{label}  ({BOARD_SIDES[col]})", v).grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 18 * S))
     stdtext = tk.BooleanVar(value=st.get("board_std_text", True))
     W.Check(g, sk, "Show each standard's full text (not just its code)", stdtext).grid(
         row=9, column=0, columnspan=2, sticky="w", pady=(6 * S, 0))
@@ -397,3 +409,31 @@ def class_periods(gui, done=None):
     refresh()
     d.buttons([("Done", True)], cancel=True)
     d.run(focus=lv.tv)
+
+
+def export_everything_dialog(gui):
+    """File > Export Everything: every lesson and assessment (PDF + Word) and a backup, in one folder."""
+    start = gui.store.export_dir()
+    parent = filedialog.askdirectory(parent=gui.root, title="Put the export folder where?",
+                                     initialdir=start if os.path.isdir(start) else os.path.expanduser("~"))
+    if not parent or not gui.save():
+        return
+
+    def progress(done, total, name):
+        gui.status(f"Exporting {done + 1} of {total}: {name}" if done < total else "Exported.")
+        gui.progress(done / max(1, total))
+        gui.root.update_idletasks()
+    try:
+        folder, files, problems = export_everything(gui.store, parent, progress)
+    except ExportError as e:
+        W.alert(gui, "Export Didn't Work", str(e)[:1].upper() + str(e)[1:].lower(), "warn")
+        return
+    finally:
+        gui.progress(None)
+    gui.status(f"Exported {len(files)} files.")
+    msg = (f"Every lesson and assessment is in\n{folder}\n\nas PDF and Word files, with a backup file. "
+           "Keep the folder, or drag it into Google Drive or another cloud folder.")
+    if problems:
+        msg += "\n\nThese didn't export:\n" + "\n".join(problems[:6]) + ("\n…" if len(problems) > 6 else "")
+    if W.confirm(gui, "Everything Exported", msg, "Open Folder", "Done"):
+        open_path(folder)

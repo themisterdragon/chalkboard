@@ -2,7 +2,24 @@
 
 import textwrap
 
+from .markup import plain
+from .organizers import text_lines
+
 WIDTH = 78
+
+
+def unmark(b):
+    """A copy of block b with **bold** / *italic* / __underline__ marks removed."""
+    b = dict(b)
+    for k in ("text", "label", "title"):
+        if isinstance(b.get(k), str):
+            b[k] = plain(b[k])
+    for k in ("left", "right"):
+        if isinstance(b.get(k), list):
+            b[k] = [plain(x) for x in b[k]]
+    if b.get("t") == "days":
+        b["days"] = [(d, plain(p)) for d, p in b["days"]]
+    return b
 
 
 def render_lines(doc, width=WIDTH):
@@ -10,6 +27,7 @@ def render_lines(doc, width=WIDTH):
     w = lambda text, ind=0, sub=None: textwrap.wrap(text, width, initial_indent=" " * ind,
                                                     subsequent_indent=" " * (ind if sub is None else sub)) or [""]
     for b in doc["blocks"]:
+        b = unmark(b)
         t = b["t"]
         if t == "title":
             out += [b["text"].center(width).rstrip(), ("=" * min(width, len(b["text"]) + 4)).center(width).rstrip()]
@@ -49,6 +67,8 @@ def render_lines(doc, width=WIDTH):
                 blank = f"_{b['key'][i]}_" if (b["key"] and left) else ("___" if left else "   ")
                 rl = f"{'ABCDEFGHIJ'[i]}. {right}" if right else ""
                 out.append(f"    {blank} {left[:30]:<32}{rl}".rstrip())
+        elif t == "organizer":
+            out += [""] + text_lines(b, width)
         elif t == "passage":
             out.append("")
             if b.get("title"):

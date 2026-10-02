@@ -7,20 +7,26 @@ import re
 import textwrap
 
 from . import __version__
-from .ui import APP, BACK, UI, big, ch, curses, truncate
-from .store import (LOGO_PLACES, ALL, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SECTIONS, BOARD_STYLES, DEFAULT_SUBJECT,
-                    GOOD_THINGS_PREFIX, GRADE_CHOICES, LESSON_FIELDS, QUESTION_TYPES, SHEET_KINDS, SORTS, TYPE_LABEL,
+from .ui import APP, BACK, UI, ExportBar, big, ch, curses, truncate
+from .store import (LOGO_PLACES, ALL, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SECTIONS, BOARD_SIDES, BOARD_STYLES, DEFAULT_SUBJECT,
+                    FIXED_FIELDS, VOCAB_HINT, shown_fields, GOOD_THINGS_PREFIX, GRADE_CHOICES, LESSON_FIELDS, QUESTION_TYPES, SHEET_KINDS, SORTS, TYPE_LABEL,
                     TYPE_TAG, WEEKDAYS, Store, fmt_points, grades_match, new_assessment, new_lesson, new_question, now,
-                    parse_hex, points_of, sort_items)
+                    parse_hex, parse_points, points_of, sort_items)
 from .doc import LETTERS, assessment_doc, lesson_doc
-from .exporting import FORMAT_ORDER, ExportError, export, export_subdirs, open_path
+from .markup import plain
+from .mascots import MASCOTS, hop, sprite
+from .mascots import name as mascot_name
+from .store import CHART_DIRECTIONS, CHART_PRESETS, CHART_SIZES, chart_preset, chart_size_label
+from . import offline, plugins
+from .exporting import FORMAT_ORDER, PLUGIN_FORMATS, ExportError, export, export_everything, export_subdirs, open_path
 from .export_png import low_contrast
 from .export_txt import render_lines
 FORMAT_LABEL = {"PDF": "PDF", "DOCX": "WORD (.DOCX - ALSO GOOGLE DOCS)", "TXT": "PLAIN TEXT",
-                "PNG": "BOARD SLIDE (1920x1080 PNG FOR CLASSROOM DISPLAY)",
+                "PNG": "BOARD SLIDE (1920x1080 PNG + EDITABLE .PPTX SLIDESHOW)",
                 "MAKEUP": "MAKE-UP SHEET FOR ABSENT STUDENTS (PDF + DOCX)", "ALL": "ALL FORMATS"}
 INCLUDE_LABEL = {"STUDENT": "STUDENT COPY ONLY", "KEY": "ANSWER KEY ONLY", "BOTH": "STUDENT COPY + ANSWER KEY"}
 SPACE_LABEL = {"lines": "LINED", "blank": "BLANK SPACE", "box": "BORDERED BOX"}
+PRESET_LABEL = {k: label for k, label, _ in CHART_PRESETS}
 
 
 def grade_label(g):
@@ -41,18 +47,22 @@ def sub_label(parent, label):
 def first_line(s):
     for line in (s or "").split("\n"):
         if line.strip():
-            return line.strip()
+            return plain(line.strip())
     return ""
 
 
 class App:
-    def __init__(self, stdscr, args):
-        self.store = Store()
+    def __init__(self, stdscr, args, store=None):
+        self.store = store or Store()  # the window app passes its own, so both views share one copy
+        if not getattr(args, "no_plugins", False):
+            plugins.load(self.store.dir)
         self.st = self.store.settings
         self.ui = UI(stdscr, self.st)
         self.args = args
         if self.store.warning:
             self.ui.msg = self.store.warning
+        elif plugins.problems:
+            self.ui.msg = "?" + "  ".join(plugins.take_problems())
 
     def save(self):
         try:
@@ -79,9 +89,21 @@ class App:
 
         banner = big(APP, "██" if w >= 106 else "█")
         for i, line in enumerate(banner):
-            ui.draw(2 + i, x0 + (w - len(banner[0])) // 2, line, ui.HI)
+            ui.draw(2 + i, x0 + 1, line, ui.HI)
             pause(50)
-        left = x0 + max(2, (w - 52) // 2)
+        key = self.st.get("mascot")
+        art = sprite(key) if key in MASCOTS else None
+        if art and (w < 77 or rows < 19):
+            art = None  # no room beside the stats; skip it
+        left = x0 + 1
+        mx = left + 58
+        if art:  # scan the mascot in, two pixel rows at a time
+            runs = ui.sprite_runs(art)
+            for dy in range(8):
+                for ry, rx, text, attr in runs:
+                    if ry == dy:
+                        ui.draw(9 + ry, mx + rx, text, attr)
+                pause(35)
         lines = [
             (f"{APP} LESSON PLANNING SYSTEM  V{__version__}", ui.N),
             ("", ui.N),
@@ -93,6 +115,12 @@ class App:
         for i, (text, attr) in enumerate(lines):
             ui.draw(9 + i, left, ui.tx(text), attr)
             pause(120)
+        if art:
+            cheer = f"GO {mascot_name(key)}!"
+            ui.draw(18, mx + (16 - len(cheer)) // 2, cheer, ui.HI)
+            for frame in (hop(art), art, hop(art), art):
+                ui.draw_sprite(9, mx, frame)
+                pause(110)
         for j, c in enumerate(ui.tx("]RUN CHALKBOARD")):
             ui.draw(9 + len(lines) + 1, left + j, c, ui.HI)
             pause(55)
@@ -113,6 +141,9 @@ class App:
             ("4", "SETTINGS", self.settings_screen),
             ("Q", "QUIT", None),
         ]
+        leave = getattr(self.args, "leave", None)
+        if leave:  # running inside the window app: switch back to its windows
+            items.insert(4, ("W", "WINDOW VIEW", self.window_view))
         sel, first = 0, True
         while True:
             rows, w, x0 = ui.dims()
@@ -122,11 +153,11 @@ class App:
             if rows >= 24:
                 banner = big(APP, "██" if w >= 106 else "█")
                 for i, line in enumerate(banner):
-                    ui.put(y + i, x0 + (w - len(banner[0])) // 2, line, ui.HI)
+                    ui.put(y + i, x0 + 1, line, ui.HI)
                 y += 6
-            ui.center(y, "* LESSON PLANS, ASSESSMENTS & ASSIGNMENTS *", ui.DIM)
+            ui.line(y, "* LESSON PLANS, ASSESSMENTS & ASSIGNMENTS *", ui.DIM)
             y += 2
-            mx = x0 + max(2, (w - 40) // 2)
+            mx = x0 + 1
             for i, (k, label, _) in enumerate(items):
                 ui.badge(y, mx, k)
                 ui.put(y, mx + 5, label, ui.INV if i == sel else ui.N)
@@ -134,7 +165,7 @@ class App:
             d = self.store.data
             if y < rows - 3:
                 who = f"   //   {self.st['teacher']}" if self.st.get("teacher") else ""
-                ui.center(y + 1, f"{len(d['lessons'])} LESSONS   //   {len(d['assessments'])} ASSESSMENTS{who.upper()}", ui.DIM)
+                ui.line(y + 1, f"{len(d['lessons'])} LESSONS   //   {len(d['assessments'])} ASSESSMENTS{who.upper()}", ui.DIM)
             ui.footer("PRESS A NUMBER, OR USE ARROWS + RETURN")
             ui.show(animate=first)
             first = False
@@ -156,6 +187,11 @@ class App:
                 sel = items.index(choice)
                 choice[2]()
                 first = True
+
+    def window_view(self):
+        """Back to the window app's windows (only when running inside it)."""
+        self.save()
+        self.args.leave("switch")
 
     # --------------------------------------------------------------- shared
     def search_filter(self, items, query, fields):
@@ -297,6 +333,12 @@ class App:
     def lesson_editor(self, lesson):
         ui = self.ui
 
+        def fields():
+            return shown_fields(self.st, lesson)
+
+        def at(key):
+            return next((i for i, f in enumerate(fields()) if f[0] == key), None)
+
         def row(field, w):
             key, label, kind = field
             if kind == "standards":
@@ -320,6 +362,8 @@ class App:
                                  fill_hint="CTRL-G RANDOM SEL PROMPT", fill_prefix=GOOD_THINGS_PREFIX)
             elif kind == "text":
                 v = ui.edit_text(label, lesson.get(key, ""))
+            elif kind == "vocab":
+                v = ui.edit_text(label, lesson.get(key, ""), ui.tx(VOCAB_HINT) + ". ESC SAVES. THEN V ON THE LESSON MAKES A QUIZ.")
             elif kind == "attached":
                 self.lesson_attachments(lesson)
                 return None
@@ -329,7 +373,7 @@ class App:
                 lesson[key] = v
                 lesson["updated"] = now()
                 self.save()
-            return min(i + 1, len(LESSON_FIELDS) - 1) if v is not None and kind != "standards" else None
+            return min(i + 1, len(fields()) - 1) if v is not None and kind != "standards" else None
 
         def on_key(k, field, i):
             c = ch(k).lower()
@@ -349,7 +393,18 @@ class App:
                 lesson["updated"] = now()
                 self.save()
                 ui.msg = "SEL BELL RINGER ADDED. PRESS G AGAIN FOR ANOTHER."
-                return [f[0] for f in LESSON_FIELDS].index("bell_ringer")
+                return at("bell_ringer")
+            elif c == "v":
+                a = self.store.vocab_quiz(lesson)
+                if a is None:
+                    ui.msg = "?TYPE AT LEAST TWO WORDS WITH DEFINITIONS IN VOCABULARY FIRST (WORD: DEFINITION)"
+                    return at("vocab")
+                self.save()
+                ui.msg = f"MADE '{a['title']}' ({len(a['questions'][0]['pairs'])} WORDS) AND LINKED IT TO THIS LESSON"
+                return at("assessments")
+            elif c == "s":
+                self.lesson_sections()
+                return 0
             elif c == "h":
                 default = (lesson.get("title") + " Annotation") if lesson.get("title") else ""
                 name = ui.prompt("ANNOTATION SHEET HEADING (E.G. HAMLET 4.1 ANNOTATION)", default)
@@ -361,13 +416,32 @@ class App:
                 lesson["updated"] = now()
                 self.save()
                 ui.msg = f"ADDED '{a['title']}' TO HOMEWORK. IT EXPORTS WITH THE LESSON (X, ALL FORMATS)."
-                return [f[0] for f in LESSON_FIELDS].index("homework")
+                return at("homework")
             return None
 
-        ui.list_screen("LESSON: " + (lesson.get("title") or "untitled"), lambda: LESSON_FIELDS, row,
+        ui.list_screen("LESSON: " + (lesson.get("title") or "untitled"), fields, row,
                        on_open=on_open, on_key=on_key,
                        info_fn=lambda: f"EDITING '{lesson.get('title') or 'untitled'}'   LAST SAVED {lesson.get('updated', '')}",
-                       hints="1-0/RETURN EDIT  G SEL PROMPT  H ANNOTATION HW  P PREVIEW  X EXPORT  B BOARD  M MAKE-UP  ESC BACK")
+                       hints="1-0/RETURN EDIT  G SEL PROMPT  H ANNOTATION HW  V VOCAB QUIZ  S SECTIONS  P PREVIEW  "
+                             "X EXPORT  B BOARD  M MAKE-UP  ESC BACK")
+
+    def lesson_sections(self):
+        ui, st = self.ui, self.st
+        keys = [(k, label) for k, label, _ in LESSON_FIELDS if k not in FIXED_FIELDS]
+
+        def row(f, w):
+            on = f[0] not in (st.get("lesson_hide") or [])
+            return f"[{'X' if on else ' '}] {ui.tx(f[1])}", (ui.HI if on else ui.DIM)
+
+        def on_open(f, i):
+            hide = st.get("lesson_hide") or []
+            st["lesson_hide"] = [k for k in hide if k != f[0]] if f[0] in hide else hide + [f[0]]
+            self.save()
+            return i
+
+        ui.list_screen("LESSON SECTIONS", lambda: keys, row, on_open=on_open,
+                       info_fn=lambda: "UNCHECKED SECTIONS ARE HIDDEN WHILE EMPTY. NOTHING IS DELETED.",
+                       hints="1-0/RETURN SHOW OR HIDE  ESC BACK")
 
     def lesson_attachments(self, lesson):
         """The quizzes, worksheets, and sheets that go with a lesson (and export with it)."""
@@ -861,7 +935,11 @@ class App:
             if t == "tf" and q.get("answer") is None:
                 warn = " (!NO KEY)"
             pts = fmt_points(points_of(q))
-            return f"{nums[id(q)]:>3}. {TYPE_TAG[t]:<5}{pts:>3}p  {first_line(q.get('prompt')) or '(no prompt)'}{warn}", None
+            prompt = first_line(q.get("prompt"))
+            if t == "chart":
+                prompt = f"[{PRESET_LABEL.get(q.get('preset'), 'Chart').upper()}] " + (
+                    prompt or CHART_DIRECTIONS.get(q.get("layout"), ""))
+            return f"{nums[id(q)]:>3}. {TYPE_TAG[t]:<5}{pts:>3}p  {prompt or '(no prompt)'}{warn}", None
 
         def info():
             pts = sum(points_of(q) for q in qs)
@@ -998,6 +1076,18 @@ class App:
                 return None
             q["text"] = text
             return q
+        if t == "chart":
+            k = ui.choose("WHAT KIND OF CHART?", [label.upper() for _, label, _ in CHART_PRESETS], 0)
+            if k is None:
+                return None
+            chart_preset(q, CHART_PRESETS[k][0])
+            d = ui.edit_text("CHART - DIRECTIONS", "", "DIRECTIONS FOR STUDENTS (OPTIONAL; BLANK PRINTS A SHORT DEFAULT). "
+                                                     "ESC SAVES. NEXT YOU CAN SET LABELS AND SIZE.")
+            if d is None:
+                return None
+            q["prompt"] = d.strip()
+            self.question_editor(a, q)
+            return q
         help_text = {"fill": "TYPE THE SENTENCE. USE ___ (3+ UNDERSCORES) FOR EACH BLANK. ESC SAVES.",
                      "match": "DIRECTIONS FOR THE MATCHING SET (E.G. MATCH EACH TERM TO ITS DEFINITION). ESC SAVES."}
         prompt = ui.edit_text(TYPE_LABEL[t] + " - PROMPT",
@@ -1041,15 +1131,8 @@ class App:
             q["lines"] = int(n) if n and n.isdigit() else 12
         default_pts = {"essay": "10", "match": str(len(q.get("pairs", [])))}.get(t, "1")
         p = ui.prompt("POINTS", default_pts, replace=True)
-        q["points"] = self.parse_points(p, q["points"])
+        q["points"] = parse_points(p, q["points"])
         return q
-
-    def parse_points(self, s, old):
-        try:
-            v = float(s)
-            return int(v) if v.is_integer() else v
-        except (TypeError, ValueError):
-            return old
 
     def question_fields(self, q):
         t = q["type"]
@@ -1071,7 +1154,26 @@ class App:
             f += [("answer", "ANSWER(S) FOR KEY", "line")]
         elif t == "match":
             f += [("pairs", "TERMS & MATCHES", "pairs")]
-        f += [("points", "POINTS" + (" (0 = 1 PER PAIR)" if t == "match" else ""), "num"),
+        elif t == "chart":
+            lay = q.get("layout")
+            f = [("prompt", "DIRECTIONS", "text"), ("preset", "KIND (RESETS LABELS)", "preset")]
+            if lay == "table":
+                f += [("cols", "COLUMNS (1-8)", "int"), ("rows", "ROWS (1-20)", "int"),
+                      ("heads", "COLUMN HEADINGS", "list"), ("sidecol", "LABEL EACH ROW (MATRIX)", "bool"),
+                      ("side", "ROW LABELS", "list")]
+            elif lay == "venn":
+                f += [("circles", "CIRCLES (2 OR 3)", "int"), ("heads", "CIRCLE LABELS", "list")]
+            elif lay == "web":
+                f += [("center", "CENTER TOPIC", "line"), ("rows", "BUBBLES (3-8)", "int"),
+                      ("heads", "BUBBLE LABELS", "list")]
+            elif lay == "sequence":
+                f += [("rows", "BOXES (2-8)", "int"), ("heads", "BOX LABELS", "list")]
+            elif lay == "frayer":
+                f += [("center", "WORD IN THE MIDDLE", "line"), ("heads", "CORNER LABELS", "list")]
+            else:
+                f += [("heads", "STAGE LABELS", "list")]
+            f += [("lines", "SIZE", "size"), ("answer", "KEY NOTES", "text")]
+        f += [("points", "POINTS" + (" (0 = 1 PER PAIR)" if t == "match" else " (0 = NOT SCORED)" if t == "chart" else ""), "num"),
               ("standard", "STANDARD", "std1")]
         return f
 
@@ -1092,6 +1194,12 @@ class App:
                 return SPACE_LABEL.get(v, v)
             if kind == "pairs":
                 return f"{len(v or [])} PAIRS: " + ", ".join(p[0] for p in v or []) if v else "-"
+            if kind == "list":
+                return " / ".join(x or "(blank)" for x in v or []) or "-"
+            if kind == "preset":
+                return PRESET_LABEL.get(v, "-").upper()
+            if kind == "size":
+                return chart_size_label(v or 0).upper()
             if kind in ("int", "num"):
                 return str(v)
             return first_line(v) or "-"
@@ -1110,7 +1218,7 @@ class App:
             elif kind in ("int", "num"):
                 s = ui.prompt(label, str(q.get(key, "")), replace=True)
                 if s is not None:
-                    v = self.parse_points(s, q.get(key)) if kind == "num" else (int(s) if s.isdigit() else q.get(key))
+                    v = parse_points(s, q.get(key)) if kind == "num" else (int(s) if s.isdigit() else q.get(key))
             elif kind == "bool":
                 v = not q.get(key)
             elif kind == "tf":
@@ -1129,6 +1237,22 @@ class App:
                         q["answer"] = j
             elif kind == "pairs":
                 self.pairs_editor(q)
+            elif kind == "list":
+                t = ui.edit_text(label, "\n".join(q.get(key) or []), "ONE PER LINE. ESC SAVES.")
+                if t is not None:
+                    v = [x.strip() for x in t.strip().split("\n")] if t.strip() else []
+            elif kind == "preset":
+                keys = [k for k, _, _ in CHART_PRESETS]
+                j = ui.choose("WHAT KIND OF CHART?", [label.upper() for _, label, _ in CHART_PRESETS],
+                              keys.index(v) if (v := q.get(key)) in keys else None)
+                v = None
+                if j is not None:
+                    chart_preset(q, keys[j])
+            elif kind == "size":
+                j = ui.choose("SIZE", [chart_size_label(n).upper() for n in CHART_SIZES],
+                              CHART_SIZES.index(q.get(key)) if q.get(key) in CHART_SIZES else None)
+                if j is not None:
+                    v = CHART_SIZES[j]
             elif kind == "std1":
                 pool = a.get("standards") or [s["code"] for s in self.std_items(a.get("grades") or self.st["grades"], "",
                                                                                   self.std_subject())]
@@ -1243,7 +1367,7 @@ class App:
             st[fkey] = "PDF"
 
         def fields():
-            f = [("format", f"FORMAT ........ {FORMAT_LABEL[st[fkey]]}")]
+            f = [("format", f"FORMAT ........ {FORMAT_LABEL.get(st[fkey]) or PLUGIN_FORMATS.get(st[fkey], st[fkey]).upper()}")]
             linked = self.store.attached(obj) if kind == "lesson" else []
             if linked:
                 f += [("linked", f"WORKSHEETS .... {len(linked)} LINKED"
@@ -1302,7 +1426,10 @@ class App:
 
     def do_export(self, kind, obj, fmt):
         try:
-            return export(self.store, kind, obj, fmt)
+            files = export(self.store, kind, obj, fmt, progress=ExportBar(self.ui, self.st.get("mascot")))
+            if plugins.problems:
+                self.ui.msg = "?" + "  ".join(plugins.take_problems())
+            return files
         except ExportError as e:
             self.ui.msg = f"?{e}"
             return None
@@ -1332,7 +1459,7 @@ class App:
             f = [("style", f"STYLE ............... {BOARD_STYLES[st['board_style']]}"),
                  ("std_text", "STANDARDS SHOW ...... " + ("CODE + FULL TEXT" if st.get("board_std_text", True) else "CODES ONLY"))]
             for key, label, col in BOARD_SECTIONS:
-                f.append((key, f"[{'X' if key in on else ' '}] {label.upper():<17} ({col.upper()} SIDE)"))
+                f.append((key, f"[{'X' if key in on else ' '}] {label.upper():<19} ({BOARD_SIDES[col].upper()})"))
             return f
 
         def on_open(f, i):
@@ -1459,6 +1586,22 @@ class App:
             return
         ui.msg = f"BACKED UP TO {path}"
 
+    def export_everything(self):
+        ui = self.ui
+        parent = ui.prompt("PUT THE NEW FOLDER WHERE (DRAG A FOLDER HERE)", self.store.export_dir(), raw=True)
+        if not parent:
+            return
+        self.save()
+        try:
+            folder, files, problems = export_everything(self.store, parent,
+                                                        progress=ExportBar(self.ui, self.st.get("mascot")))
+        except ExportError as e:
+            ui.msg = f"?{e}"
+            return
+        ui.msg = f"EXPORTED {len(files)} FILES TO {folder}" + (f"  ({len(problems)} DIDN'T: {problems[0]})" if problems else "")
+        if ui.confirm("OPEN THE FOLDER NOW"):
+            open_path(folder)
+
     def import_backup(self):
         ui = self.ui
         path = ui.prompt("PATH TO A CHALKBOARD BACKUP .JSON FILE (DRAG IT HERE)", raw=True)
@@ -1483,6 +1626,39 @@ class App:
                       f"{got['subjects']} SUBJECTS, {got['standards']} CUSTOM STANDARDS; {got['updated']} UPDATED.")
         ui.msg += f" YOUR OLD WORK IS SAVED IN {got['safety']}"
 
+    def pick_mascot(self):
+        """Browse the pixel-art mascots with the arrow keys; ENTER picks one."""
+        ui, st = self.ui, self.st
+        keys = [None] + list(MASCOTS)
+        i = keys.index(st.get("mascot")) if st.get("mascot") in MASCOTS else 0
+        while True:
+            rows, w, x0 = ui.dims()
+            key = keys[i]
+            ui.begin()
+            ui.header("SCHOOL MASCOT")
+            ui.line(2, "SHOWS UP IN THE BOOT SEQUENCE AND RUNS ALONG THE EXPORT PROGRESS BAR", ui.DIM)
+            y = 4
+            mx = x0 + 5
+            ui.put_sprite(y, mx, sprite(key))
+            ui.put(y + 3, mx - 4, "<", ui.HI)
+            ui.put(y + 3, mx + 19, ">", ui.HI)
+            label = f"GO {mascot_name(key)}!" if key else "NONE (THE CHALKBOARD LOGO RUNS THE EXPORT BAR)"
+            ui.line(y + 10, label, ui.HI)
+            ui.line(y + 12, f"{i + 1} OF {len(keys)}", ui.DIM)
+            ui.footer("LEFT/RIGHT BROWSE   ENTER PICK   ESC CANCEL")
+            ui.show()
+            k = ui.key()
+            if k == curses.KEY_LEFT:
+                i = (i - 1) % len(keys)
+            elif k in (curses.KEY_RIGHT, " "):
+                i = (i + 1) % len(keys)
+            elif k in ("\n", "\r", curses.KEY_ENTER):
+                st["mascot"] = key or ""
+                ui.msg = f"MASCOT SET: {mascot_name(key)}" if key else "NO MASCOT"
+                return
+            elif k in BACK:
+                return
+
     def settings_screen(self):
         ui, st = self.ui, self.st
         fields = [
@@ -1492,6 +1668,7 @@ class App:
             ("subject", "DEFAULT SUBJECT (STANDARDS)", "subject"),
             ("grades", "DEFAULT GRADE BAND", "grades"),
             ("default_materials", "DEFAULT MATERIALS NEEDED", "text"),
+            ("lesson_hide", "LESSON SECTIONS", "sections"),
             ("font", "DOCUMENT FONT", "font"),
             ("page", "PAPER SIZE", "page"),
             ("export_dir", "EXPORT FOLDER", "folder"),
@@ -1504,7 +1681,9 @@ class App:
             ("theme", "SCREEN COLOR", "theme"),
             ("uppercase", "ALL-CAPS MENUS", "bool"),
             ("boot", "BOOT SEQUENCE", "bool"),
+            ("mascot", "SCHOOL MASCOT (BOOT & EXPORT)", "mascot"),
             ("backup_dir", "BACK UP EVERYTHING NOW", "backup"),
+            ("", "EXPORT EVERYTHING (PDF + WORD)", "everything"),
             ("", "IMPORT A BACKUP", "restore"),
         ]
 
@@ -1519,6 +1698,8 @@ class App:
                 img = self.store.logo()
                 v = (f"{img.get('name') or 'LOGO'} ({img['w']}x{img['h']}), {LOGO_PLACES[st.get('logo_place', 'left')]}"
                      if img else "NONE")
+            elif kind == "mascot":
+                v = mascot_name(v) + " ..." if v in MASCOTS else "NONE ..."
             elif kind == "periods":
                 n = len([p for p in st.get("class_periods") or [] if (p.get("codes") or "").strip()])
                 v = f"{n} WITH CODES: ONE BOARD SLIDE EACH ..." if n else "NONE ..."
@@ -1526,8 +1707,13 @@ class App:
                 v = self.store.backup_dir() + (f"  (LAST: {st['last_backup']})" if st.get("last_backup") else "")
             elif kind == "restore":
                 v = "FROM A BACKUP FILE OR ANOTHER COMPUTER'S DATA.JSON"
+            elif kind == "everything":
+                v = "A FOLDER TO KEEP OR DRAG INTO GOOGLE DRIVE ..."
             elif kind == "board":
                 v = BOARD_STYLES.get(v, "") + " ..."
+            elif kind == "sections":
+                n = len([k for k in v or [] if k not in FIXED_FIELDS])
+                v = f"{n} HIDDEN ..." if n else "ALL SHOWN ..."
             elif kind == "grades":
                 v = grade_label(v or ALL)
             elif kind == "text":
@@ -1588,15 +1774,22 @@ class App:
                 st[key] = not st.get(key)
             elif kind == "board":
                 self.board_settings()
+            elif kind == "sections":
+                self.lesson_sections()
             elif kind == "logo":
                 self.logo_settings()
             elif kind == "periods":
                 self.class_periods()
+            elif kind == "mascot":
+                self.pick_mascot()
             elif kind == "backup":
                 self.backup_now()
                 return i
             elif kind == "restore":
                 self.import_backup()
+                return i
+            elif kind == "everything":
+                self.export_everything()
                 return i
             self.save()
             return i
@@ -1609,8 +1802,10 @@ class App:
 def main():
     ap = argparse.ArgumentParser(prog="chalkboard", description="Chalkboard -- retro lesson planner & assessment builder")
     ap.add_argument("--no-boot", action="store_true", help="skip the boot sequence")
+    ap.add_argument("--no-plugins", action="store_true", help="start without plugins")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = ap.parse_args()
+    offline.enforce()  # before anything else runs, plugins included
     os.environ.setdefault("ESCDELAY", "25")
     try:
         curses.wrapper(lambda s: App(s, args).run())

@@ -2,7 +2,12 @@
 """Check Chalkboard's offline promise (SECURITY.md); the release build runs this.
 
 1. No source file imports networking code.
-2. Making a lesson and a quiz with every question type and exporting them in every format opens no
+2. Loading the app pulls in no networking module, not even through the standard library
+   (xml.sax.saxutils, for one, imports urllib).
+3. The guard Chalkboard turns on at startup (chalkboard/offline.py) refuses network connections,
+   other programs, and web addresses, for plugins too, and a plugin that tries is switched off
+   while the rest of Chalkboard carries on.
+4. Making a lesson and a quiz with every question type and exporting them in every format opens no
    network connection and runs no program except the local PNG tools. An audit hook stops the
    process the moment it tries.
 """
@@ -16,7 +21,7 @@ root = pathlib.Path(__file__).resolve().parent.parent
 src = root / "src" / "chalkboard"
 NETWORK = {"socket", "ssl", "http", "urllib", "requests", "ftplib", "smtplib", "poplib", "imaplib", "telnetlib",
            "xmlrpc", "asyncio", "webbrowser", "email"}
-PNG_TOOLS = {"pdftoppm", "mutool", "gs", "gswin64c", "gswin32c", "sips"}
+PNG_TOOLS = {"pdftoppm", "mutool", "gs", "gswin64c", "gswin32c", "sips", "qlmanage", "powershell"}
 
 bad = []
 for f in sorted(src.rglob("*.py")):
@@ -27,6 +32,58 @@ for f in sorted(src.rglob("*.py")):
 if bad:
     sys.exit("network code found:\n  " + "\n  ".join(bad))
 print(f"ok: no networking imports in {len(list(src.rglob('*.py')))} source files")
+
+GUARD_TEST = r"""
+import os, socket, subprocess, sys, urllib.request
+sys.path.insert(0, sys.argv[1])
+os.environ.update(XDG_DATA_HOME=sys.argv[2], APPDATA=sys.argv[2], HOME=sys.argv[2])
+from chalkboard import offline, plugins, exporting
+from chalkboard.store import Store
+offline.enforce()
+tries = {
+    "connect": lambda: socket.create_connection(("192.0.2.1", 80), timeout=1),
+    "dns lookup": lambda: socket.getaddrinfo("example.com", 443),
+    "urllib": lambda: urllib.request.urlopen("http://example.com", timeout=1),
+    "curl": lambda: subprocess.run(["curl", "http://example.com"]),
+    "browser": lambda: subprocess.run(["xdg-open", "https://example.com"]),
+    "shell": lambda: os.system("true"),
+}
+for name, fn in tries.items():
+    try:
+        fn()
+        sys.exit("GUARD MISSED: " + name)
+    except offline.OfflineError:
+        pass
+    except urllib.error.URLError as e:  # urllib wraps the refusal
+        if not isinstance(e.reason, offline.OfflineError):
+            raise
+s = Store()
+d = os.path.join(s.dir, "plugins")
+os.makedirs(d, exist_ok=True)
+open(os.path.join(d, "good.py"), "w").write(
+    "def setup(cb):\n"
+    "    cb.add_export('MD', 'Markdown', '.md', lambda doc, path, item: open(path, 'w').write('# ' + doc['title']))\n"
+    "    import socket\n"
+    "    cb.after_export(lambda paths: socket.create_connection(('192.0.2.1', 80), timeout=1))\n")
+open(os.path.join(d, "broken.py"), "w").write("def setup(cb):\n    raise RuntimeError('oops')\n")
+plugins.load(s.dir)
+assert any("broken.py" in p for p in plugins.problems), plugins.problems
+plugins.take_problems()
+lesson = s.data["lessons"][0] if s.data["lessons"] else None
+from chalkboard import store as st
+lesson = st.new_lesson(s.settings); lesson["title"] = "Guard"
+s.settings["export_dir"] = os.path.join(sys.argv[2], "out")
+files = exporting.export(s, "lesson", lesson, "MD")
+assert files and open(files[0]).read() == "# Guard", files
+assert any("AFTER EXPORT" in p for p in plugins.problems), plugins.problems  # the network try was refused
+print("ok")
+"""
+import subprocess  # noqa: E402
+out = subprocess.run([sys.executable, "-c", GUARD_TEST, str(root / "src"), tempfile.mkdtemp()],
+                     capture_output=True, text=True)
+if out.returncode or out.stdout.strip() != "ok":
+    sys.exit("offline guard test failed:\n" + out.stdout + out.stderr)
+print("ok: the offline guard refuses the network, other programs, and web addresses (plugins too)")
 
 tmp = tempfile.mkdtemp()
 os.environ.update(XDG_DATA_HOME=tmp, APPDATA=tmp, HOME=tmp)
@@ -51,6 +108,12 @@ sys.addaudithook(hook)
 
 from chalkboard import store as st  # noqa: E402
 from chalkboard.exporting import FORMAT_ORDER, ExportError, export  # noqa: E402
+import chalkboard.app  # noqa: E402,F401  (the terminal app; imports curses, not a network module)
+
+loaded = sorted(m for m in sys.modules if m.split(".")[0] in NETWORK)
+if loaded:
+    sys.exit("networking modules got loaded: " + ", ".join(loaded))
+print("ok: loading the app loads no networking module")
 
 s = st.Store()
 s.settings["export_dir"] = os.path.join(tmp, "exports")

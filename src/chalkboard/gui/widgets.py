@@ -1,4 +1,7 @@
-"""Chalkboard's own retro controls, drawn on Tk canvases so both skins look the same everywhere.
+"""Chalkboard's own controls, drawn on Tk canvases so every look (and its dark mode) is the same everywhere.
+
+Every control can be reached and used with the keyboard, and shows a clear focus ring when it has
+the keyboard focus. Colors come from the Skin, whose palettes all meet WCAG AA contrast.
 
 Everything takes the Skin as its second argument. Dialogs are frames inside the main window
 (not separate OS windows), so tiling window managers and native themes leave them alone.
@@ -7,7 +10,8 @@ Everything takes the Skin as its second argument. Dialogs are frames inside the 
 import tkinter as tk
 from tkinter import ttk
 
-from .skin import MAC
+from .skin import MAC, fit
+from ..markup import MARKS, PATTERN, spans, toggle
 
 
 def bg_of(w):
@@ -49,10 +53,10 @@ class Button(tk.Canvas):
         self.skin, self.text, self.command, self.default = skin, text, command, default
         self.enabled, self.pressed, self.inside = True, False, False
         S = skin.S
-        self.font = skin.fsmall if small else skin.fb
+        self.font = skin.fsmall if small else (skin.f if skin.modern else skin.fb)
         h = self.font.metrics("linespace") + (8 if small else 12) * S
         w = max(minwidth * S, self.font.measure(text) + (16 if small else 26) * S)
-        if default and not skin.bevel:
+        if skin.modern or (default and not skin.bevel):  # room for the focus ring (or the default ring)
             w, h = w + 6 * S, h + 6 * S
         super().__init__(parent, width=w, height=h, bg=bg_of(parent), highlightthickness=0, bd=0, takefocus=1)
         self.bind("<Configure>", lambda e: self.draw())
@@ -78,7 +82,7 @@ class Button(tk.Canvas):
 
     def hover(self, inside):
         self.inside = inside
-        if self.pressed:
+        if self.pressed or self.skin.modern:
             self.draw()
 
     def down(self, e):
@@ -106,7 +110,10 @@ class Button(tk.Canvas):
         if w < 4:
             w, h = int(c.cget("width")), int(c.cget("height"))
         down = self.pressed and self.inside
-        fg = sk["text"] if self.enabled else sk["dim"]
+        fg = sk["text"] if self.enabled else sk["off"]
+        if sk.modern:
+            self.draw_modern(w, h, down)
+            return
         if sk.bevel:
             edge = 2 * S if self.default else S
             c.create_rectangle(0, 0, w, h, fill=sk["dark"], outline="")
@@ -124,7 +131,7 @@ class Button(tk.Canvas):
             if self.default:
                 rounded(c, S, S, w - S - 1, h - S - 1, 9 * S, fill=sk["face"], outline=sk["dark"], width=3 * S)
             rounded(c, pad + S, pad + S, w - pad - S - 1, h - pad - S - 1, 6 * S,
-                    fill=sk["dark"] if down else sk["face"], outline=sk["dark"] if self.enabled else sk["dim"],
+                    fill=sk["dark"] if down else sk["face"], outline=sk["dark"] if self.enabled else sk["off"],
                     width=S)
             tx, ty = w // 2, h // 2
             c.create_text(tx, ty, text=self.text, font=self.font,
@@ -132,7 +139,46 @@ class Button(tk.Canvas):
         if self.focus_get() is self and self.enabled:
             tw = self.font.measure(self.text) // 2 + 3 * S
             th = self.font.metrics("linespace") // 2 + S
-            c.create_rectangle(tx - tw, ty - th, tx + tw, ty + th, outline=sk["text"], dash=(1, 1))
+            c.create_rectangle(tx - tw, ty - th, tx + tw, ty + th, outline=sk["focus"], dash=(1, 1))
+
+    def draw_modern(self, w, h, down):
+        """A flat rounded button; the default one is filled with the accent color."""
+        sk, S, c = self.skin, self.skin.S, self
+        r, m = 6 * S, 3 * S
+        if not self.enabled:
+            fill, edge, fg = sk["window"], sk["shadow"], sk["off"]
+        elif self.default:
+            fill = sk["sel"]
+            if down or self.inside:
+                fill = mix_color(fill, "#000000", 0.18 if down else 0.1)
+            edge, fg = fill, sk["seltext"]
+        else:
+            fill = sk["face"]
+            if down or self.inside:
+                fill = mix_color(fill, sk["text"], 0.16 if down else 0.07)
+            edge, fg = sk["edge"], sk["text"]
+        if self.focus_get() is self and self.enabled:
+            rounded(c, S, S, w - S - 1, h - S - 1, r + 2 * S, fill="", outline=sk["focus"], width=2 * S)
+        rounded(c, m, m, w - m - 1, h - m - 1, r, fill=fill, outline=edge, width=S)
+        c.create_text(w // 2, h // 2, text=self.text, font=self.font, fill=fg)
+
+
+def mix_color(a, b, t):
+    from .skin import mix
+    return mix(a, b, t)
+
+
+def focus_ring(c, skin, x0, y0, x1, y1, round_=False):
+    """The keyboard focus mark: a solid ring in Modern, the classic dotted box in the retro looks."""
+    S = skin.S
+    if skin.modern:
+        if round_:
+            c.create_oval(x0 - 3 * S, y0 - 3 * S, x1 + 3 * S, y1 + 3 * S, outline=skin["focus"], width=2 * S)
+        else:
+            rounded(c, x0 - 3 * S, y0 - 3 * S, x1 + 3 * S, y1 + 3 * S, 5 * S, fill="", outline=skin["focus"],
+                    width=2 * S)
+    else:
+        c.create_rectangle(x0, y0, x1, y1, outline=skin["focus"], dash=(1, 1))
 
 
 class _Toggle(tk.Canvas):
@@ -143,10 +189,12 @@ class _Toggle(tk.Canvas):
         self.enabled = True
         S = skin.S
         self.box = skin.line - 2 * S
+        self.x0 = 4 * S if skin.modern else 0  # room for the focus ring
         self.wrap = wrap
         tw = skin.f.measure(text) if not wrap else min(wrap, skin.f.measure(text))
         lines = 1 if not wrap else max(1, -(-skin.f.measure(text) // wrap))
-        super().__init__(parent, width=self.box + 8 * S + tw + 4 * S, height=max(self.box, lines * skin.line) + 6 * S,
+        super().__init__(parent, width=self.x0 + self.box + 8 * S + tw + 4 * S,
+                         height=max(self.box, lines * skin.line) + (8 if skin.modern else 6) * S,
                          bg=bg_of(parent), highlightthickness=0, bd=0, takefocus=1)
         self.trace = var.trace_add("write", lambda *a: self.draw())
         self.bind("<Destroy>", lambda e: self._untrace() if e.widget is self else None)
@@ -175,15 +223,18 @@ class _Toggle(tk.Canvas):
         except tk.TclError:
             return
         b = self.box
-        y0 = 3 * S
-        self.indicator(c, 0, y0, b)
-        fg = sk["text"] if self.enabled else sk["dim"]
-        x = b + 6 * S
-        t = c.create_text(x, y0 + b // 2 - sk.line // 2, text=self.text, font=sk.f, fill=fg, anchor="nw",
-                          width=self.wrap or 0)
+        y0 = 4 * S if sk.modern else 3 * S
+        x = self.x0
+        self.indicator(c, x, y0, b)
+        fg = sk["text"] if self.enabled else sk["off"]
+        t = c.create_text(x + b + 6 * S, y0 + b // 2 - sk.line // 2, text=self.text, font=sk.f, fill=fg,
+                          anchor="nw", width=self.wrap or 0)
         if self.focus_get() is self:
-            x0, y0b, x1, y1 = c.bbox(t)
-            c.create_rectangle(x0 - S, y0b, x1 + S, y1, outline=sk["text"], dash=(1, 1))
+            if sk.modern:
+                focus_ring(c, sk, x + S, y0 + S, x + b - S, y0 + b - S, round_=isinstance(self, Radio))
+            else:
+                x0, y0b, x1, y1 = c.bbox(t)
+                focus_ring(c, sk, x0 - S, y0b, x1 + S, y1)
 
 
 class Check(_Toggle):
@@ -193,11 +244,20 @@ class Check(_Toggle):
 
     def indicator(self, c, x, y, b):
         sk, S = self.skin, self.skin.S
-        c.create_rectangle(x, y, x + b, y + b, fill=sk["field"], outline=sk["dark"], width=S)
-        if self.var.get():
+        on = bool(self.var.get())
+        if sk.modern:
+            fill = sk["sel"] if on and self.enabled else sk["field"]
+            rounded(c, x, y, x + b, y + b, 4 * S, fill=fill, outline=sk["sel"] if on else sk["edge"], width=S)
+            if on:  # a check mark
+                c.create_line(x + b * 0.24, y + b * 0.52, x + b * 0.43, y + b * 0.70, x + b * 0.78, y + b * 0.30,
+                              fill=sk["seltext"] if self.enabled else sk["off"], width=2 * S, capstyle="round",
+                              joinstyle="round")
+            return
+        c.create_rectangle(x, y, x + b, y + b, fill=sk["field"], outline=sk["edge"], width=S)
+        if on:
             m = 3 * S
-            c.create_line(x + m, y + m, x + b - m + S, y + b - m + S, fill=sk["dark"], width=S + 1)
-            c.create_line(x + m, y + b - m, x + b - m + S, y + m - S, fill=sk["dark"], width=S + 1)
+            c.create_line(x + m, y + m, x + b - m + S, y + b - m + S, fill=sk["text"], width=S + 1)
+            c.create_line(x + m, y + b - m, x + b - m + S, y + m - S, fill=sk["text"], width=S + 1)
 
 
 class Radio(_Toggle):
@@ -211,10 +271,18 @@ class Radio(_Toggle):
 
     def indicator(self, c, x, y, b):
         sk, S = self.skin, self.skin.S
-        c.create_oval(x, y, x + b, y + b, fill=sk["field"], outline=sk["dark"], width=S)
-        if self.var.get() == self.value:
+        on = self.var.get() == self.value
+        if sk.modern:
+            c.create_oval(x, y, x + b, y + b, fill=sk["sel"] if on else sk["field"],
+                          outline=sk["sel"] if on else sk["edge"], width=S)
+            if on:
+                m = b // 3
+                c.create_oval(x + m, y + m, x + b - m, y + b - m, fill=sk["seltext"], outline="")
+            return
+        c.create_oval(x, y, x + b, y + b, fill=sk["field"], outline=sk["edge"], width=S)
+        if on:
             m = b // 4 + S
-            c.create_oval(x + m, y + m, x + b - m, y + b - m, fill=sk["dark"], outline=sk["dark"])
+            c.create_oval(x + m, y + m, x + b - m, y + b - m, fill=sk["text"], outline=sk["text"])
 
 
 class Dropdown(tk.Canvas):
@@ -230,7 +298,10 @@ class Dropdown(tk.Canvas):
         self.enabled = True
         chars = width or max([8] + [len(l) for _, l in self.options])
         w = min(skin.f.measure("0") * chars, 520 * S) + skin.line + 16 * S
-        super().__init__(parent, width=w, height=skin.line + 8 * S, bg=bg_of(parent), highlightthickness=0, bd=0,
+        h = skin.line + 8 * S
+        if skin.modern:  # room for the focus ring
+            w, h = w + 6 * S, h + 10 * S
+        super().__init__(parent, width=w, height=h, bg=bg_of(parent), highlightthickness=0, bd=0,
                          takefocus=1)
         self.trace = var.trace_add("write", lambda *a: self.draw())
         self.bind("<Destroy>", lambda e: self._untrace() if e.widget is self else None)
@@ -301,18 +372,31 @@ class Dropdown(tk.Canvas):
         w, h = c.winfo_width(), c.winfo_height()
         if w < 4:
             w, h = int(c.cget("width")), int(c.cget("height"))
-        fg = sk["text"] if self.enabled else sk["dim"]
+        fg = sk["text"] if self.enabled else sk["off"]
+        if sk.modern:
+            m = 3 * S
+            if self.focus_get() is self:
+                rounded(c, S, S, w - S - 1, h - S - 1, 8 * S, fill="", outline=sk["focus"], width=2 * S)
+            rounded(c, m, m, w - m - 1, h - m - 1, 6 * S, fill=sk["field"], outline=sk["edge"], width=S)
+            ax, ay, a = w - m - (h - 2 * m) // 2, h // 2, max(3 * S, h // 8)
+            c.create_line(ax - a, ay - a // 2, ax, ay + a // 2, ax + a, ay - a // 2, fill=fg, width=2 * S,
+                          capstyle="round", joinstyle="round")
+            text, room = self.label(), w - (h - 2 * m) - 10 * S - m
+            while text and sk.f.measure(text) > room:
+                text = (text[:-2] + "…").replace("……", "…") if len(text) > 2 else ""
+            c.create_text(m + 8 * S, h // 2, text=text, font=sk.f, fill=fg, anchor="w")
+            return
         if sk.bevel:
             bw = h
-            c.create_rectangle(0, 0, w - bw, h - 1, fill=sk["field"], outline=sk["dark"], width=S)
+            c.create_rectangle(0, 0, w - bw, h - 1, fill=sk["field"], outline=sk["edge"], width=S)
             c.create_rectangle(w - bw, 0, w - 1, h - 1, fill=sk["dark"], outline="")
             bevel_box(c, w - bw + S, S, w - S - 1, h - S - 1, sk)
             ax, ay, a = w - bw // 2, h // 2, max(3 * S, h // 6)
             c.create_polygon(ax - a, ay - a // 2, ax + a, ay - a // 2, ax, ay + a // 2 + S, fill=fg, outline=fg)
             tx = 5 * S
         else:
-            c.create_rectangle(S, S, w - 1, h - 1, fill=sk["dark"], outline="")
-            c.create_rectangle(0, 0, w - S - 1, h - S - 1, fill=sk["field"], outline=sk["dark"], width=S)
+            c.create_rectangle(S, S, w - 1, h - 1, fill=sk["edge"], outline="")
+            c.create_rectangle(0, 0, w - S - 1, h - S - 1, fill=sk["field"], outline=sk["edge"], width=S)
             ax, ay, a = w - h // 2 - S, h // 2, max(3 * S, h // 6)
             c.create_polygon(ax - a, ay - a // 2, ax + a, ay - a // 2, ax, ay + a // 2 + S, fill=fg, outline=fg)
             bw = h
@@ -334,29 +418,122 @@ def skin_menu(m, skin):
     if MAC:
         return
     m.configure(bg=skin["menu"], fg=skin["text"], activebackground=skin["sel"], activeforeground=skin["seltext"],
-                font=skin.fb if not skin.bevel else skin.f, relief="solid", bd=skin.S, activeborderwidth=0,
-                selectcolor=skin["text"], disabledforeground=skin["dim"])
+                font=skin.fb if skin.kind == "pinstripe" else skin.f, relief="solid", bd=skin.S, activeborderwidth=0,
+                selectcolor=skin["text"], disabledforeground=skin["off"])
 
 
 def entry(parent, skin, var, width=20, **kw):
     S = skin.S
     e = tk.Entry(parent, textvariable=var, width=width, font=skin.f, bg=skin["field"], fg=skin["text"],
-                 relief="flat", bd=3 * S, highlightthickness=S, highlightbackground=skin["dark"],
-                 highlightcolor=skin["dark"], insertbackground=skin["text"], insertwidth=max(2, S + 1),
-                 selectbackground=skin["sel"], selectforeground=skin["seltext"], disabledbackground=skin["face"],
-                 disabledforeground=skin["dim"], readonlybackground=skin["face"], **kw)
+                 relief="flat", bd=(5 if skin.modern else 3) * S, highlightthickness=ring(skin),
+                 highlightbackground=skin["edge"], highlightcolor=skin["focus"], insertbackground=skin["text"],
+                 insertwidth=max(2, S + 1), selectbackground=skin["sel"], selectforeground=skin["seltext"],
+                 disabledbackground=skin["window"], disabledforeground=skin["off"],
+                 readonlybackground=skin["window"], **kw)
     return e
+
+
+def ring(skin):
+    """Outline width of text boxes. Modern's is thick enough that its focus color reads as a focus ring."""
+    return 2 * skin.S if skin.modern else skin.S
 
 
 def textbox(parent, skin, height=3, width=40, **kw):
     S = skin.S
     opts = dict(height=height, width=width, wrap="word", font=skin.f, bg=skin["field"], fg=skin["text"],
-                relief="flat", bd=0, padx=4 * S, pady=3 * S, highlightthickness=S, highlightbackground=skin["dark"],
-                highlightcolor=skin["dark"], insertbackground=skin["text"], insertwidth=max(2, S + 1),
+                relief="flat", bd=0, padx=(6 if skin.modern else 4) * S, pady=(4 if skin.modern else 3) * S,
+                highlightthickness=ring(skin), highlightbackground=skin["edge"],
+                highlightcolor=skin["focus"], insertbackground=skin["text"], insertwidth=max(2, S + 1),
                 selectbackground=skin["sel"], selectforeground=skin["seltext"], undo=True, maxundo=200,
                 spacing1=S, spacing3=S)
     opts.update(kw)
-    return tk.Text(parent, **opts)
+    t = tk.Text(parent, **opts)
+    formatting(t, skin)
+    return t
+
+
+def formatting(t, skin):
+    """**bold**, *italic*, __underline__ in a text box, like the terminal editor: Ctrl-B/I/U
+    (Ctrl-T too, and Cmd on a Mac) wrap the selection or the word at the cursor, and the text
+    shows its formatting with the marks dimmed."""
+    from tkinter import font as tkfont
+    fonts = getattr(skin, "_rich", None)
+    if fonts is None:
+        base = tkfont.Font(font=t.cget("font")).actual()
+        fonts = skin._rich = {k: tkfont.Font(t, **dict(base, **v)) for k, v in
+                              {"b": {"weight": "bold"}, "i": {"slant": "italic"},
+                               "bi": {"weight": "bold", "slant": "italic"}}.items()}
+    t.tag_configure("mark", foreground=skin["dim"])
+    for k, f in fonts.items():
+        t.tag_configure(k, font=f)
+    t.tag_configure("u", underline=True)
+    pending = []
+
+    def restyle():
+        pending.clear()
+        try:
+            buf = t.get("1.0", "end-1c")
+            for tag in ("mark", "b", "i", "bi", "u"):
+                t.tag_remove(tag, "1.0", "end")
+        except tk.TclError:  # the box is gone
+            return
+        for a, b, kind in spans(buf):
+            ia, ib = f"1.0+{a}c", f"1.0+{b}c"
+            if kind == "mark":
+                t.tag_add("mark", ia, ib)
+                continue
+            face = "".join(k for k in "bi" if k in kind)
+            if face:
+                t.tag_add(face, ia, ib)
+            if "u" in kind:
+                t.tag_add("u", ia, ib)
+
+    def later(e=None):
+        if not pending:
+            pending.append(t.after_idle(restyle))
+
+    def mark(kind):
+        if str(t.cget("state")) == "disabled":
+            return "break"
+        buf = t.get("1.0", "end-1c")
+        if t.tag_ranges("sel"):  # wrap (or unwrap) exactly what's selected
+            a = len(t.get("1.0", "sel.first"))
+            b = a + len(t.get("sel.first", "sel.last"))
+            m = PATTERN.fullmatch(buf[a:b])
+            core = m.group(kind) if m and m.lastgroup == kind else None
+            new = core if core is not None else MARKS[kind] + buf[a:b] + MARKS[kind]
+            new_buf, pos = buf[:a] + new + buf[b:], a + len(new)
+        else:
+            new_buf, pos = toggle(buf, len(t.get("1.0", "insert")), kind)
+        # replace only the part that changed, so undo and scrolling behave
+        i = 0
+        while i < min(len(buf), len(new_buf)) and buf[i] == new_buf[i]:
+            i += 1
+        j = 0
+        while j < min(len(buf), len(new_buf)) - i and buf[-1 - j] == new_buf[-1 - j]:
+            j += 1
+        auto = t.cget("autoseparators")
+        t.configure(autoseparators=False)  # one undo step, not a delete and an insert
+        t.edit_separator()
+        t.delete(f"1.0+{i}c", f"1.0+{len(buf) - j}c")
+        t.insert(f"1.0+{i}c", new_buf[i:len(new_buf) - j])
+        t.edit_separator()
+        t.configure(autoseparators=auto)
+        t.tag_remove("sel", "1.0", "end")
+        t.mark_set("insert", f"1.0+{pos}c")
+        restyle()
+        return "break"
+
+    mod = "Command" if MAC else "Control"
+    for key, kind in (("b", "b"), ("i", "i"), ("u", "u"), ("t", "i")):
+        t.bind(f"<{mod}-{key}>", lambda e, k=kind: mark(k))
+        if MAC:
+            t.bind(f"<Control-{key}>", lambda e, k=kind: mark(k))
+    t.bind("<KeyRelease>", later, add="+")
+    t.bind("<ButtonRelease-2>", later, add="+")
+    t.bind("<<Paste>>", later, add="+")
+    t.restyle = later
+    later()
 
 
 def label(parent, skin, text="", bold=False, dim=False, small=False, wrap=0, **kw):
@@ -371,6 +548,10 @@ def frame(parent, skin, bg=None, **kw):
 
 def group(parent, skin, title):
     S = skin.S
+    if skin.modern:  # a card with its title inside
+        return tk.LabelFrame(parent, text=title, font=skin.fb, bg=skin["card"], fg=skin["text"], relief="flat",
+                             bd=0, highlightthickness=S, highlightbackground=skin["shadow"],
+                             highlightcolor=skin["shadow"], padx=12 * S, pady=8 * S, labelanchor="nw")
     return tk.LabelFrame(parent, text=f" {title} ", font=skin.fb, bg=bg_of(parent), fg=skin["text"],
                          relief="groove" if skin.bevel else "solid", bd=2 * S if skin.bevel else S,
                          padx=8 * S, pady=6 * S, labelanchor="nw")
@@ -384,7 +565,7 @@ class ListView(tk.Frame):
 
     def __init__(self, parent, skin, columns, height=10, tree=False, selectmode="browse"):
         S = skin.S
-        super().__init__(parent, bg=skin["dark"], padx=S, pady=S)
+        super().__init__(parent, bg=skin["edge"], padx=S, pady=S)
         self.skin = skin
         self.tv = ttk.Treeview(self, columns=[c[0] for c in columns], height=height, selectmode=selectmode,
                                show=("tree", "headings") if tree else ("headings",))
@@ -511,7 +692,7 @@ class TitleBar(tk.Canvas):
         self.dialog = dialog
         self.active = True
         S = skin.S
-        h = skin.line + (8 if skin.bevel else 6) * S
+        h = skin.line + (14 if skin.modern else 8 if skin.bevel else 6) * S
         super().__init__(parent, height=h, bg=skin["title"], highlightthickness=0, bd=0)
         self.boxes = []
         self.bind("<Configure>", lambda e: self.draw())
@@ -533,6 +714,15 @@ class TitleBar(tk.Canvas):
         c.delete("all")
         w, h = c.winfo_width(), c.winfo_height()
         self.boxes = []
+        if sk.modern:  # only dialogs have one; the main window uses the OS's title bar
+            c.create_rectangle(0, 0, w, h, fill=sk["title"], outline="")
+            c.create_text(14 * S, h // 2, text=self.title, font=sk.ftitle, fill=sk["title_text"], anchor="w")
+            if self.on_close:
+                cx, cy, a = w - h // 2 - 4 * S, h // 2, max(4 * S, h // 7)
+                c.create_line(cx - a, cy - a, cx + a, cy + a, fill=sk["dim"], width=2 * S, capstyle="round")
+                c.create_line(cx - a, cy + a, cx + a, cy - a, fill=sk["dim"], width=2 * S, capstyle="round")
+                self.boxes.append((w - h - 4 * S, w, self.on_close))
+            return
         if sk.bevel:
             c.create_rectangle(0, 0, w, h, fill=sk["title"] if self.active else sk["title_off"], outline="")
             left = 0
@@ -553,7 +743,7 @@ class TitleBar(tk.Canvas):
                     cx, cy, a = (x0 + x1) // 2 + S // 2, h // 2, h // 5
                     pts = (cx - a, cy + a // 2, cx + a, cy + a // 2, cx, cy - a // 2 - S) if up else \
                         (cx - a, cy - a // 2, cx + a, cy - a // 2, cx, cy + a // 2 + S)
-                    c.create_polygon(pts, fill=sk["dark"], outline=sk["dark"])
+                    c.create_polygon(pts, fill=sk["text"], outline=sk["text"])
                     self.boxes.append((x0, x1, fn))
                     right = x0
             c.create_text((left + right) // 2, h // 2, text=self.title, font=sk.ftitle,
@@ -587,8 +777,12 @@ class Window(tk.Frame):
     """A framed window with a title bar and an optional status line. Put content in .body."""
 
     def __init__(self, parent, skin, title, on_close=None, on_zoom=None, on_min=None, dialog=False, status=True):
+        self._parent = parent
         S = skin.S
         self.skin = skin
+        if skin.modern:
+            self.build_modern(title, on_close, dialog, status)
+            return
         super().__init__(parent, bg=skin["dark"], padx=S, pady=S)
         inner = self
         if skin.bevel:
@@ -622,6 +816,29 @@ class Window(tk.Frame):
         self.body = tk.Frame(inner, bg=skin["window"])
         self.body.pack(fill="both", expand=True)
 
+    def build_modern(self, title, on_close, dialog, status):
+        """No drawn frame: the OS's own title bar is above. Dialogs get a thin border and a title row."""
+        sk, S = self.skin, self.skin.S
+        tk.Frame.__init__(self, self._parent, bg=sk["edge"] if dialog else sk["window"],
+                          padx=S if dialog else 0, pady=S if dialog else 0)
+        self.titlebar = TitleBar(self, sk, title, on_close, None, None, dialog)
+        if dialog:
+            self.titlebar.pack(side="top", fill="x")
+            tk.Frame(self, bg=sk["shadow"], height=S).pack(side="top", fill="x")
+        self.status_var = tk.StringVar()
+        self.status_right = tk.StringVar()
+        self.statusbar = None
+        if status:
+            bar = tk.Frame(self, bg=sk["window"], padx=8 * S, pady=3 * S)
+            bar.pack(side="bottom", fill="x")
+            tk.Frame(self, bg=sk["shadow"], height=S).pack(side="bottom", fill="x")
+            for var, side in ((self.status_var, "left"), (self.status_right, "right")):
+                tk.Label(bar, textvariable=var, font=sk.fsmall, bg=sk["window"], fg=sk["dim"], anchor="w").pack(
+                    side=side, fill="x", expand=side == "left")
+            self.statusbar = bar
+        self.body = tk.Frame(self, bg=sk["window"])
+        self.body.pack(fill="both", expand=True)
+
     def set_title(self, t):
         self.titlebar.set_title(t)
 
@@ -630,6 +847,28 @@ class Window(tk.Frame):
             self.status_var.set(left)
         if right is not None:
             self.status_right.set(right)
+
+    def progress(self, frac):
+        """A progress bar in the status bar (0.0-1.0); None hides it."""
+        if self.statusbar is None:
+            return
+        sk, S = self.skin, self.skin.S
+        bar = getattr(self, "_progress", None)
+        if frac is None:
+            if bar:
+                bar.pack_forget()
+            return
+        w, h = 160 * S, 12 * S
+        if bar is None:
+            bar = self._progress = tk.Canvas(self.statusbar, width=w, height=h, highlightthickness=0, bd=0,
+                                             bg=sk["trough"])
+            # the fill must stand out 3:1 from its track (WCAG 1.4.11), in every look, light or dark
+            fill = fit(sk["sel"], [sk["trough"]], 3.0)
+            bar.create_rectangle(0, 0, 0, h, fill=fill, outline="", tags="fill")
+            bar.create_rectangle(0, 0, w - 1, h - 1, outline=sk["edge"], tags="edge")
+        if not bar.winfo_ismapped():
+            bar.pack(side="right", padx=(0, 6 * S))
+        bar.coords("fill", 0, 0, round(w * max(0.0, min(1.0, frac))), h)
 
 
 class Dialog:
@@ -641,9 +880,10 @@ class Dialog:
         S = self.skin.S
         root = gui.root
         self.shadow = None
-        if not self.skin.bevel:
+        if self.skin.kind == "pinstripe":
             self.shadow = tk.Frame(root, bg=self.skin["dark"])
-        self.win = Window(root, self.skin, title, on_close=(lambda: self.close(self.cancel_value)) if self.skin.bevel else None,
+        closable = self.skin.bevel or self.skin.modern
+        self.win = Window(root, self.skin, title, on_close=(lambda: self.close(self.cancel_value)) if closable else None,
                           dialog=True, status=False)
         self.body = tk.Frame(self.win.body, bg=self.skin["window"], padx=14 * S, pady=12 * S)
         self.body.pack(fill="both", expand=True)

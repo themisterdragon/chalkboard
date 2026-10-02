@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build dist/Chalkboard-macOS.zip: a double-clickable Chalkboard.app (runs in Terminal)."""
+"""Build dist/Chalkboard-Terminal-macOS.zip: a double-clickable Chalkboard Terminal.app (runs in Terminal)."""
 import pathlib
 import re
 import runpy
@@ -12,7 +12,7 @@ mac = root / "macos"
 runpy.run_path(str(root / "scripts" / "build_pyz.py"))
 version = re.search(r'__version__ = "([^"]+)"', (root / "src" / "chalkboard" / "__init__.py").read_text()).group(1)
 
-app = "Chalkboard.app/Contents/"
+app = "Chalkboard Terminal.app/Contents/"
 files = [  # path in zip, bytes, executable
     (app + "Info.plist", (mac / "Info.plist").read_text().replace("@VERSION@", version).encode(), False),
     (app + "PkgInfo", b"APPL????", False),
@@ -21,7 +21,7 @@ files = [  # path in zip, bytes, executable
     (app + "Resources/Chalkboard.icns", (mac / "Chalkboard.icns").read_bytes(), False),
     ("Read Me First.txt", (mac / "Read Me First.txt").read_bytes(), False),
 ]
-out = dist / "Chalkboard-macOS.zip"
+out = dist / "Chalkboard-Terminal-macOS.zip"
 stamp = time.localtime()[:6]
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     dirs = sorted({p.rsplit("/", i)[0] + "/" for p, _, _ in files for i in range(1, p.count("/") + 1)})

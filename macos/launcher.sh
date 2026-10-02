@@ -1,5 +1,5 @@
 #!/bin/sh
-# Chalkboard.app/Contents/MacOS/Chalkboard
+# Chalkboard Terminal.app/Contents/MacOS/Chalkboard
 # Chalkboard is a full-screen terminal program, so the app just opens a
 # Terminal window running the bundled chalkboard.pyz.
 

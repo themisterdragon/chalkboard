@@ -1,5 +1,6 @@
 """Local storage for lessons, assessments, settings, and the standards library."""
 
+import copy
 import csv
 import io
 import json
@@ -49,13 +50,17 @@ DEFAULT_SETTINGS = {
     "theme": "green",
     "uppercase": True,
     "boot": True,
+    "mascot": "",
     "export_dir": "",
     "export_format": "PDF",
     "export_include": "BOTH",
     "export_versions": 1,
     "lesson_export_format": "PDF",
     "board_style": "chalk",
-    "board_sections": ["standards", "targets", "success", "bell_ringer", "materials", "homework", "class_codes"],
+    "board_sections": ["question", "standards", "targets", "success", "vocab", "bell_ringer", "materials", "homework",
+                       "class_codes"],
+    "board_v": 2,  # 2: Essential Question and Vocabulary exist (older files get them switched on once)
+    "lesson_hide": ["question", "vocab"],  # lesson sections hidden in the editors (Settings > Lesson Sections)
     "board_std_text": True,
     "primary_color": "",
     "secondary_color": "",
@@ -80,15 +85,18 @@ SORTS = {"updated": "DATE MODIFIED", "created": "DATE CREATED", "title": "TITLE 
 
 BOARD_SECTIONS = [
     # lesson key, heading on the slide, column
+    ("question", "Essential Question", "top"),
     ("standards", "Standards", "left"),
     ("targets", "I Can...", "left"),
     ("success", "Success Criteria", "left"),
     ("bell_ringer", "Bell Ringer", "right"),
     ("materials", "Materials", "right"),
+    ("vocab", "Words to Know", "right"),
     ("homework", "Homework", "right"),
     ("closure", "Exit Ticket", "right"),
     ("class_codes", "Class Codes", "right"),  # from Settings > Class Periods, not the lesson
 ]
+BOARD_SIDES = {"top": "across the top", "left": "left side", "right": "right side"}
 LOGO_PLACES = {"left": "LEFT OF THE TITLE", "right": "TOP RIGHT CORNER"}
 LOGO_FILE = "logo.json"
 
@@ -126,8 +134,6 @@ def parse_hex(s):
         s = "".join(c * 2 for c in s)
     return "#" + s.upper() if re.fullmatch(r"[0-9a-fA-F]{6}", s) else None
 
-CSV_COLUMNS = ("subject", "code", "grades", "strand", "cluster", "part_of", "text")
-
 
 def clean_path(path):
     """A path typed or dragged into the terminal: drop surrounding quotes and backslash-escaped spaces."""
@@ -157,6 +163,8 @@ def write_private(path, obj):
 def normalize_data(d):
     """Fill in anything an older (or hand-copied) data file is missing."""
     settings = dict(DEFAULT_SETTINGS)
+    if isinstance(d.get("settings"), dict) and d["settings"]:
+        d["_raw_settings"] = d["settings"]
     settings.update(d.get("settings") or {})
     d["settings"] = settings
     for k in ("lessons", "assessments", "custom_standards"):
@@ -166,6 +174,13 @@ def normalize_data(d):
         x.setdefault("created", x.get("updated", ""))
     for l in d["lessons"]:
         l.setdefault("assessments", [])
+    old = d.get("_raw_settings")
+    if old is not None and old.get("board_v", 1) < 2:
+        on = settings["board_sections"]
+        for key, after in (("question", None), ("vocab", "success")):
+            if key not in on:
+                on.insert(on.index(after) + 1 if after in on else (0 if after is None else len(on)), key)
+    d.pop("_raw_settings", None)
     return d
 
 
@@ -310,8 +325,10 @@ LESSON_FIELDS = [
     ("date", "Date(s)", "line"),
     ("duration", "Duration", "line"),
     ("standards", "Standards", "standards"),
+    ("question", "Essential Question", "text"),
     ("targets", "Learning Targets (I can...)", "text"),
     ("success", "Success Criteria", "text"),
+    ("vocab", "Vocabulary", "vocab"),
     ("materials", "Materials & Texts", "text"),
     ("bell_ringer", "Bell Ringer / Warm-Up", "text"),
     ("instruction", "Direct Instruction (I Do)", "text"),
@@ -341,12 +358,56 @@ QUESTION_TYPES = [
     ("essay", "EXTENDED RESPONSE", "prompt + lined, blank, or boxed space"),
     ("fill", "FILL IN THE BLANK", "use ___ for each blank"),
     ("match", "MATCHING", "terms + shuffled definitions"),
+    ("chart", "CHART / ORGANIZER", "chart, Venn diagram, idea web, sequence, Frayer, plot"),
     ("passage", "READING PASSAGE", "a text block with line numbers (not scored)"),
     ("section", "SECTION HEADER", "titled part with directions (not scored)"),
 ]
 TYPE_LABEL = {t: label for t, label, _ in QUESTION_TYPES}
 TYPE_TAG = {"mc": "MC", "tf": "T/F", "short": "SA", "essay": "ER", "fill": "FIB",
-            "match": "MAT", "passage": "TEXT", "section": "SECT"}
+            "match": "MAT", "chart": "ORG", "passage": "TEXT", "section": "SECT"}
+
+# Graphic organizers students fill in. Each starting point sets a layout and its labels;
+# the teacher can change any of them afterward.
+#   layout: table (rows & columns, optional row-label column), venn, web, sequence, frayer, plot
+#   cols/rows: table size; rows is also the number of web bubbles or sequence boxes
+#   heads: column headings / circle / bubble / box / corner / stage labels; side: row labels
+FRAYER_HEADS = ["Definition", "Characteristics", "Examples", "Non-Examples"]
+PLOT_HEADS = ["Exposition", "Rising Action", "Climax", "Falling Action", "Resolution"]
+CHART_PRESETS = [
+    # key, label, settings
+    ("chart", "Chart (rows & columns)", {"layout": "table", "cols": 3, "rows": 4, "heads": [], "sidecol": False}),
+    ("matrix", "Matrix (labeled rows & columns)", {"layout": "table", "cols": 3, "rows": 3, "heads": [],
+                                                    "sidecol": True}),
+    ("tchart", "T-Chart", {"layout": "table", "cols": 2, "rows": 1, "heads": ["", ""], "sidecol": False}),
+    ("kwl", "K-W-L", {"layout": "table", "cols": 3, "rows": 1, "sidecol": False,
+                      "heads": ["What I Know", "What I Want to Know", "What I Learned"]}),
+    ("cause", "Cause & Effect", {"layout": "table", "cols": 2, "rows": 4, "heads": ["Cause", "Effect"],
+                                 "sidecol": False}),
+    ("swbst", "Somebody-Wanted-But-So-Then", {"layout": "table", "cols": 5, "rows": 1, "sidecol": False,
+                                              "heads": ["Somebody", "Wanted", "But", "So", "Then"]}),
+    ("venn2", "Venn diagram (2 circles)", {"layout": "venn", "circles": 2, "heads": []}),
+    ("venn3", "Venn diagram (3 circles)", {"layout": "venn", "circles": 3, "heads": []}),
+    ("web", "Idea web", {"layout": "web", "rows": 6, "heads": [], "center": ""}),
+    ("sequence", "Sequence / flow chart", {"layout": "sequence", "rows": 4, "heads": ["First", "Next", "Then", "Last"]}),
+    ("frayer", "Frayer model", {"layout": "frayer", "heads": list(FRAYER_HEADS), "center": ""}),
+    ("plot", "Plot diagram", {"layout": "plot", "heads": list(PLOT_HEADS)}),
+]
+CHART_DIRECTIONS = {"table": "Complete the chart.", "venn": "Compare and contrast using the Venn diagram.",
+                    "web": "Complete the idea web.", "sequence": "Fill in each step in order.",
+                    "frayer": "Complete the Frayer model.", "plot": "Complete the plot diagram."}
+CHART_SIZES = [0, -1, 6, 8, 10, 12, 15, 18, 20, 24, 30]   # 0 = automatic, -1 = fill the rest of the page
+
+
+def chart_preset(q, key):
+    """Apply a starting point to a chart question (keeps its directions, size, points, standard)."""
+    for k, _, settings in CHART_PRESETS:
+        if k == key:
+            q.update(copy.deepcopy(settings), preset=key)
+    return q
+
+
+def chart_size_label(n):
+    return {0: "Automatic", -1: "Fill the rest of the page"}.get(n, f"{n} lines (about {round(n / 3, 1):g} in)")
 
 
 def new_id():
@@ -357,8 +418,38 @@ def now():
     return time.strftime("%Y-%m-%d %H:%M")
 
 
+# Always in the editors; every other lesson section can be hidden in Settings > Lesson Sections.
+FIXED_FIELDS = ("title", "unit", "course", "date", "duration", "standards")
+VOCAB_HINT = "One word per line: word: definition"
+
+
+def has_content(lesson, key):
+    v = lesson.get(key)
+    return bool(v) if isinstance(v, list) else bool((v or "").strip())
+
+
+def shown_fields(settings, lesson):
+    """The lesson sections the editors show: hidden ones come back while they have something in them,
+    so nothing that prints is ever out of sight."""
+    hide = set(settings.get("lesson_hide") or [])
+    return [f for f in LESSON_FIELDS if f[0] not in hide or has_content(lesson, f[0])]
+
+
+def vocab_pairs(text):
+    """'word: definition' lines (or 'word - definition') -> [(word, definition)]. Bullets are fine."""
+    out = []
+    for line in (text or "").split("\n"):
+        s = re.sub(r"^[-*•]\s+", "", line.strip())
+        if not s:
+            continue
+        m = re.match(r"^(.+?)\s*(?::|\s[-–—]\s)\s*(.*)$", s)
+        word, definition = (m.group(1), m.group(2)) if m else (s, "")
+        out.append((word.strip(), definition.strip()))
+    return out
+
+
 def new_lesson(settings):
-    d = {k: "" for k, _, kind in LESSON_FIELDS if kind in ("text", "line")}
+    d = {k: "" for k, _, kind in LESSON_FIELDS if kind in ("text", "line", "vocab")}
     d.update(id=new_id(), standards=[], assessments=[], course=settings.get("course", ""),
              grades=settings.get("grades", "9-10"), materials=settings.get("default_materials", ""),
              created=now(), updated=now())
@@ -393,6 +484,9 @@ def new_question(qtype, default_std=""):
         q.update(answer="")
     elif qtype == "match":
         q.update(pairs=[], points=0)
+    elif qtype == "chart":
+        q.update(layout="table", cols=3, rows=4, circles=2, heads=[], side=[], sidecol=False, center="",
+                 lines=0, answer="", points=0, preset="chart")
     elif qtype == "passage":
         q.update(title="", text="", numbered=True, points=0)
     elif qtype == "section":
@@ -409,6 +503,15 @@ def points_of(q):
         return float(q.get("points") or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def parse_points(s, old):
+    """Typed points as an int or float; old if it isn't a number."""
+    try:
+        v = float(s)
+        return int(v) if v.is_integer() else v
+    except (TypeError, ValueError):
+        return old
 
 
 def fmt_points(p):
@@ -610,6 +713,23 @@ class Store:
     def attached(self, lesson):
         """The assessments and worksheets linked to a lesson, in the lesson's order."""
         return [a for a in map(self.assessment, lesson.get("assessments") or []) if a]
+
+    def vocab_quiz(self, lesson):
+        """A new quiz with one Matching question built from the lesson's vocabulary, linked to the lesson.
+        None when there are fewer than two words with definitions."""
+        pairs = [[w, d] for w, d in vocab_pairs(lesson.get("vocab")) if w and d]
+        if len(pairs) < 2:
+            return None
+        title = (lesson.get("title") or "").strip()
+        q = new_question("match")
+        q.update(prompt="Match each word with its definition.", pairs=pairs)
+        a = new_assessment(self.settings, "Quiz")
+        a.update(title=f"{title} Vocabulary Quiz" if title else "Vocabulary Quiz", unit=lesson.get("unit", ""),
+                 course=lesson.get("course", ""), grades=lesson.get("grades") or a["grades"], questions=[q])
+        self.data["assessments"].append(a)
+        lesson.setdefault("assessments", []).append(a["id"])
+        lesson["updated"] = now()
+        return a
 
     def units(self, items):
         return sorted({(x.get("unit") or "").strip() for x in items} - {""}, key=unit_sort_key)

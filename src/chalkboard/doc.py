@@ -3,7 +3,7 @@
 Every exporter (PDF, DOCX, TXT) renders the same block list:
 
   title, subtitle, fields, h1, p, bullet, kv, q, choice, choice_inline,
-  lines, blank, box, answer, match, passage, space, rule
+  lines, blank, box, answer, match, organizer, passage, space, rule
 
 (makeup_doc also uses "check", a checkbox step heading, and "pad" to indent p/bullet blocks.
 The fixed-layout sheets use "grid", a ruled chart, and "days", a stack of day boxes; both
@@ -14,8 +14,9 @@ import copy
 import random
 import re
 
-from .store import (ANNOTATION, ANNOTATION_COLS, BELL_SHEET, BOARD_SECTIONS, LESSON_FIELDS, WEEKDAYS,
-                    fmt_points, points_of)
+from .organizers import auto_lines
+from .store import (ANNOTATION, ANNOTATION_COLS, BELL_SHEET, BOARD_SECTIONS, CHART_DIRECTIONS, LESSON_FIELDS,
+                    WEEKDAYS, fmt_points, points_of, vocab_pairs)
 
 LETTERS = "ABCDEFGHIJ"
 BLANK_RE = re.compile(r"_{3,}")
@@ -36,6 +37,12 @@ def text_blocks(value, style="normal"):
         else:
             out.append({"t": "p", "text": s, "style": style})
     return out
+
+
+def vocab_blocks(value):
+    """Vocabulary as bold 'word:' labels and their definitions."""
+    return [{"t": "kv", "label": w + ":", "text": d} if d else {"t": "p", "text": w, "style": "bold"}
+            for w, d in vocab_pairs(value)]
 
 
 def norm_blanks(s):
@@ -60,10 +67,10 @@ def lesson_doc(lesson, store):
         if kind == "attached" and store.attached(lesson):
             blocks.append({"t": "h1", "text": label})
             blocks += [{"t": "bullet", "text": handout_name(a)} for a in store.attached(lesson)]
-        if kind != "text" or not (lesson.get(key) or "").strip():
+        if kind not in ("text", "vocab") or not (lesson.get(key) or "").strip():
             continue
         blocks.append({"t": "h1", "text": label})
-        blocks += text_blocks(lesson[key])
+        blocks += vocab_blocks(lesson[key]) if kind == "vocab" else text_blocks(lesson[key])
     footer = " - ".join(x for x in (st.get("teacher"), lesson.get("course"), st.get("school")) if x)
     return {"title": lesson.get("title") or "Untitled Lesson", "footer": footer, "blocks": blocks}
 
@@ -96,12 +103,13 @@ def makeup_doc(lesson, store):
                    "text": f"We missed you! This is what we did in class{when}. Work through each step "
                            f"below, check it off when you finish, and turn everything in by the due date.{ask}"})
     handouts = [{"t": "bullet", "text": handout_name(a)} for a in store.attached(lesson)]
-    for key, label in (("targets", "Today's Goals"), ("success", "How You'll Know You've Got It"),
+    for key, label in (("question", "Today's Big Question"), ("targets", "Today's Goals"),
+                       ("success", "How You'll Know You've Got It"), ("vocab", "Words to Know"),
                        ("materials", "What You'll Need")):
         extra = handouts if key == "materials" else []
         if (lesson.get(key) or "").strip() or extra:
             blocks.append({"t": "h1", "text": label})
-            blocks += text_blocks(lesson.get(key)) + extra
+            blocks += (vocab_blocks if key == "vocab" else text_blocks)(lesson.get(key)) + extra
             if key == "targets" and lesson.get("standards"):
                 blocks.append({"t": "p", "style": "small", "text": "Standards: " + ", ".join(lesson["standards"])})
     steps = [(k, label, n) for k, label, n in MAKEUP_STEPS if (lesson.get(k) or "").strip()]
@@ -136,29 +144,32 @@ def board_doc(lesson, store, period=None):
     period: one of Settings > Class Periods; its codes fill the Class Codes panel."""
     st = store.settings
     wanted = st.get("board_sections") or []
-    cols = {"left": [], "right": []}
+    cols = {"top": [], "left": [], "right": []}
     for key, label, col in BOARD_SECTIONS:
         if key not in wanted:
             continue
         if key == "class_codes":
             if period and code_blocks(period.get("codes")):
-                cols[col].append({"key": key, "label": label, "blocks": code_blocks(period["codes"])})
+                cols[col].append({"key": key, "label": label, "blocks": code_blocks(period["codes"]), "col": col})
             continue
         if key == "standards":
             codes = lesson.get("standards") or []
             if not codes:
                 continue
+            short = [{"t": "p", "text": ", ".join(codes)}]
             if st.get("board_std_text", True):
                 blocks = [{"t": "kv", "label": c, "text": store.std_text(c)} for c in codes]
             else:
-                blocks = [{"t": "p", "text": ", ".join(codes)}]
-            cols[col].append({"key": key, "label": label, "blocks": blocks})
+                blocks = short
+            # short: what the slide falls back to (codes only) when the full text would be too small to read
+            cols[col].append({"key": key, "label": label, "blocks": blocks, "short": short, "col": col})
         elif (lesson.get(key) or "").strip():
-            cols[col].append({"key": key, "label": label, "blocks": text_blocks(lesson[key])})
+            blocks = vocab_blocks(lesson[key]) if key == "vocab" else text_blocks(lesson[key])
+            cols[col].append({"key": key, "label": label, "blocks": blocks, "col": col})
     meta = "  |  ".join(x for x in (lesson.get("course"), lesson.get("unit"), (period or {}).get("name")) if x)
     footer = " - ".join(x for x in (st.get("teacher"), st.get("school")) if x)
     return {"title": lesson.get("title") or "Untitled Lesson", "date": lesson.get("date") or "",
-            "meta": meta, "footer": footer, "left": cols["left"], "right": cols["right"],
+            "meta": meta, "footer": footer, "top": cols["top"], "left": cols["left"], "right": cols["right"],
             "style": st.get("board_style", "chalk"),
             "colors": (st.get("primary_color", ""), st.get("secondary_color", ""), st.get("text_color", "")),
             "logo": store.logo(), "logo_place": st.get("logo_place", "left")}
@@ -255,7 +266,7 @@ def assessment_doc(a, store, version=0, versions=1, key=False):
     if versions > 1:
         sub.append(f"Version {LETTERS[version]}")
     if a.get("show_points", True) and total:
-        sub.append(f"{fmt_points(total)} points")
+        sub.append(f"{fmt_points(total)} point" + ("" if total == 1 else "s"))
     blocks.append({"t": "subtitle", "text": "   |   ".join(x for x in sub if x)})
     if a.get("show_name", True) and not key:
         blocks.append({"t": "fields", "items": ["Name", "Date", "Period"]})
@@ -286,6 +297,8 @@ def assessment_doc(a, store, version=0, versions=1, key=False):
         num += 1
         pts = points_of(q)
         prompt = q.get("prompt") or ""
+        if t == "chart" and not prompt.strip():
+            prompt = CHART_DIRECTIONS.get(q.get("layout"), "Complete the chart.")
         if t == "fill":
             prompt = norm_blanks(prompt) if BLANK_RE.search(prompt) else prompt + " " + "_" * 14
         label = ""
@@ -321,6 +334,15 @@ def assessment_doc(a, store, version=0, versions=1, key=False):
                 n = int(q.get("lines") or 12)
                 space = q.get("space", "lines")
                 body.append({"t": {"lines": "lines", "blank": "blank", "box": "box"}.get(space, "lines"), "n": n})
+        elif t == "chart":
+            if key:
+                body.append({"t": "answer", "text": q.get("answer") or "Answers will vary."})
+            else:
+                b = {k: copy.deepcopy(q.get(k)) for k in ("layout", "cols", "rows", "circles", "heads", "side",
+                                                          "sidecol", "center", "preset")}
+                n = int(q.get("lines") or 0)
+                b.update(t="organizer", n=auto_lines(q) if n <= 0 else max(n, 4), fill=n < 0)
+                body.append(b)
         elif t == "fill":
             if key:
                 body.append({"t": "answer", "text": q.get("answer") or "-"})
