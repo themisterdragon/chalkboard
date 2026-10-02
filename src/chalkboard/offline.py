@@ -33,7 +33,7 @@ class OfflineError(PermissionError):
 
 
 def _check_program(path, args=()):
-    exe = os.path.splitext(os.path.basename(str(path)))[0].lower()
+    exe = os.path.splitext(os.path.basename(str(path).replace("\\", "/")))[0].lower()
     if exe not in TOOLS:
         raise OfflineError(f"Chalkboard works offline and doesn't start other programs ({exe})")
     for a in args or ():
@@ -41,13 +41,27 @@ def _check_program(path, args=()):
             raise OfflineError("Chalkboard works offline and doesn't open web addresses")
 
 
+def popen_program(args):
+    """(program, its arguments) from a subprocess.Popen audit event. On Windows the arguments arrive
+    as one command line, like '"C:\\...\\powershell.EXE" -NoProfile ...'."""
+    exe, argv = args[0], args[1]
+    if isinstance(argv, bytes):
+        argv = argv.decode("utf-8", "replace")
+    if isinstance(argv, str):
+        line = argv.strip()
+        first, rest = ((line[1:].split('"', 1) + [""])[:2] if line.startswith('"')
+                       else (line.split(None, 1) + [""])[:2])
+        argv = [first, rest]
+    else:
+        argv = list(argv or [])
+    return exe or (argv[0] if argv else ""), argv[1:]
+
+
 def _hook(event, args):
     if event in NET:
         raise OfflineError("Chalkboard works offline: it doesn't connect to the internet")
     if event == "subprocess.Popen":
-        exe, argv = args[0], args[1]
-        argv = [argv] if isinstance(argv, (str, bytes)) else list(argv or [])
-        _check_program(exe or (argv[0] if argv else ""), argv[1:])
+        _check_program(*popen_program(args))
     elif event in ("os.exec", "os.posix_spawn", "os.spawn"):
         _check_program(args[0], args[1] if len(args) > 1 else ())
     elif event == "os.system":
