@@ -165,6 +165,19 @@ by a tool the computer already has: `sips` on macOS (built in), or poppler's
 `pdftoppm`, `mutool`, or Ghostscript on Linux/Windows. Pick which sections
 appear under Settings > Board Slide (or from the export screen).
 
+**School logo:** Settings > School Logo takes a PNG or JPEG and puts it left of
+the title or in the top right corner of every board slide. A PNG with a
+transparent background looks best. Chalkboard keeps its own copy, so the
+original file can move.
+
+**Class periods and codes:** teach the same lesson to several classes? Add each
+period under Settings > Class Periods & Codes, with its codes one per line
+(`Google Classroom: abc123`, `Remind: @eng10p1`; you type the app names
+yourself). Exporting a board slide then makes one PNG per period, like
+`The Raven - Board (Period 1).png`, each with its own Class Codes panel and the
+period's name in the header. Give a period a course to make its slide only for
+that course's lessons; leave it blank for every lesson.
+
 ## Standards files
 
 Chalkboard doesn't come with any standards. Standards documents are usually

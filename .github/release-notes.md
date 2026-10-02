@@ -7,6 +7,10 @@ In the window version, they're in the File menu too.
 Standards you imported or typed in yourself can now be shared: Standards Library > **Export to Share** (`E` in
 the terminal) saves them as a file a colleague can import.
 
+Board slides can carry your **school logo** (a PNG or JPEG, from Settings), and **class codes**: add each class
+period with its codes under Settings > Class Periods & Codes, and exporting a board slide makes one slide per
+period, each with its own codes.
+
 New in 1.8 is the **window version** (`chalkboard-gui`): the whole planner with a mouse, menus, and buttons, in a
 **Bevel** or **Pinstripe** look. It shares its data file with the terminal app, so you can switch any time.
 

@@ -12,6 +12,8 @@ import sys
 import time
 import uuid
 
+from .images import ImageError, from_json, read_image, to_json
+
 STANDARDS_DIR = "data/standards"
 DEFAULT_SUBJECT = "Reading & Writing"
 ALL = "ALL"
@@ -53,7 +55,7 @@ DEFAULT_SETTINGS = {
     "export_versions": 1,
     "lesson_export_format": "PDF",
     "board_style": "chalk",
-    "board_sections": ["standards", "targets", "success", "bell_ringer", "materials", "homework"],
+    "board_sections": ["standards", "targets", "success", "bell_ringer", "materials", "homework", "class_codes"],
     "board_std_text": True,
     "primary_color": "",
     "secondary_color": "",
@@ -61,6 +63,8 @@ DEFAULT_SETTINGS = {
     "default_materials": "",
     "lesson_sort": "updated",
     "assess_sort": "updated",
+    "logo_place": "left",
+    "class_periods": [],
     "backup_dir": "",
     "last_backup": "",
 }
@@ -83,7 +87,17 @@ BOARD_SECTIONS = [
     ("materials", "Materials", "right"),
     ("homework", "Homework", "right"),
     ("closure", "Exit Ticket", "right"),
+    ("class_codes", "Class Codes", "right"),  # from Settings > Class Periods, not the lesson
 ]
+LOGO_PLACES = {"left": "LEFT OF THE TITLE", "right": "TOP RIGHT CORNER"}
+LOGO_FILE = "logo.json"
+
+
+def periods_for(settings, lesson):
+    """The class periods a lesson's board slides are made for: ones with codes, for its course or any course."""
+    course = (lesson.get("course") or "").strip().lower()
+    return [p for p in settings.get("class_periods") or []
+            if (p.get("codes") or "").strip() and (p.get("course") or "").strip().lower() in ("", course)]
 BOARD_STYLES = {"chalk": "CHALKBOARD (DARK GREEN)", "white": "WHITEBOARD (WHITE)", "school": "SCHOOL COLORS"}
 
 
@@ -174,7 +188,12 @@ def read_backup(path):
         raise ValueError(f"{os.path.basename(path)} ISN'T A CHALKBOARD BACKUP")
     if not all(isinstance(d, dict) and d.get("subject") and isinstance(d.get("standards"), list) for d in standards):
         raise ValueError(f"THE STANDARDS IN {os.path.basename(path)} ARE DAMAGED")
-    return {"data": normalize_data(data), "standards": standards, "made": made}
+    logo = raw.get("logo") if data is not raw else None
+    try:
+        logo = from_json(logo) if logo else None
+    except ValueError:
+        logo = None  # a damaged logo shouldn't keep the lessons from coming back
+    return {"data": normalize_data(data), "standards": standards, "made": made, "logo": logo}
 
 
 def subject_filename(subject, folder):
@@ -458,6 +477,40 @@ class Store:
     def export_dir(self):
         return os.path.expanduser(self.settings.get("export_dir") or default_export_dir())
 
+    # -- school logo (board slides)
+    def logo(self):
+        """The school logo for board slides, or None. Cached."""
+        if not hasattr(self, "_logo"):
+            self._logo = None
+            try:
+                with open(os.path.join(self.dir, LOGO_FILE), encoding="utf-8") as f:
+                    self._logo = from_json(json.load(f))
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError) as e:
+                self.warning = f"?COULD NOT READ THE SCHOOL LOGO ({e})"
+        return self._logo
+
+    def set_logo(self, path=None, img=None):
+        """Use a PNG or JPEG file (or an already-read image) as the logo; raises ValueError."""
+        if img is None:
+            path = clean_path(path)
+            if not os.path.isfile(path):
+                raise ImageError(f"NO FILE AT {path}")
+            img = read_image(path)
+            img["name"] = os.path.basename(path)
+        os.makedirs(self.dir, exist_ok=True)
+        write_private(os.path.join(self.dir, LOGO_FILE), to_json(img))
+        self._logo = img
+        return img
+
+    def remove_logo(self):
+        try:
+            os.remove(os.path.join(self.dir, LOGO_FILE))
+        except FileNotFoundError:
+            pass
+        self._logo = None
+
     # -- backups
     def backup_dir(self):
         return os.path.expanduser(self.settings.get("backup_dir") or default_backup_dir())
@@ -479,8 +532,9 @@ class Store:
             self.settings["backup_dir"] = folder
             self.settings["last_backup"] = now()
         standards = [{k: v for k, v in doc.items() if k != "file"} for doc in self.load_kas() if doc.get("file")]
+        logo = self.logo()
         write_private(path, {"kind": BACKUP_KIND, "format": 1, "app": __version__, "made": now(),
-                             "data": self.data, "standards": standards})
+                             "data": self.data, "standards": standards, "logo": to_json(logo) if logo else None})
         if remember:
             self.save()
         return path
@@ -543,6 +597,8 @@ class Store:
             doc = {k: v for k, v in doc.items() if k != "file"}
             write_private(os.path.join(self.standards_dir(), subject_filename(doc["subject"], self.standards_dir())), doc)
             got["subjects"] += 1
+        if b["logo"] and (replace or not self.logo()):
+            self.set_logo(img=b["logo"])
         self.save()
         self.reload_standards(rescan=True)
         return got

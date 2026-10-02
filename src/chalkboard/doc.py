@@ -119,13 +119,30 @@ def makeup_doc(lesson, store):
     return {"title": "Make-Up Work - " + title, "footer": footer, "blocks": blocks}
 
 
-def board_doc(lesson, store):
-    """The at-a-glance pieces of a lesson for a classroom display (see export_png)."""
+def code_blocks(codes):
+    """'Google Classroom: abc123' lines -> label/code pairs; other lines stay as they are."""
+    out = []
+    for line in (codes or "").split("\n"):
+        label, sep, code = line.partition(":")
+        if sep and label.strip() and code.strip():
+            out.append({"t": "kv", "label": label.strip() + ":", "text": code.strip()})
+        elif line.strip():
+            out.append({"t": "p", "text": line.strip()})
+    return out
+
+
+def board_doc(lesson, store, period=None):
+    """The at-a-glance pieces of a lesson for a classroom display (see export_png).
+    period: one of Settings > Class Periods; its codes fill the Class Codes panel."""
     st = store.settings
     wanted = st.get("board_sections") or []
     cols = {"left": [], "right": []}
     for key, label, col in BOARD_SECTIONS:
         if key not in wanted:
+            continue
+        if key == "class_codes":
+            if period and code_blocks(period.get("codes")):
+                cols[col].append({"key": key, "label": label, "blocks": code_blocks(period["codes"])})
             continue
         if key == "standards":
             codes = lesson.get("standards") or []
@@ -138,12 +155,13 @@ def board_doc(lesson, store):
             cols[col].append({"key": key, "label": label, "blocks": blocks})
         elif (lesson.get(key) or "").strip():
             cols[col].append({"key": key, "label": label, "blocks": text_blocks(lesson[key])})
-    meta = "  |  ".join(x for x in (lesson.get("course"), lesson.get("unit")) if x)
+    meta = "  |  ".join(x for x in (lesson.get("course"), lesson.get("unit"), (period or {}).get("name")) if x)
     footer = " - ".join(x for x in (st.get("teacher"), st.get("school")) if x)
     return {"title": lesson.get("title") or "Untitled Lesson", "date": lesson.get("date") or "",
             "meta": meta, "footer": footer, "left": cols["left"], "right": cols["right"],
             "style": st.get("board_style", "chalk"),
-            "colors": (st.get("primary_color", ""), st.get("secondary_color", ""), st.get("text_color", ""))}
+            "colors": (st.get("primary_color", ""), st.get("secondary_color", ""), st.get("text_color", "")),
+            "logo": store.logo(), "logo_place": st.get("logo_place", "left")}
 
 
 # -------------------------------------------------------------- assessments --

@@ -8,7 +8,7 @@ from ..store import GRADE_CHOICES
 from . import widgets as W
 from .common import AutoText, LineField
 from .desktop import grade_label
-from .export import STYLE_TEXT, board_options, browse
+from .export import STYLE_TEXT, board_options, browse, class_periods, logo_options, logo_text, periods_text
 from .skin import SKINS, TEXT_SIZES, auto_scale
 
 
@@ -81,6 +81,17 @@ class SettingsView:
         style.trace_add("write", lambda *a: self.set(board_style=style.get()))
         W.Button(g, sk, "Sections & School Colors…", lambda: (board_options(gui), style.set(st.get("board_style"))),
                  small=True).pack(anchor="w", pady=(6 * S, 0))
+        logo = W.label(g, sk, logo_text(gui), dim=True, wrap=440 * S)
+        periods = W.label(g, sk, periods_text(gui), dim=True, wrap=440 * S)
+
+        def update():
+            logo.configure(text=logo_text(gui))
+            periods.configure(text=periods_text(gui))
+        W.Button(g, sk, "School Logo…", lambda: logo_options(gui, update), small=True).pack(anchor="w", pady=(10 * S, 0))
+        logo.pack(anchor="w", pady=(2 * S, 0))
+        W.Button(g, sk, "Class Periods & Codes…", lambda: class_periods(gui, update), small=True).pack(
+            anchor="w", pady=(8 * S, 0))
+        periods.pack(anchor="w", pady=(2 * S, 0))
 
         g = W.group(right, sk, "This Window")
         g.pack(fill="x", pady=(10 * S, 0))

@@ -1,9 +1,11 @@
 """Export: the options dialog, quick exports, and the "files saved" dialog."""
 
 import os
+import threading
 import tkinter as tk
 from tkinter import filedialog
 
+from ..images import read_image
 from ..exporting import FORMAT_ORDER, ExportError, export, export_folder, open_path
 from ..store import BOARD_SECTIONS, BOARD_STYLES, SHEET_KINDS
 from . import widgets as W
@@ -179,6 +181,11 @@ def board_options(gui):
     stdtext = tk.BooleanVar(value=st.get("board_std_text", True))
     W.Check(g, sk, "Show each standard's full text (not just its code)", stdtext).grid(
         row=9, column=0, columnspan=2, sticky="w", pady=(6 * S, 0))
+    extra = tk.Frame(d.body, bg=sk["window"])
+    extra.pack(fill="x", pady=(8 * S, 0))
+    W.Button(extra, sk, "School Logo…", lambda: logo_options(gui), small=True).pack(side="left")
+    W.Button(extra, sk, "Class Periods & Codes…", lambda: (class_periods(gui), secs["class_codes"].set(
+        "class_codes" in st.get("board_sections", []))), small=True).pack(side="left", padx=(6 * S, 0))
     cg = W.group(d.body, sk, "School Colors (HEX, like #7A0019)")
     cg.pack(fill="x", pady=(10 * S, 0))
     colors = {}
@@ -214,3 +221,179 @@ def board_options(gui):
         if weak:
             W.alert(gui, "School Colors", f"Heads up: the {' and '.join(w.lower() for w in weak)} may be hard to "
                                           "read on that background.", "warn")
+
+
+def logo_text(gui):
+    img = gui.store.logo()
+    if not img:
+        return "No logo. Board slides show just the title."
+    where = "left of the title" if gui.settings.get("logo_place", "left") != "right" else "top right corner"
+    return f"{img.get('name') or 'Logo'} ({img['w']}×{img['h']}), {where}"
+
+
+def logo_options(gui, done=None):
+    """The school logo on board slides: pick a PNG or JPEG, where it goes, or remove it."""
+    st, sk, S = gui.settings, gui.skin, gui.skin.S
+    d = W.Dialog(gui, "School Logo")
+    W.label(d.body, sk, "A PNG or JPEG of your school's logo goes in the corner of every board slide. A PNG with a "
+                        "transparent background looks best.", wrap=460 * S).pack(anchor="w")
+    info = W.label(d.body, sk, logo_text(gui), bold=True, wrap=460 * S)
+    info.pack(anchor="w", pady=(10 * S, 6 * S))
+    place = tk.StringVar(value=st.get("logo_place", "left"))
+    row = tk.Frame(d.body, bg=sk["window"])
+    row.pack(anchor="w")
+    W.label(row, sk, "Put it:").pack(side="left", padx=(0, 8 * S))
+    for v, t in (("left", "Left of the title"), ("right", "Top right corner")):
+        W.Radio(row, sk, t, place, v).pack(side="left", padx=(0, 12 * S))
+
+    def changed():
+        st["logo_place"] = place.get()
+        gui.save()
+        info.configure(text=logo_text(gui))
+        if done:
+            done()
+    place.trace_add("write", lambda *a: changed())
+
+    def choose():
+        path = filedialog.askopenfilename(parent=gui.root, title="School logo",
+                                          filetypes=[("Pictures", "*.png *.jpg *.jpeg *.PNG *.JPG *.JPEG"),
+                                                     ("All files", "*")])
+        if not path:
+            return
+        info.configure(text="Reading the picture…")
+        box = {}
+
+        def work():
+            try:
+                box["img"] = read_image(path)
+                box["img"]["name"] = os.path.basename(path)
+            except ValueError as e:
+                box["err"] = str(e)
+
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
+
+        def check():
+            if t.is_alive():
+                gui.root.after(100, check)
+                return
+            if "err" in box:
+                info.configure(text=logo_text(gui))
+                W.alert(gui, "School Logo", box["err"][:1] + box["err"][1:].lower(), "warn")
+                return
+            try:
+                gui.store.set_logo(img=box["img"])
+            except OSError as e:
+                W.alert(gui, "School Logo", f"Couldn't save the logo:\n{e}", "warn")
+            changed()
+        check()
+
+    def remove():
+        if gui.store.logo() and W.confirm(gui, "School Logo", "Take the logo off your board slides?", "Remove"):
+            gui.store.remove_logo()
+            changed()
+
+    row = tk.Frame(d.body, bg=sk["window"])
+    row.pack(anchor="w", pady=(10 * S, 0))
+    W.Button(row, sk, "Choose Picture…", choose, small=True).pack(side="left")
+    W.Button(row, sk, "Remove", remove, small=True).pack(side="left", padx=(6 * S, 0))
+    d.buttons([("Done", True)], cancel=True)
+    d.run()
+
+
+def periods_text(gui):
+    ps = [p for p in gui.settings.get("class_periods") or [] if (p.get("codes") or "").strip()]
+    if not ps:
+        return "No class codes. Each lesson gets one board slide."
+    return f"{len(ps)} class period{'s' if len(ps) != 1 else ''} with codes: a board slide for each"
+
+
+def edit_period(gui, p):
+    """Name, course, and codes for one class period; True if saved."""
+    sk, S = gui.skin, gui.skin.S
+    d = W.Dialog(gui, "Class Period")
+    g = tk.Frame(d.body, bg=sk["window"])
+    g.pack(fill="x")
+    g.columnconfigure(1, weight=1)
+    name, course = tk.StringVar(value=p.get("name", "")), tk.StringVar(value=p.get("course", ""))
+    W.label(g, sk, "Name:").grid(row=0, column=0, sticky="w", pady=3 * S, padx=(0, 8 * S))
+    e = W.entry(g, sk, name, width=24)
+    e.grid(row=0, column=1, sticky="ew", pady=3 * S)
+    W.label(g, sk, "Course:").grid(row=1, column=0, sticky="w", pady=3 * S, padx=(0, 8 * S))
+    W.entry(g, sk, course, width=24).grid(row=1, column=1, sticky="ew", pady=3 * S)
+    W.label(d.body, sk, "Leave the course blank to make this period's slide for every lesson, or type a course "
+                        "(like English 10) to make it only for that course's lessons.", dim=True, small=True,
+            wrap=460 * S).pack(anchor="w", pady=(2 * S, 8 * S))
+    W.label(d.body, sk, "Codes, one per line, like  Google Classroom: abc123").pack(anchor="w")
+    t = W.textbox(d.body, sk, height=5, width=50)
+    t.insert("1.0", p.get("codes", ""))
+    t.pack(fill="both", expand=True, pady=(2 * S, 0))
+    got = {}
+    d.harvest = lambda: got.update(codes=t.get("1.0", "end").strip())
+    d.buttons([("OK", True), ("Cancel", None)])
+    if not d.run(focus=e):
+        return False
+    p.update(name=name.get().strip() or "Class", course=course.get().strip(), codes=got["codes"])
+    return True
+
+
+def class_periods(gui, done=None):
+    """Settings > Class Periods: each period's codes go on its own copy of the board slide."""
+    st, sk, S = gui.settings, gui.skin, gui.skin.S
+    periods = st.setdefault("class_periods", [])
+    d = W.Dialog(gui, "Class Periods & Codes")
+    W.label(d.body, sk, "Teach the same lesson to more than one class? Add each period with its class codes "
+                        "(type the app's name yourself, like Google Classroom: abc123). Exporting a board slide "
+                        "then makes one slide per period, each with its own codes.", wrap=520 * S).pack(anchor="w")
+    lv = W.ListView(d.body, sk, [("name", "Period", 130, False), ("course", "Course", 130, False),
+                                 ("codes", "Codes", 260, True)], height=6)
+    lv.pack(fill="both", expand=True, pady=(10 * S, 0))
+
+    def refresh(keep=None):
+        lv.set_rows([(p, [p.get("name", ""), p.get("course") or "Any", " · ".join(
+            x.strip() for x in (p.get("codes") or "").split("\n") if x.strip())]) for p in periods], keep=keep,
+            empty_text="No periods yet. Click Add.")
+        gui.save()
+        if done:
+            done()
+
+    def add():
+        p = {"name": f"Period {len(periods) + 1}", "course": "", "codes": ""}
+        if edit_period(gui, p):
+            periods.append(p)
+            sections = st.setdefault("board_sections", [])
+            if "class_codes" not in sections:
+                sections.append("class_codes")  # adding codes means you want them on the slide
+            refresh(p)
+
+    def edit():
+        p = lv.selected()
+        if p is not None and edit_period(gui, p):
+            refresh(p)
+
+    def remove():
+        p = lv.selected()
+        if p is not None and W.confirm(gui, "Remove Period", f"Remove {p.get('name') or 'this period'}?", "Remove"):
+            periods.remove(p)
+            refresh()
+
+    def move(step):
+        p = lv.selected()
+        if p is None:
+            return
+        i = periods.index(p)
+        j = i + step
+        if 0 <= j < len(periods):
+            periods[i], periods[j] = periods[j], periods[i]
+            refresh(p)
+
+    lv.on_open(edit)
+    lv.on_delete(remove)
+    row = tk.Frame(d.body, bg=sk["window"])
+    row.pack(anchor="w", pady=(8 * S, 0))
+    for text, fn in (("Add…", add), ("Edit…", edit), ("Remove", remove), ("Move Up", lambda: move(-1)),
+                     ("Move Down", lambda: move(1))):
+        W.Button(row, sk, text, fn, small=True).pack(side="left", padx=(0, 6 * S))
+    refresh()
+    d.buttons([("Done", True)], cancel=True)
+    d.run(focus=lv.tv)

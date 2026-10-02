@@ -2,6 +2,8 @@
 
 import zlib
 
+from .images import pdf_objects
+
 from .fontmetrics import WIDTHS
 
 FAMILIES = {
@@ -75,6 +77,11 @@ class Fonts:
 class Canvas:
     def __init__(self):
         self.ops = []
+        self.images = {}  # name -> image from images.read_image
+
+    def image(self, img, x, y, w, h):
+        name = self.images.setdefault(id(img), (f"Im{len(self.images) + 1}", img))[0]
+        self.ops.append(f"q {w:.2f} 0 0 {h:.2f} {x:.2f} {y:.2f} cm /{name} Do Q")
 
     def text(self, x, y, s, style=R, size=SIZE, color=None):
         if not s:
@@ -422,8 +429,17 @@ def _write(pages, path, f, W, H, title):
     for c in pages:
         data = zlib.compress("\n".join(c.ops).encode("latin-1"))
         cid = add(b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(data) + data + b"\nendstream")
+        xobj = []
+        for name, img in getattr(c, "images", {}).values():
+            head, body, mask = pdf_objects(img)
+            smask = ""
+            if mask:
+                smask = f" /SMask {add(mask[0].encode() + b'\nstream\n' + mask[1] + b'\nendstream')} 0 R"
+            iid = add(f"<< {head}{smask} /Length {len(body)} >>\nstream\n".encode() + body + b"\nendstream")
+            xobj.append(f"/{name} {iid} 0 R")
+        res = f"/Font << {fonts} >>" + (f" /XObject << {' '.join(xobj)} >>" if xobj else "")
         kids.append(add(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {W} {H}] "
-                        f"/Resources << /Font << {fonts} >> >> /Contents {cid} 0 R >>".encode()))
+                        f"/Resources << {res} >> /Contents {cid} 0 R >>".encode()))
     objs[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
     objs[1] = f"<< /Type /Pages /Kids [{' '.join(f'{k} 0 R' for k in kids)}] /Count {len(kids)} >>".encode()
     info = add(f"<< /Title ({esc(enc(title))}) /Creator (Chalkboard) /Producer (Chalkboard) >>".encode())

@@ -5,7 +5,7 @@ import re
 import subprocess
 import sys
 
-from .store import SHEET_KINDS
+from .store import SHEET_KINDS, periods_for
 from .doc import LETTERS, assessment_doc, board_doc, lesson_doc, makeup_doc
 from .export_pdf import render_pdf
 from .export_docx import render_docx
@@ -94,7 +94,12 @@ def export(store, kind, obj, fmt):
             docs.append((base + " - Lesson Plan", lesson_doc(obj, store)))
         if "PNG" in fmts:
             fmts.remove("PNG")
-            docs.append((base + " - Board", board_doc(obj, store), ["PNG"]))
+            periods = periods_for(st, obj) if "class_codes" in (st.get("board_sections") or []) else []
+            if periods:  # one slide per class period, each with its own codes
+                docs += [(f"{base} - Board ({safe_name(p.get('name') or f'Class {i}')})",
+                          board_doc(obj, store, p), ["PNG"]) for i, p in enumerate(periods, 1)]
+            else:
+                docs.append((base + " - Board", board_doc(obj, store), ["PNG"]))
         if fmt == "ALL":
             for a in store.attached(obj):
                 docs += [(name, d, ["PDF", "DOCX"]) for name, d in assessment_docs(store, a)]

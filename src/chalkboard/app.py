@@ -8,7 +8,7 @@ import textwrap
 
 from . import __version__
 from .ui import APP, BACK, UI, big, ch, curses, truncate
-from .store import (ALL, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SECTIONS, BOARD_STYLES, DEFAULT_SUBJECT,
+from .store import (LOGO_PLACES, ALL, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SECTIONS, BOARD_STYLES, DEFAULT_SUBJECT,
                     GOOD_THINGS_PREFIX, GRADE_CHOICES, LESSON_FIELDS, QUESTION_TYPES, SHEET_KINDS, SORTS, TYPE_LABEL,
                     TYPE_TAG, WEEKDAYS, Store, fmt_points, grades_match, new_assessment, new_lesson, new_question, now,
                     parse_hex, points_of, sort_items)
@@ -1353,6 +1353,99 @@ class App:
                        hints="1-0 CHANGE  ESC BACK")
 
     # ------------------------------------------------------------- settings
+    def logo_settings(self):
+        ui, st = self.ui, self.st
+        has = self.store.logo() is not None
+        opts = ["CHOOSE A PNG OR JPEG PICTURE"] + (
+            [f"PUT IT {LOGO_PLACES['right' if st.get('logo_place', 'left') == 'left' else 'left']}", "REMOVE THE LOGO"]
+            if has else [])
+        j = ui.choose("SCHOOL LOGO (CORNER OF EVERY BOARD SLIDE)", opts)
+        if j == 0:
+            path = ui.prompt("PATH TO THE LOGO, A .PNG OR .JPG (DRAG IT HERE)", raw=True)
+            if not path:
+                return
+            rows, _, x0 = ui.dims()
+            ui.draw(rows - 1, x0, ui.tx("READING THE PICTURE..."), ui.HI)
+            ui.s.refresh()
+            try:
+                img = self.store.set_logo(path)
+            except (ValueError, OSError) as e:
+                ui.msg = "?" + str(e).upper()
+                return
+            ui.msg = f"LOGO SET ({img['w']}x{img['h']}). IT SHOWS {LOGO_PLACES[st.get('logo_place', 'left')]}."
+        elif j == 1:
+            st["logo_place"] = "right" if st.get("logo_place", "left") == "left" else "left"
+        elif j == 2 and ui.confirm("TAKE THE LOGO OFF YOUR BOARD SLIDES"):
+            self.store.remove_logo()
+
+    def class_periods(self):
+        """Each period's class codes go on its own copy of a lesson's board slide."""
+        ui, st = self.ui, self.st
+        periods = st.setdefault("class_periods", [])
+
+        def row(p, w):
+            codes = " / ".join(x.strip() for x in (p.get("codes") or "").split("\n") if x.strip())
+            return f"{p.get('name', ''):<14} {(p.get('course') or 'ANY COURSE'):<14} {codes or '(NO CODES)'}", ui.HI
+
+        def on_open(p, i):
+            self.period_editor(p)
+            return i
+
+        def on_key(k, p, i):
+            c = ch(k).lower()
+            if c == "n":
+                p = {"name": f"Period {len(periods) + 1}", "course": "", "codes": ""}
+                periods.append(p)
+                if "class_codes" not in (st.get("board_sections") or []):
+                    st.setdefault("board_sections", []).append("class_codes")
+                self.period_editor(p)
+                self.save()
+                return len(periods) - 1
+            if c == "d" and p is not None and ui.confirm(f"REMOVE {p.get('name') or 'THIS PERIOD'}"):
+                periods.remove(p)
+                self.save()
+                return max(0, i - 1)
+            if c in "+-" and p is not None:
+                j = i + (1 if c == "+" else -1)
+                if 0 <= j < len(periods):
+                    periods[i], periods[j] = periods[j], periods[i]
+                    self.save()
+                    return j
+            return None
+
+        ui.list_screen("CLASS PERIODS & CODES", lambda: periods, row, on_open=on_open, on_key=on_key,
+                       info_fn=lambda: "ONE BOARD SLIDE PER PERIOD, EACH WITH ITS OWN CODES",
+                       hints="1-0 EDIT  N NEW  D REMOVE  +/- MOVE  ESC BACK",
+                       empty="NO PERIODS YET. N ADDS ONE (E.G. PERIOD 1, WITH ITS GOOGLE CLASSROOM CODE).")
+
+    def period_editor(self, p):
+        ui = self.ui
+        fields = [("name", "NAME", "line"), ("course", "COURSE (BLANK = EVERY LESSON)", "line"),
+                  ("codes", "CODES", "text")]
+
+        def row(f, w):
+            key, label, kind = f
+            v = p.get(key) or ""
+            if kind == "text":
+                v = " / ".join(x.strip() for x in v.split("\n") if x.strip())
+            return f"{label:<30} {v or '-'}", ui.HI
+
+        def on_open(f, i):
+            key, label, kind = f
+            if kind == "text":
+                v = ui.edit_text(f"CODES FOR {p.get('name') or 'THIS PERIOD'}", p.get(key, ""),
+                                 "ONE PER LINE, NAME: CODE, E.G. GOOGLE CLASSROOM: ABC123. ESC SAVES.")
+            else:
+                v = ui.prompt(label, p.get(key, ""))
+            if v is not None:
+                p[key] = v.strip()
+                self.save()
+            return i
+
+        ui.list_screen(f"CLASS PERIOD: {p.get('name') or ''}", lambda: fields, row, on_open=on_open,
+                       info_fn=lambda: "A COURSE MAKES THIS SLIDE ONLY FOR THAT COURSE'S LESSONS",
+                       hints="1-0 CHANGE  ESC BACK")
+
     def backup_now(self):
         ui = self.ui
         folder = ui.prompt("SAVE A BACKUP IN WHICH FOLDER (DRAG ONE HERE)", self.store.backup_dir(), raw=True)
@@ -1403,6 +1496,8 @@ class App:
             ("page", "PAPER SIZE", "page"),
             ("export_dir", "EXPORT FOLDER", "folder"),
             ("board_style", "BOARD SLIDE (DISPLAY PNG)", "board"),
+            ("logo", "SCHOOL LOGO (BOARD SLIDES)", "logo"),
+            ("class_periods", "CLASS PERIODS & CODES", "periods"),
             ("primary_color", "SCHOOL COLOR 1 (BACKGROUND)", "color"),
             ("secondary_color", "SCHOOL COLOR 2 (HEADINGS)", "color"),
             ("text_color", "SCHOOL COLOR 3 (TEXT)", "color"),
@@ -1420,6 +1515,13 @@ class App:
                 v = "ON" if v else "OFF"
             elif kind == "folder":
                 v = self.store.export_dir()
+            elif kind == "logo":
+                img = self.store.logo()
+                v = (f"{img.get('name') or 'LOGO'} ({img['w']}x{img['h']}), {LOGO_PLACES[st.get('logo_place', 'left')]}"
+                     if img else "NONE")
+            elif kind == "periods":
+                n = len([p for p in st.get("class_periods") or [] if (p.get("codes") or "").strip()])
+                v = f"{n} WITH CODES: ONE BOARD SLIDE EACH ..." if n else "NONE ..."
             elif kind == "backup":
                 v = self.store.backup_dir() + (f"  (LAST: {st['last_backup']})" if st.get("last_backup") else "")
             elif kind == "restore":
@@ -1486,6 +1588,10 @@ class App:
                 st[key] = not st.get(key)
             elif kind == "board":
                 self.board_settings()
+            elif kind == "logo":
+                self.logo_settings()
+            elif kind == "periods":
+                self.class_periods()
             elif kind == "backup":
                 self.backup_now()
                 return i

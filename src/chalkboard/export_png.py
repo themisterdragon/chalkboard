@@ -18,6 +18,7 @@ W, H = 1920, 1080
 PAD = 64           # outer margin
 GAP = 40           # space between columns and between panels
 INSET = 30         # panel padding
+LOGO_H, LOGO_W = 150, 380  # the school logo fits in this box in the header
 STYLES = {
     "chalk": {"bg": (0.122, 0.231, 0.188), "panel": (0.165, 0.290, 0.239), "ink": (0.965, 0.953, 0.914),
               "label": (0.976, 0.824, 0.420), "dim": (0.690, 0.773, 0.729)},
@@ -161,11 +162,18 @@ def board_pdf(doc, path):
     c = Canvas()
     c.fill(0, 0, W, H, col["bg"])
 
-    # header: title on the left, date + course/unit on the right
+    # header: [logo] title on the left, date + course/unit on the right [or logo]
+    logo, lw, lh = doc.get("logo"), 0, 0
+    if logo:
+        k = min(LOGO_H / logo["h"], LOGO_W / logo["w"])
+        lw, lh = logo["w"] * k, logo["h"] * k
+    on_left = doc.get("logo_place", "left") != "right"
+    x_title = PAD + (lw + GAP if logo and on_left else 0)
+    x_right = W - PAD - (lw + GAP if logo and not on_left else 0)
     right = [(doc["date"], B, 46, col["label"]), (doc["meta"], I, 28, col["dim"])]
     right = [r for r in right if r[0]]
     rw = max([f.width(t, st, sz) for t, st, sz, _ in right] + [0])
-    tw = W - 2 * PAD - (rw + GAP if rw else 0)
+    tw = x_right - x_title - (rw + GAP if rw else 0)
     for ts in range(76, 39, -2):
         lines = f.wrap(doc["title"], B, ts, tw)
         if len(lines) == 1 or (ts <= 56 and len(lines) <= 2):
@@ -173,14 +181,16 @@ def board_pdf(doc, path):
     lines = lines[:2]
     y = H - PAD
     for i, ln in enumerate(lines):
-        c.text(PAD, y - ts * 0.82 - i * ts * 1.1, ln, B, ts, col["ink"])
+        c.text(x_title, y - ts * 0.82 - i * ts * 1.1, ln, B, ts, col["ink"])
     title_h = ts * 0.82 + (len(lines) - 1) * ts * 1.1 + ts * 0.25
     ry = y
     for t, st, sz, color in right:
         ry -= sz * 0.95
-        c.text(W - PAD - f.width(t, st, sz), ry, t, st, sz, color)
+        c.text(x_right - f.width(t, st, sz), ry, t, st, sz, color)
         ry -= sz * 0.35
-    head_h = max(title_h, y - ry)
+    head_h = max(title_h, y - ry, lh)
+    if logo:
+        c.image(logo, PAD if on_left else W - PAD - lw, y - (head_h + lh) / 2, lw, lh)
     rule_y = y - head_h - 18
     c.line(PAD, rule_y, W - PAD, rule_y, 2.5, col["label"])
 
