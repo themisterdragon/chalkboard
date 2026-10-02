@@ -8,7 +8,7 @@ try:
 except ImportError:  # Windows without the windows-curses package
     sys.exit("chalkboard needs curses. On Windows run: pip install windows-curses")
 
-APP = "Chalkboard"
+from .banner import APP, big  # noqa: F401  (re-exported for app.py)
 
 THEMES = {
     "green": ((83, 28, 157), curses.COLOR_GREEN),
@@ -16,32 +16,9 @@ THEMES = {
     "white": ((252, 243, 231), curses.COLOR_WHITE),
 }
 
-FONT = {
-    "A": [".#.", "#.#", "###", "#.#", "#.#"],
-    "B": ["##.", "#.#", "##.", "#.#", "##."],
-    "C": ["###", "#..", "#..", "#..", "###"],
-    "D": ["##.", "#.#", "#.#", "#.#", "##."],
-    "H": ["#.#", "#.#", "###", "#.#", "#.#"],
-    "K": ["#.#", "#.#", "##.", "#.#", "#.#"],
-    "L": ["#..", "#..", "#..", "#..", "###"],
-    "O": ["###", "#.#", "#.#", "#.#", "###"],
-    "R": ["##.", "#.#", "##.", "#.#", "#.#"],
-    " ": ["..", "..", "..", "..", ".."],
-}
-
 ENTER = ("\n", "\r", curses.KEY_ENTER)
 BACK = ("\x1b", curses.KEY_BACKSPACE, "\x7f", "\b", curses.KEY_LEFT)
 BKSP = (curses.KEY_BACKSPACE, "\x7f", "\b")
-
-
-def big(text, px="█"):
-    rows = [""] * 5
-    blank = " " * len(px)
-    for ch in text:
-        glyph = FONT.get(ch.upper(), FONT[" "])
-        for i in range(5):
-            rows[i] += "".join(px if c == "#" else blank for c in glyph[i]) + blank
-    return [r.rstrip() for r in rows]
 
 
 def ch(k):
@@ -89,6 +66,9 @@ class UI:
         self.settings = settings
         self.buf = []
         self.msg = None
+        # The line-by-line reveal refreshes once per row; the Windows console is slow at that
+        # (and its 8 ms sleeps last ~16 ms), so every screen change would stutter there.
+        self.animate = sys.platform != "win32"
         self.cursor(False)
         stdscr.keypad(True)
         curses.start_color()
@@ -145,7 +125,9 @@ class UI:
         except curses.error:
             pass
 
-    def show(self, animate=False):
+    def show(self, animate=False, cursor=None):
+        """Draw the buffered screen with one refresh (cursor=(y, x) places the text cursor first)."""
+        animate = animate and self.animate
         rows, cols = self.s.getmaxyx()
         self.s.erase()
         if rows < 16 or cols < 60:
@@ -167,6 +149,11 @@ class UI:
             last = y
             self.draw(y, x, text, attr)
         self.s.nodelay(False)
+        if cursor:
+            try:
+                self.s.move(*cursor)
+            except curses.error:
+                pass
         self.s.refresh()
 
     def header(self, title, raw=False):
@@ -302,7 +289,6 @@ class UI:
                 elif r >= top + body:
                     top = r - body + 1
 
-                self.s.erase()
                 self.begin()
                 self.header("EDIT: " + title)
                 self.put(1, x0 + 1, help_text or "TYPE FREELY.  START A LINE WITH '- ' FOR A BULLET.", self.DIM)
@@ -312,9 +298,7 @@ class UI:
                 words = len(buf.split())
                 self.put(rows - 2, x0, f"ESC SAVE+EXIT   CTRL-X CANCEL   {fill_hint + '   ' if fill else ''}ARROWS MOVE   "
                                        f"LINE {r + 1}/{len(vis)}   {words} WORDS", self.DIM)
-                self.show()
-                self.s.move(3 + r - top, x0 + 2 + col)
-                self.s.refresh()
+                self.show(cursor=(3 + r - top, x0 + 2 + col))
 
                 k = self.s.get_wch()
                 if k == "\x1b":

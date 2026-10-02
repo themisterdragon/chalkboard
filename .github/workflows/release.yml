@@ -68,7 +68,7 @@ jobs:
           python3 scripts/build_mac.py
           python3 -m pip wheel --no-deps -w dist .
           sh scripts/build_dmg.sh
-          tar -czf "dist/chalkboard-$version-linux.tar.gz" -C dist chalkboard.pyz install.sh
+          tar -czf "dist/chalkboard-$version-linux.tar.gz" -C dist chalkboard.pyz chalkboard-gui.pyz install.sh
 
       - uses: actions/download-artifact@v6
         with:
@@ -78,6 +78,7 @@ jobs:
       - name: Test the downloads
         run: |
           python3 dist/chalkboard.pyz --version
+          python3 dist/chalkboard-gui.pyz --version
           mnt=$(hdiutil attach -nobrowse -readonly dist/Chalkboard-*.dmg | awk -F'\t' '/Volumes/ {print $NF}')
           ls -la "$mnt"
           test -L "$mnt/Applications"
@@ -86,7 +87,7 @@ jobs:
           python3 "$mnt/Chalkboard.app/Contents/Resources/chalkboard.pyz" --version
           plutil -lint "$mnt/Chalkboard.app/Contents/Info.plist"
           hdiutil detach "$mnt"
-          tar -tzf dist/chalkboard-*-linux.tar.gz | sort | tr '\n' ' ' | grep -q '^chalkboard.pyz install.sh $'
+          tar -tzf dist/chalkboard-*-linux.tar.gz | sort | tr '\n' ' ' | grep -q '^chalkboard-gui.pyz chalkboard.pyz install.sh $'
           python3 -m pip install dist/*.whl
           chalkboard --version
           ls -la dist
@@ -101,4 +102,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --draft --title "Chalkboard $version" \
             --notes-file .github/release-notes.md \
             dist/Chalkboard-*.dmg "dist/Chalkboard-$version-windows.exe" dist/chalkboard-*-linux.tar.gz \
-            dist/Chalkboard-macOS.zip dist/chalkboard.pyz dist/install.sh dist/*.whl
+            dist/Chalkboard-macOS.zip dist/chalkboard.pyz dist/chalkboard-gui.pyz dist/install.sh dist/*.whl

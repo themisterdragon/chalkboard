@@ -1,7 +1,8 @@
 # Chalkboard
 
-A retro green-screen lesson planner and assessment builder for the terminal.
-Works completely offline: no accounts, no API calls, no internet needed.
+A retro green-screen lesson planner and assessment builder for the terminal,
+plus a windowed version (`chalkboard-gui`) with an old-desktop look. Works
+completely offline: no accounts, no API calls, no internet needed.
 
 - **Lesson plans**: title, unit, dates, standards, learning targets, success
   criteria, materials, bell ringer, I Do / We Do / You Do, closure,
@@ -67,14 +68,39 @@ built in, so there's nothing else to install. It looks best in Windows Terminal.
 If "Windows protected your PC" appears, click More info > Run anyway.
 
 **Linux (or macOS from the terminal):** unpack `chalkboard-<version>-linux.tar.gz`
-(it holds `chalkboard.pyz` and `install.sh`) and run `sh install.sh` (installs to
-`~/.local/bin/chalkboard`), or run it directly with `python3 chalkboard.pyz`.
+(it holds `chalkboard.pyz`, `chalkboard-gui.pyz`, and `install.sh`) and run `sh install.sh`
+(installs `chalkboard` and `chalkboard-gui` to `~/.local/bin`, plus an app-menu entry for the
+window version), or run either directly with `python3 chalkboard.pyz`.
 
 **Python package (any OS, including Windows):**
 
-    pipx install chalkboard_planner-1.7.0-py3-none-any.whl
+    pipx install chalkboard_planner-1.8.0-py3-none-any.whl
 
 On Windows this pulls in `windows-curses` automatically.
+
+## Window version
+
+`chalkboard-gui` is the whole planner in a window, with a mouse, menus, and
+buttons, in one of two old-desktop looks (View menu or Settings):
+
+- **Bevel**: gray 3-D buttons, dark blue title bars, a teal desktop
+- **Pinstripe**: black-and-white, striped title bars, a dotted gray desktop
+
+Everything the terminal app does is here: lesson plans (with standards,
+SEL bell ringers, and linked worksheets), quizzes and tests with
+every question type, annotation and bell ringer sheets, the standards
+library with import, settings, preview, and every export. It reads and writes
+the same data file as the terminal app, and picks up changes the other one
+saves. Close a window with its close box (top left) or Esc to go back.
+Text size and overall size are in Settings, and sharp screens get 2× on
+their own.
+
+    chalkboard-gui                    # or: python3 chalkboard-gui.pyz
+
+It needs Tk, which Python from python.org includes on Windows and macOS. On
+Linux install it first: `sudo pacman -S tk` (Arch) or
+`sudo apt install python3-tk` (Debian/Ubuntu). `install.sh` installs it next
+to `chalkboard` and, on Linux, adds a "Chalkboard (Window)" app-menu entry.
 
 ## Use
 
@@ -162,12 +188,12 @@ here belong to their owners.
 
 ## Build
 
-    python3 scripts/build_pyz.py       # -> dist/chalkboard.pyz + dist/install.sh
+    python3 scripts/build_pyz.py       # -> dist/chalkboard.pyz, dist/chalkboard-gui.pyz, dist/install.sh
     python3 scripts/build_mac.py       # -> dist/Chalkboard-macOS.zip (also rebuilds the .pyz)
     sh scripts/build_dmg.sh            # -> dist/Chalkboard-<version>.dmg (macOS only, after build_mac.py)
     pip wheel --no-deps -w dist .      # -> dist/*.whl
     python3 scripts/make_icon.py       # -> macos/Chalkboard.icns (only to change the icon)
 
-Pushing a version tag (`git tag v1.7.0 && git push --tags`) builds all of these on
+Pushing a version tag (`git tag v1.8.0 && git push --tags`) builds all of these on
 GitHub's Mac and Windows runners (the `.exe` with PyInstaller), tests them, and
 attaches them to a draft release.

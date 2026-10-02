@@ -22,6 +22,9 @@ classifiers = [
 [project.scripts]
 chalkboard = "chalkboard.app:main"
 
+[project.gui-scripts]
+chalkboard-gui = "chalkboard.gui:main"
+
 [tool.setuptools.dynamic]
 version = { attr = "chalkboard.__version__" }
 
@@ -29,4 +32,4 @@ version = { attr = "chalkboard.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-chalkboard = ["data/*.json", "data/standards/*.json"]
+chalkboard = ["data/*.json", "data/*.png", "data/standards/*.json"]

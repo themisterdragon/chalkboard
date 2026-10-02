@@ -4,8 +4,6 @@ import argparse
 import copy
 import os
 import re
-import subprocess
-import sys
 import textwrap
 
 from . import __version__
@@ -14,18 +12,13 @@ from .store import (ALL, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SECTION
                     GOOD_THINGS_PREFIX, GRADE_CHOICES, LESSON_FIELDS, QUESTION_TYPES, SHEET_KINDS, SORTS, TYPE_LABEL,
                     TYPE_TAG, WEEKDAYS, Store, fmt_points, grades_match, new_assessment, new_lesson, new_question, now,
                     parse_hex, points_of, sort_items)
-from .doc import LETTERS, assessment_doc, board_doc, lesson_doc, makeup_doc
-from .export_pdf import render_pdf
-from .export_docx import render_docx
-from .export_png import BoardError, low_contrast, render_png
-from .export_txt import render_lines, render_txt
-
-FORMATS = {"PDF": (".pdf", render_pdf), "DOCX": (".docx", render_docx), "TXT": (".txt", render_txt),
-           "PNG": (".png", render_png)}
+from .doc import LETTERS, assessment_doc, lesson_doc
+from .exporting import FORMAT_ORDER, ExportError, export, export_subdirs, open_path
+from .export_png import low_contrast
+from .export_txt import render_lines
 FORMAT_LABEL = {"PDF": "PDF", "DOCX": "WORD (.DOCX - ALSO GOOGLE DOCS)", "TXT": "PLAIN TEXT",
                 "PNG": "BOARD SLIDE (1920x1080 PNG FOR CLASSROOM DISPLAY)",
                 "MAKEUP": "MAKE-UP SHEET FOR ABSENT STUDENTS (PDF + DOCX)", "ALL": "ALL FORMATS"}
-FORMAT_ORDER = {"lesson": ["PDF", "DOCX", "TXT", "PNG", "MAKEUP", "ALL"], "assessment": ["PDF", "DOCX", "TXT", "ALL"]}
 INCLUDE_LABEL = {"STUDENT": "STUDENT COPY ONLY", "KEY": "ANSWER KEY ONLY", "BOTH": "STUDENT COPY + ANSWER KEY"}
 SPACE_LABEL = {"lines": "LINED", "blank": "BLANK SPACE", "box": "BORDERED BOX"}
 
@@ -43,37 +36,6 @@ def grade_label(g):
 def sub_label(parent, label):
     """'a. ' for lettered parts, '1. ' for indicators, 'GRADE K: ' for grade-by-grade indicators."""
     return f"GRADE {label}: " if parent.get("sub_grades") else f"{label}. "
-
-
-def safe_name(s):
-    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "", s or "").strip(" .")
-    return s[:80] or "Untitled"
-
-
-def export_subdirs(kind, obj):
-    """Class > Unit > Lesson folders, e.g. ['English 10', 'Unit 3', 'The Raven'].
-
-    Assessments stop at the unit folder. A blank course or unit is skipped.
-    """
-    unit = (obj.get("unit") or "").strip()
-    if re.fullmatch(r"\d+[A-Za-z]?", unit):
-        unit = "Unit " + unit
-    parts = [(obj.get("course") or "").strip(), unit]
-    if kind == "lesson":
-        parts.append(obj.get("title") or "Untitled")
-    return [safe_name(x) for x in parts if x]
-
-
-def open_path(path):
-    try:
-        if sys.platform == "win32":
-            os.startfile(path)
-        else:
-            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        return True
-    except OSError:
-        return False
 
 
 def first_line(s):
@@ -1312,60 +1274,11 @@ class App:
             self.export_done(files)
 
     def do_export(self, kind, obj, fmt):
-        ui, st = self.ui, self.st
-        folder = os.path.join(self.store.export_dir(), *export_subdirs(kind, obj))
         try:
-            os.makedirs(folder, exist_ok=True)
-        except OSError as e:
-            ui.msg = f"?CANNOT CREATE FOLDER: {e}"
+            return export(self.store, kind, obj, fmt)
+        except ExportError as e:
+            self.ui.msg = f"?{e}"
             return None
-        base = safe_name(obj.get("title"))
-        fmts = [f for f in FORMAT_ORDER[kind] if f != "ALL"] if fmt == "ALL" else [fmt]
-        docs = []
-        if kind == "lesson":
-            if "MAKEUP" in fmts:
-                fmts.remove("MAKEUP")
-                docs.append((base + " - Make-Up Sheet", makeup_doc(obj, self.store), ["PDF", "DOCX"]))
-            if fmts and fmts != ["PNG"]:
-                docs.append((base + " - Lesson Plan", lesson_doc(obj, self.store)))
-            if "PNG" in fmts:
-                fmts.remove("PNG")
-                docs.append((base + " - Board", board_doc(obj, self.store), ["PNG"]))
-            if fmt == "ALL":
-                for a in self.store.attached(obj):
-                    docs += [(name, d, ["PDF", "DOCX"]) for name, d in self.assessment_docs(a)]
-        else:
-            docs = self.assessment_docs(obj)
-        files = []
-        try:
-            for name, d, *only in docs:
-                for f in (only[0] if only else fmts):
-                    ext, fn = FORMATS[f]
-                    path = os.path.join(folder, name + ext)
-                    fn(d, path, family=st["font"], page=st["page"])
-                    files.append(path)
-        except BoardError as e:
-            ui.msg = f"?{e}"
-            return None
-        except OSError as e:
-            ui.msg = f"?EXPORT FAILED: {e}"
-            return None
-        return files
-
-    def assessment_docs(self, a):
-        """[(file name, doc)] for an assessment, per the student copy/key and versions settings."""
-        st = self.st
-        base = safe_name(a.get("title"))
-        if a.get("kind") in SHEET_KINDS:
-            return [(base, assessment_doc(a, self.store))]
-        docs = []
-        versions = st["export_versions"]
-        keys = {"STUDENT": [False], "KEY": [True], "BOTH": [False, True]}[st["export_include"]]
-        for v in range(versions):
-            for key in keys:
-                name = base + (f" - Version {LETTERS[v]}" if versions > 1 else "") + (" - Answer Key" if key else "")
-                docs.append((name, assessment_doc(a, self.store, version=v, versions=versions, key=key)))
-        return docs
 
     def export_done(self, files):
         ui = self.ui
