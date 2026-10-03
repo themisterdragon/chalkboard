@@ -15,6 +15,9 @@ import uuid
 
 from .images import ImageError, from_json, read_image, to_json
 
+# Not __package__: the Mac app's Python 3.9 leaves it None while a module loads from the .pyz.
+PACKAGE = __name__.rpartition(".")[0]
+
 STANDARDS_DIR = "data/standards"
 DEFAULT_SUBJECT = "Reading & Writing"
 ALL = "ALL"
@@ -745,9 +748,9 @@ class Store:
         if not hasattr(self, "_kas"):
             docs = {}
             try:
-                index = json.loads(pkgutil.get_data(__package__, STANDARDS_DIR + "/index.json").decode("utf-8"))
+                index = json.loads(pkgutil.get_data(PACKAGE, STANDARDS_DIR + "/index.json").decode("utf-8"))
                 for s in index["subjects"]:
-                    doc = json.loads(pkgutil.get_data(__package__, f"{STANDARDS_DIR}/{s['file']}").decode("utf-8"))
+                    doc = json.loads(pkgutil.get_data(PACKAGE, f"{STANDARDS_DIR}/{s['file']}").decode("utf-8"))
                     docs[doc["subject"]] = doc
             except (OSError, ValueError, KeyError, TypeError):
                 pass
@@ -881,7 +884,7 @@ class Store:
     def good_thing(self, current=""):
         """A random SEL bell ringer, preferring prompts no lesson is using yet."""
         if not hasattr(self, "_good_things"):
-            raw = json.loads(pkgutil.get_data(__package__, GOOD_THINGS_FILE).decode("utf-8"))
+            raw = json.loads(pkgutil.get_data(PACKAGE, GOOD_THINGS_FILE).decode("utf-8"))
             self._good_things = [GOOD_THINGS_PREFIX + p for p in raw["prompts"]]
         used = {(l.get("bell_ringer") or "").strip() for l in self.data["lessons"]} | {(current or "").strip()}
         fresh = [g for g in self._good_things if g not in used]

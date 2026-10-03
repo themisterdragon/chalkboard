@@ -26,6 +26,9 @@ for f in sorted((root / "src").rglob("*.py")):
                 body = tok.string.lstrip("rRbBuU")
                 if "\\" in tok.string or body.startswith(q):
                     bad.append(f"{f.relative_to(root)}:{tok.start[0]}: {tok.string[:40]} inside an f-string expression")
+    for n, text in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+        if "__package__" in text and not text.lstrip().startswith("#"):
+            bad.append(f"{f.relative_to(root)}:{n}: __package__ is None during import from a .pyz on Python 3.9")
 if bad:
     sys.exit("needs Python 3.12+:\n  " + "\n  ".join(bad))
 print("ok: no 3.12-only f-string syntax")

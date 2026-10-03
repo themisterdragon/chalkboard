@@ -10,10 +10,13 @@ import pkgutil
 
 from .logo import LOGO
 
+# Not __package__: the Mac app's Python 3.9 leaves it None while a module loads from the .pyz.
+PACKAGE = __name__.rpartition(".")[0]
+
 # The ten most common US school mascots (most common first), plus dragons and some regional
 # favorites. The art lives in data/mascots.json so anyone can add one without touching code.
 MASCOTS = {k: (m["name"], m["rows"]) for k, m in
-           json.loads(pkgutil.get_data(__package__, "data/mascots.json").decode("utf-8")).items()}
+           json.loads(pkgutil.get_data(PACKAGE, "data/mascots.json").decode("utf-8")).items()}
 
 # The Chalkboard logo in phosphor tones, for when no mascot is picked.
 LOGO_TONES = {".": ".", "k": ".", "n": ".", "w": "h", "t": "d", "T": "n"}
