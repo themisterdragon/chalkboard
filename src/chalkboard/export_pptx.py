@@ -11,7 +11,7 @@ import zlib
 import struct
 from datetime import datetime, timezone
 
-from .export_pdf import Fonts
+from .export_pdf import Fonts, mixed
 from .markup import links, plain, runs
 
 
@@ -64,6 +64,14 @@ def _sz(px):
 class SlideCanvas:
     """Takes the board's drawing calls (like export_pdf.Canvas) and makes editable slide shapes."""
     editable = True
+    fonts = None   # the board's fontlib.BoardFonts (styles 4-7 are the heading font)
+    fakes = None
+
+    def _width(self, text, style, size):
+        return self.fonts.width(plain(text), style, size) if self.fonts else _width(text, style, size)
+
+    def _face(self, style):
+        return self.fonts.office[style] if self.fonts else "Arial"
 
     def __init__(self):
         self.shapes, self.media, self.links = [], [], []
@@ -128,16 +136,17 @@ class SlideCanvas:
                 link = f'<a:hlinkClick r:id="rIdLink{len(self.links)}"/>'
             u = ' u="sng"' if under or url else ""
             out.append(
-                f'<a:r><a:rPr lang="en-US" sz="{_sz(size)}" b="{int(style in (B, BI))}" i="{int(style in (I, BI))}"'
-                f'{u} dirty="0"><a:solidFill><a:srgbClr val="{_hex(color or (0, 0, 0))}"/>'
-                f'</a:solidFill><a:latin typeface="Arial"/>{link}</a:rPr><a:t>{escape(piece)}</a:t></a:r>')
+                f'<a:r><a:rPr lang="en-US" sz="{_sz(size)}" b="{int(style % 4 in (B, BI))}" '
+                f'i="{int(style % 4 in (I, BI))}"{u} dirty="0"><a:solidFill><a:srgbClr val="{_hex(color or (0, 0, 0))}"/>'
+                f'</a:solidFill><a:latin typeface="{escape(self._face(style))}"/>{link}</a:rPr>'
+                f'<a:t>{escape(piece)}</a:t></a:r>')
         return "".join(out)
 
     def rich(self, text, base, size, color):
         """Text with **bold** / *italic* / __underline__ marks as runs."""
         out = []
         for piece, bold, italic, under in runs(text):
-            style = (B if bold or base in (B, BI) else R) + (I if italic or base in (I, BI) else 0)
+            style = mixed(base, bold, italic)
             out.append(self.run(piece, style, size, color, under))
         return "".join(out)
 
@@ -148,7 +157,7 @@ class SlideCanvas:
                        + "".join(self.rich(t, st, sz, col) for t, st, sz, col in para) + '</a:p>' for para in paras)
         wrap = w is not None
         if not wrap:
-            w = max(sum(_width(t, st, sz) for t, st, sz, _ in para) for para in paras) * 1.04 + 4
+            w = max(sum(self._width(t, st, sz) for t, st, sz, _ in para) for para in paras) * 1.04 + 4
         self._box(x, top, w, h, body, wrap=wrap, name=name)
 
     def blocks(self, x, top, w, h, blocks, size, color, name="Text"):
@@ -162,7 +171,7 @@ class SlideCanvas:
             if b["t"] == "bullet":
                 ind = size * (1.05 + 1.05 * b.get("indent", 0))
                 ppr = (f'<a:pPr marL="{round(ind * PX)}" indent="{-round(size * 0.8 * PX)}">{lead}{before}'
-                       '<a:buFont typeface="Arial"/><a:buChar char="&#8226;"/></a:pPr>')
+                       f'<a:buFont typeface="{escape(self._face(R))}"/><a:buChar char="&#8226;"/></a:pPr>')
                 body = self.rich(b["text"], R, size, color)
             elif b["t"] == "kv":
                 ppr = f'<a:pPr>{lead}{before}<a:buNone/></a:pPr>'

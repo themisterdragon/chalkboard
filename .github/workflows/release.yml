@@ -63,6 +63,8 @@ jobs:
           grep -q 'chalkboard.gui.term' window.txt
           grep -q 'chalkboard.app' window.txt
           grep -q 'mascots.json' window.txt
+          grep -q 'chibis.json' window.txt
+          grep -q 'pixelfont.json' window.txt
 
       - uses: actions/upload-artifact@v5
         with:
@@ -135,6 +137,8 @@ jobs:
           codesign --verify --deep "$mnt/Chalkboard.app"
           find "$mnt/Chalkboard.app" -name sel_prompts.json | grep -q .
           find "$mnt/Chalkboard.app" -name mascots.json | grep -q .
+          find "$mnt/Chalkboard.app" -name chibis.json | grep -q .
+          find "$mnt/Chalkboard.app" -name pixelfont.json | grep -q .
           hdiutil detach "$mnt"
           tar -tzf "dist/chalkboard-$version-linux.tar.gz" | sort | tr '\n' ' ' | grep -q '^chalkboard-gui.pyz chalkboard.pyz install.sh $'
           python3 -m pip install dist/*.whl

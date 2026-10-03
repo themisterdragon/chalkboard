@@ -46,12 +46,22 @@ def esc(b):
 
 
 class Fonts:
+    """The fonts of one document: the standard PDF fonts, styles R, B, I, BI.
+    (fontlib.BoardFonts adds embedded fonts and a second family for headings.)"""
+    fakes = None  # per style: (bold, italic) drawn by thickening or slanting another style
+
     def __init__(self, family):
         self.names = FAMILIES.get(family, FAMILIES["Times"])
+        self.tables = [WIDTHS[n] for n in self.names]
 
     def width(self, s, style, size):
-        w = WIDTHS[self.names[style]]
+        w = self.tables[style]
         return sum(w[c - 32] for c in enc(s) if c >= 32) * size / 1000
+
+    def pdf_fonts(self, add):
+        """Write the font objects with add(bytes) -> object number; returns the numbers, F1, F2, ..."""
+        return [add(f"<< /Type /Font /Subtype /Type1 /BaseFont /{name} /Encoding /WinAnsiEncoding >>".encode())
+                for name in self.names]
 
     def wrap(self, text, style, size, width, first_width=None):
         lines, cur = [], ""
@@ -132,11 +142,14 @@ class Fonts:
 
 
 def mixed(base, bold, italic):
-    """A base style (R, B, I, BI) with **bold** / *italic* marks added."""
-    return (B if bold or base in (B, BI) else R) + (I if italic or base in (I, BI) else 0)
+    """A base style (R, B, I, BI, or a heading style, 4 more) with **bold** / *italic* marks added."""
+    face, base = base - base % 4, base % 4
+    return face + (B if bold or base in (B, BI) else R) + (I if italic or base in (I, BI) else 0)
 
 
 class Canvas:
+    fakes = None  # set from Fonts.fakes when a font is missing a bold or italic
+
     def __init__(self):
         self.ops = []
         self.images = {}  # name -> image from images.read_image
@@ -153,7 +166,11 @@ class Canvas:
         if not s:
             return
         col = "%.3f %.3f %.3f rg " % color if color else ""
-        self.ops.append(f"q {col}BT /F{style + 1} {size:.2f} Tf {x:.2f} {y:.2f} Td ({esc(enc(s))}) Tj ET Q")
+        bold, italic = self.fakes[style] if self.fakes else (False, False)
+        if bold:  # a font with no bold of its own: outline the letters too, in the same color
+            col += ("%.3f %.3f %.3f RG " % color if color else "") + f"{size * 0.035:.2f} w 2 Tr "
+        at = f"1 0 0.2 1 {x:.2f} {y:.2f} Tm" if italic else f"{x:.2f} {y:.2f} Td"
+        self.ops.append(f"q {col}BT /F{style + 1} {size:.2f} Tf {at} ({esc(enc(s))}) Tj ET Q")
 
     def line(self, x1, y1, x2, y2, w=0.5, color=(0, 0, 0)):
         self.ops.append(f"q {w:.2f} w %.3f %.3f %.3f RG {x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S Q" % color)
@@ -556,8 +573,7 @@ def _write(pages, path, f, W, H, title):
         objs.append(b)
         return len(objs)
 
-    font_ids = [add(f"<< /Type /Font /Subtype /Type1 /BaseFont /{name} /Encoding /WinAnsiEncoding >>".encode())
-                for name in f.names]
+    font_ids = f.pdf_fonts(add)
     fonts = " ".join(f"/F{i + 1} {fid} 0 R" for i, fid in enumerate(font_ids))
     kids = []
     for c in pages:
@@ -583,7 +599,7 @@ def _write(pages, path, f, W, H, title):
     objs[1] = f"<< /Type /Pages /Kids [{' '.join(f'{k} 0 R' for k in kids)}] /Count {len(kids)} >>".encode()
     info = add(f"<< /Title ({esc(enc(title))}) /Creator (Chalkboard) /Producer (Chalkboard) >>".encode())
 
-    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    out = bytearray(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
     offsets = []
     for i, o in enumerate(objs, 1):
         offsets.append(len(out))

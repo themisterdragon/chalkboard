@@ -72,6 +72,16 @@ DEFAULT_SETTINGS = {
     "lesson_sort": "updated",
     "assess_sort": "updated",
     "logo_place": "left",
+    # Board Designer: fonts ("" = the standard one) and where things go on a board slide
+    "board_font": "",
+    "board_head_font": "",       # "" = same as board_font
+    "board_title_align": "left",
+    "board_codes_place": "right",
+    "board_layout": "auto",
+    "board_panels": "cards",
+    "board_big_text": False,
+    "board_sides": {},           # section key -> "left" / "right", where the teacher moved it
+    "board_order": [],           # section keys in the teacher's order ([] = the usual order)
     "class_periods": [],
     "backup_dir": "",
     "last_backup": "",
@@ -100,6 +110,39 @@ BOARD_SECTIONS = [
     ("class_codes", "Class Codes", "right"),  # from Settings > Class Periods, not the lesson
 ]
 BOARD_SIDES = {"top": "across the top", "left": "left side", "right": "right side"}
+# Board Designer choices: setting -> {value: label}, first value is the default
+BOARD_CHOICES = {
+    "board_layout": {"auto": "Balanced (moves sections to fit)", "sides": "Keep each section on its side",
+                     "one": "One column"},
+    "board_panels": {"cards": "Cards", "outline": "Outlined boxes", "chalk": "Plain chalk (no boxes)"},
+    "board_title_align": {"left": "Left, date on the right", "center": "Centered, date underneath"},
+    "board_codes_place": {"right": "Bottom right", "left": "Bottom left"},
+}
+
+
+def board_sections(settings):
+    """BOARD_SECTIONS in the teacher's order, with the sides they picked: [(key, label, side)]."""
+    sides = settings.get("board_sides") or {}
+    order = settings.get("board_order") or []
+    rank = {k: i for i, k in enumerate(order)}
+    out = [(k, label, sides.get(k, col) if col != "top" and sides.get(k) in ("left", "right") else col)
+           for k, label, col in BOARD_SECTIONS]
+    default = [k for k, _, _ in BOARD_SECTIONS]
+    return sorted(out, key=lambda x: (x[2] != "top", rank.get(x[0], len(rank) + default.index(x[0]))))
+
+
+def move_board_section(settings, key, step):
+    """Move a section up (-1) or down (+1) in the board's order. Returns True if it moved."""
+    keys = [k for k, _, col in board_sections(settings) if col != "top"]
+    if key not in keys:
+        return False
+    i = keys.index(key)
+    j = i + step
+    if not 0 <= j < len(keys):
+        return False
+    keys[i], keys[j] = keys[j], keys[i]
+    settings["board_order"] = keys
+    return True
 LOGO_PLACES = {"left": "LEFT OF THE TITLE", "right": "TOP RIGHT CORNER"}
 LOGO_FILE = "logo.json"
 

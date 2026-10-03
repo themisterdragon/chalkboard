@@ -1,0 +1,531 @@
+{
+ "about": "Chibi school mascots for the window app, 24x24. Rows are the left half (12 pixels) and get mirrored. Each mascot has a 15-row head; 'body' (9 rows) is shared unless a mascot has its own. Colors: '.' clear, k outline, w white, r blush, p and s the school's colors (jersey), a b c d the mascot's own. 'cheer' is the arms-up pose: its body, plus 'raise' (paws drawn over the head's rows 12-14 where they're clear).",
+ "fixed": {
+  "k": "#1b1b1f",
+  "w": "#ffffff",
+  "r": "#f39aa9"
+ },
+ "jersey": {
+  "p": "#2e6b4f",
+  "s": "#f9d26b"
+ },
+ "body": [
+  ".......kksss",
+  "......kppppp",
+  ".....kpppppp",
+  ".....kakssss",
+  ".....kkkpppp",
+  ".......kpppp",
+  ".......kkkkk",
+  ".......kaak.",
+  ".......kkkk."
+ ],
+ "cheer": {
+  "raise": [
+   "..kk........",
+   ".kak........",
+   ".kak........"
+  ],
+  "body": [
+   "..kak..kksss",
+   "...kakkppppp",
+   "....kkpppppp",
+   ".....kkkssss",
+   ".......kpppp",
+   ".......kpppp",
+   ".......kkkkk",
+   ".......kaak.",
+   ".......kkkk."
+  ]
+ },
+ "mascots": {
+  "eagles": {
+   "colors": {
+    "a": "#6b4a2b",
+    "b": "#ffffff",
+    "c": "#f2b632"
+   },
+   "head": [
+    "............",
+    "......kkkkkk",
+    "....kkbbbbbb",
+    "...kbbbbbbbb",
+    "..kbbbbbbbbb",
+    "..kbbkkkbbbb",
+    ".kbbbbbkkbbb",
+    ".kbbbkkbbbbb",
+    ".kbbbkwbbbbb",
+    ".kbbbkkbbbkk",
+    ".kbrrbbbbkcc",
+    "..kbbbbbbkcc",
+    "..kbbbbbbbkc",
+    "...kkbbbbbbk",
+    ".....kkkkkkk"
+   ]
+  },
+  "tigers": {
+   "colors": {
+    "a": "#f08a24",
+    "b": "#fff6e8",
+    "c": "#f6a5b5"
+   },
+   "head": [
+    "............",
+    "..kk........",
+    "..kak....kkk",
+    "..kcakkkkaka",
+    "..kaaaaaaaak",
+    "..kkaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kkaakkaaaaa",
+    ".kaaakwaaaaa",
+    ".kkaakkaaaab",
+    ".kaaraaaabbb",
+    "..kaaaaabbbk",
+    "..kkaaabbbbb",
+    "...kkaaabbbb",
+    ".....kkkkkkk"
+   ]
+  },
+  "bulldogs": {
+   "colors": {
+    "a": "#cfb48e",
+    "b": "#fbf7f0",
+    "d": "#a2845c"
+   },
+   "head": [
+    "............",
+    "............",
+    "..kkk.kkkkkk",
+    ".kddkkaaaaaa",
+    ".kdkaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kaaakkaaaaa",
+    ".kaaakwaaaaa",
+    ".kaaakkabbbb",
+    "kdaraaabbbkk",
+    "kddaabbbbbkb",
+    "kddaabbbbbbb",
+    ".kkddbbbbbbb",
+    "...kkkkkkkkk"
+   ]
+  },
+  "panthers": {
+   "colors": {
+    "a": "#34343f",
+    "b": "#565666",
+    "c": "#c7e05a"
+   },
+   "head": [
+    "............",
+    "..kk........",
+    "..kbk....kkk",
+    "..kbbkkkkaaa",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kaaacccaaaa",
+    ".kaaackcaaaa",
+    ".kaaacccaaab",
+    ".kaaaaaaabbb",
+    "..kaaaaabbbk",
+    "..kaaaaabbbb",
+    "...kkaaabbbb",
+    ".....kkkkkkk"
+   ]
+  },
+  "wildcats": {
+   "colors": {
+    "a": "#9c8a74",
+    "b": "#f3ead8",
+    "c": "#f6a5b5",
+    "d": "#6c5c4a"
+   },
+   "head": [
+    "............",
+    "..kk........",
+    "..kak....kkk",
+    "..kcakkkkada",
+    "..kaaaaaadaa",
+    "..kaaaaaaada",
+    ".kdaaaaaaaaa",
+    ".kaaakkaaaaa",
+    ".kdaakwaaaaa",
+    ".kaaakkaaaab",
+    ".kaaraaaabbb",
+    "..kaaaaabbbk",
+    "..kaaaaabbbb",
+    "...kkaaabbbb",
+    ".....kkkkkkk"
+   ]
+  },
+  "lions": {
+   "colors": {
+    "a": "#e8b35a",
+    "b": "#fbecd0",
+    "d": "#a35f22"
+   },
+   "head": [
+    "....kkkkkkkk",
+    "..kkdddddddd",
+    ".kddddkkkkkk",
+    ".kdddkaaaaaa",
+    "kddkaaaaaaaa",
+    "kddkaaaaaaaa",
+    "kdkaaaaaaaaa",
+    "kdkaakkaaaaa",
+    "kdkaakwaaaaa",
+    "kdkaakkaaaab",
+    "kddkraaaabbb",
+    ".kdkaaaabbbk",
+    ".kddkaaabbbb",
+    "..kdddkkkkkk",
+    "...kkkkddddd"
+   ]
+  },
+  "warriors": {
+   "colors": {
+    "a": "#c9a227",
+    "c": "#c8102e",
+    "d": "#8a6d16"
+   },
+   "head": [
+    "........kkkk",
+    ".......kcccc",
+    "......kccccc",
+    "....kkkkkkkk",
+    "...kaaaaaaaa",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaakkkkkkk",
+    ".kaaakwkkkkk",
+    ".kaaaakkkkkk",
+    ".kdaaaaakkkk",
+    ".kdaaaaakkkk",
+    ".kddaaaakkkk",
+    "..kddaaaakkk",
+    "...kkkkkkkkk"
+   ]
+  },
+  "knights": {
+   "colors": {
+    "a": "#b9c2cc",
+    "c": "#c8102e",
+    "d": "#7d8894"
+   },
+   "head": [
+    "..........kk",
+    ".........kcc",
+    "......kkkkck",
+    "....kkaaaakk",
+    "...kaaaaaaaa",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kkkkkkkkkkk",
+    ".kaakwkkkkkk",
+    ".kaaaaaaaaaa",
+    ".kdaadadadad",
+    ".kdaadadadad",
+    "..kddaaaaaaa",
+    "...kkkkkkkkk"
+   ]
+  },
+  "falcons": {
+   "colors": {
+    "a": "#55636f",
+    "b": "#f3efe6",
+    "c": "#f2b632"
+   },
+   "head": [
+    "............",
+    "......kkkkkk",
+    "....kkaaaaaa",
+    "...kaaaaaaaa",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kaabkkbbbbb",
+    ".kaabkwbbbbb",
+    ".kaakkkbbbkk",
+    ".kakkbbbbkcc",
+    "..kkkbbbbkcc",
+    "..kkbbbbbbkc",
+    "...kkbbbbbbk",
+    ".....kkkkkkk"
+   ]
+  },
+  "hornets": {
+   "colors": {
+    "a": "#e8a317",
+    "c": "#cfe9f5"
+   },
+   "head": [
+    ".....k......",
+    "......k.....",
+    ".......kkkkk",
+    "....kkkkkkkk",
+    "...kkkkkkkkk",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaakkkaaaaa",
+    ".kakkwkaaaaa",
+    ".kakkkkaaaaa",
+    ".kaakkaaaaaa",
+    "..kaaaaaaakk",
+    "..kaaaaaakkk",
+    "...kkaaaaaaa",
+    ".....kkkkkkk"
+   ],
+   "body": [
+    "..kk...kksss",
+    ".kcck.kppppp",
+    ".kccckpppppp",
+    "..kkkkakssss",
+    ".....kkkpppp",
+    ".......kpppp",
+    ".......kkkkk",
+    ".......kaak.",
+    ".......kkkk."
+   ]
+  },
+  "dragons": {
+   "colors": {
+    "a": "#3fa34d",
+    "b": "#9ad681",
+    "c": "#f2d16b"
+   },
+   "head": [
+    "...kk.......",
+    "...kck.....k",
+    "...kcckkkkkc",
+    "...kkaaaaaka",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kaaakkaaaaa",
+    ".kaaakwaaaaa",
+    ".kaaakkaaaaa",
+    ".karraabbbbb",
+    "..kaaabbbkbb",
+    "..kaaabbbbbb",
+    "...kkaabbbbb",
+    ".....kkkkkkk"
+   ],
+   "body": [
+    "...kk..kksss",
+    "..kcck.kpppp",
+    "..kccckppppp",
+    "...kkkakssss",
+    ".....kkkpppp",
+    ".......kpppp",
+    ".......kkkkk",
+    ".......kaak.",
+    ".......kkkk."
+   ]
+  },
+  "yellowjackets": {
+   "colors": {
+    "a": "#f7d117",
+    "c": "#cfe9f5"
+   },
+   "head": [
+    "...kk.......",
+    ".....k......",
+    "......k.kkkk",
+    "....kkkkaaaa",
+    "...kaaaaaaaa",
+    "..kaaaaaaaaa",
+    "..kkkkkkkkkk",
+    ".kkkkkkkkkkk",
+    ".kaakwkaaaaa",
+    ".kaakkkaaaaa",
+    ".karraaaaaaa",
+    "..kaaaaaaakk",
+    "..kkkkkkkkkk",
+    "...kkaaaaaaa",
+    ".....kkkkkkk"
+   ],
+   "body": [
+    "..kk...kksss",
+    ".kcck.kppppp",
+    ".kccckpppppp",
+    "..kkkkakssss",
+    ".....kkkpppp",
+    ".......kpppp",
+    ".......kkkkk",
+    ".......kaak.",
+    ".......kkkk."
+   ]
+  },
+  "bobcats": {
+   "colors": {
+    "a": "#c79a64",
+    "b": "#fbf1e0",
+    "c": "#f6a5b5",
+    "d": "#7a5634"
+   },
+   "head": [
+    "..k.........",
+    "..kk........",
+    "..kak....kkk",
+    "..kcakkkkaaa",
+    "..kaaaadaaaa",
+    "..kaaaaaaada",
+    ".kaaaaaaaaaa",
+    ".kaaakkaaaaa",
+    ".kaaakwaadaa",
+    ".kdaakkaaaab",
+    ".kaaraaaabbb",
+    "kkaaaaaabbbk",
+    ".kkaaaabbbbb",
+    "..kbkaaabbbb",
+    "...kkkkkkkkk"
+   ]
+  },
+  "blackbears": {
+   "colors": {
+    "a": "#4a413c",
+    "b": "#c9a27a"
+   },
+   "head": [
+    "..kkk.......",
+    ".kaaak......",
+    ".kabakkkkkkk",
+    ".kaakaaaaaaa",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kaaakkaaaaa",
+    ".kaaakwaaaaa",
+    ".kaaakkaaaaa",
+    ".kaaaaaaabbb",
+    "..kaaaaabbbk",
+    "..kaaaaabbbb",
+    "...kkaaabbbb",
+    ".....kkkkkkk"
+   ]
+  },
+  "redhounds": {
+   "colors": {
+    "a": "#b5452b",
+    "b": "#f0c8a8",
+    "d": "#7c2a18"
+   },
+   "head": [
+    "............",
+    "......kkkkkk",
+    "....kkaaaaaa",
+    "...kaaaaaaaa",
+    ".kkkaaaaaaaa",
+    "kdddkaaaaaaa",
+    "kdddkaaaaaaa",
+    "kdddkakkaaaa",
+    "kdddkakwaaaa",
+    "kdddkakkaaab",
+    "kdddkaaaabbb",
+    ".kddkaaabbkk",
+    ".kkkkaaabbbb",
+    "...kkaabbbbb",
+    ".....kkkkkkk"
+   ]
+  },
+  "cardinals": {
+   "colors": {
+    "a": "#c8102e",
+    "c": "#f28c28"
+   },
+   "head": [
+    "........kk..",
+    ".......kaak.",
+    "......kaaakk",
+    "....kkkaaaaa",
+    "...kaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kaakkkkkkkk",
+    ".kaakwkkkkkk",
+    ".kaakkkkkkkk",
+    ".kaaaaakkkcc",
+    "..kaaaaaakcc",
+    "..kaaaaaaakc",
+    "...kkaaaaaak",
+    ".....kkkkkkk"
+   ]
+  },
+  "cougars": {
+   "colors": {
+    "a": "#c6915c",
+    "b": "#f6e8d6",
+    "c": "#f6a5b5",
+    "d": "#6e4626"
+   },
+   "head": [
+    "............",
+    "...kk.......",
+    "..kak....kkk",
+    "..kcakkkkaaa",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kaaakkaaaaa",
+    ".kaaakwaaaaa",
+    ".kaaakkaaabb",
+    ".kaaaaaaabbb",
+    "..kaaaadbbbk",
+    "..kaaaadbbbb",
+    "...kkaaabbbb",
+    ".....kkkkkkk"
+   ]
+  },
+  "owls": {
+   "colors": {
+    "a": "#8a6a4a",
+    "b": "#efe0c4",
+    "c": "#f2b632"
+   },
+   "head": [
+    "..k.........",
+    "..kak.......",
+    "..kaakkkkkkk",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaabbbbbaaa",
+    ".kabwwwwbbaa",
+    ".kabwkkwbbba",
+    ".kabwkkwbbbk",
+    ".kabwwwwbbkc",
+    ".kaabbbbbbkc",
+    "..kaabbbbbbk",
+    "..kaaabbbbbb",
+    "...kkaaaaaaa",
+    ".....kkkkkkk"
+   ]
+  },
+  "wolves": {
+   "colors": {
+    "a": "#8f96a0",
+    "b": "#eef0f2",
+    "c": "#5c626b"
+   },
+   "head": [
+    "..k.........",
+    "..kk........",
+    "..kck.....kk",
+    "..kcckkkkkaa",
+    "..kaaaaaaaaa",
+    "..kaaaaaaaaa",
+    ".kaaaaaaaaaa",
+    ".kaaakkaaaaa",
+    ".kaaakwaaaba",
+    ".kbaakkaabbb",
+    ".kbbaaaabbbb",
+    "..kbbaabbbkk",
+    "..kbbbabbbbk",
+    "...kkbbbbbbb",
+    ".....kkkkkkk"
+   ]
+  }
+ }
+}

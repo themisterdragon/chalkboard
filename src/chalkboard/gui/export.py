@@ -86,7 +86,14 @@ def export_dialog(gui, kind, obj):
     board = W.group(right, sk, "Board Slide")
     style = vars_["board_style"] = tk.StringVar(value=st.get("board_style", "chalk"))
     W.Dropdown(board, sk, list(STYLE_TEXT.items()), style, width=24).pack(anchor="w")
-    W.Button(board, sk, "Sections & Colors…", lambda: board_options(gui), small=True).pack(anchor="w", pady=(6 * S, 0))
+    row = tk.Frame(board, bg=board["bg"])
+    row.pack(anchor="w", pady=(6 * S, 0))
+    W.Button(row, sk, "Sections & Colors…", lambda: board_options(gui), small=True).pack(side="left")
+
+    def design():
+        from .board import board_designer
+        board_designer(gui)
+    W.Button(row, sk, "Board Designer…", design, small=True).pack(side="left", padx=(6 * S, 0))
 
     paper = W.group(right, sk, "Font & Paper")
     font = vars_["font"] = tk.StringVar(value=st.get("font", "Times"))
@@ -155,8 +162,12 @@ def export_done(gui, files):
     d = W.Dialog(gui, "Export Complete")
     top = tk.Frame(d.body, bg=sk["window"])
     top.pack(fill="x")
+    from .buddy import Buddy
+    pal = Buddy(top, gui, scale=2 * S)  # the school mascot cheers the export on (packed first: it keeps its room)
+    pal.pack(side="right", padx=(12 * S, 0))
+    gui.root.after(150, pal.cheer)
     tk.Label(top, image=sk.icon("folder", 2), bg=sk["window"]).pack(side="left", padx=(0, 12 * S))
-    W.label(top, sk, f"Saved {n} file{'s' if n != 1 else ''} to\n{folder}", wrap=520 * S).pack(side="left")
+    W.label(top, sk, f"Saved {n} file{'s' if n != 1 else ''} to\n{folder}", wrap=440 * S).pack(side="left")
     lv = W.ListView(d.body, sk, [("name", "File", 520, True)], height=min(8, max(3, n)))
     lv.pack(fill="both", expand=True, pady=(10 * S, 0))
     lv.set_rows([(p, [os.path.basename(p)]) for p in files])

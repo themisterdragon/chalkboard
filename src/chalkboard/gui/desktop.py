@@ -729,6 +729,9 @@ class Home:
             cell.bind("<FocusIn>", lambda e, i=i: self.mark(i))
             self.cells.append((cell, lab))
         W.label(box, sk, "Double-click an icon (or use the arrow keys and Return) to open it.", dim=True).pack(pady=(26 * S, 0))
+        from .buddy import Buddy
+        self.buddy = Buddy(f, gui)  # the school mascot, if one is picked: click it for a cheer
+        self.buddy.place(relx=1.0, rely=1.0, x=-16 * S, y=-10 * S, anchor="se")
         d = gui.store.data
         gui.status(f"{plural(len(d['lessons']), 'lesson plan')}   ·   {plural(len(d['assessments']), 'assessment')}",
                    f"{gui.store.kas_count:,} standards")

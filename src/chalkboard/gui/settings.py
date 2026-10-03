@@ -8,6 +8,7 @@ from ..store import GRADE_CHOICES
 from . import widgets as W
 from .common import AutoText, LineField
 from .desktop import grade_label
+from .board import board_designer
 from .export import STYLE_TEXT, board_options, browse, class_periods, logo_options, logo_text, periods_text
 from .skin import SKINS, TEXT_SIZES, THEMES, auto_scale
 
@@ -97,8 +98,12 @@ class SettingsView:
         for k, t in STYLE_TEXT.items():
             W.Radio(g, sk, t, style, k).pack(anchor="w")
         style.trace_add("write", lambda *a: self.set(board_style=style.get()))
-        W.Button(g, sk, "Sections & School Colors…", lambda: (board_options(gui), style.set(st.get("board_style"))),
-                 small=True).pack(anchor="w", pady=(6 * S, 0))
+        row = tk.Frame(g, bg=g["bg"])
+        row.pack(anchor="w", pady=(6 * S, 0))
+        W.Button(row, sk, "Board Designer…", lambda: board_designer(gui), small=True).pack(side="left")
+        W.Button(row, sk, "Sections & School Colors…", lambda: (board_options(gui), style.set(st.get("board_style"))),
+                 small=True).pack(side="left", padx=(6 * S, 0))
+        W.label(g, sk, "Fonts, where things go, and a preview.", dim=True, wrap=440 * S).pack(anchor="w")
         logo = W.label(g, sk, logo_text(gui), dim=True, wrap=440 * S)
         periods = W.label(g, sk, periods_text(gui), dim=True, wrap=440 * S)
 
@@ -110,6 +115,37 @@ class SettingsView:
         W.Button(g, sk, "Class Periods & Codes…", lambda: class_periods(gui, update), small=True).pack(
             anchor="w", pady=(8 * S, 0))
         periods.pack(anchor="w", pady=(2 * S, 0))
+
+        g = W.group(right, sk, "School Mascot")
+        g.pack(fill="x", pady=(10 * S, 0))
+        from .buddy import Buddy
+        from ..mascots import MASCOTS
+        row = tk.Frame(g, bg=g["bg"])
+        row.pack(fill="x")
+        spot = tk.Frame(row, bg=g["bg"])
+        spot.pack(side="left", anchor="n", padx=(0, 10 * S))
+        left_m = tk.Frame(row, bg=g["bg"])
+        left_m.pack(side="left", anchor="n", fill="x", expand=True)
+        mas = tk.StringVar(value=st.get("mascot") or "")
+        W.Dropdown(left_m, sk, [("", "None")] + [(k, n.title()) for k, (n, _) in MASCOTS.items()], mas,
+                   width=16).pack(anchor="w")
+        W.label(left_m, sk, "Wears your school colors on the home screen. Click it for a cheer; it cheers your "
+                            "exports too.", dim=True, wrap=260 * S).pack(anchor="w", pady=(6 * S, 0))
+        pet = {"w": None}
+
+        def show_pet(cheer=False):
+            if pet["w"]:
+                pet["w"].destroy()
+            pet["w"] = Buddy(spot, gui, scale=3 * S, bubble=False)
+            pet["w"].pack()
+            if cheer:
+                pet["w"].cheer()
+
+        def mascot_changed(*a):
+            self.set(mascot=mas.get())
+            show_pet(cheer=True)
+        mas.trace_add("write", mascot_changed)
+        show_pet()
 
         g = W.group(right, sk, "This Window")
         g.pack(fill="x", pady=(10 * S, 0))

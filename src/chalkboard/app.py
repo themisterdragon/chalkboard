@@ -8,18 +8,19 @@ import textwrap
 
 from . import __version__
 from .ui import APP, BACK, UI, ExportBar, big, ch, curses, truncate
-from .store import (LOGO_PLACES, ALL, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SECTIONS, BOARD_SIDES, BOARD_STYLES, DEFAULT_SUBJECT,
+from .store import (LOGO_PLACES, ALL, BOARD_CHOICES, board_sections, move_board_section, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SIDES, BOARD_STYLES, DEFAULT_SUBJECT,
                     FIXED_FIELDS, VOCAB_HINT, shown_fields, GOOD_THINGS_PREFIX, GRADE_CHOICES, LESSON_FIELDS, QUESTION_TYPES, SHEET_KINDS, SORTS, TYPE_LABEL,
                     TYPE_TAG, WEEKDAYS, Store, fmt_points, grades_match, new_assessment, new_lesson, new_question, now,
                     parse_hex, parse_points, points_of, sort_items)
-from .doc import LETTERS, assessment_doc, lesson_doc
+from .doc import LETTERS, assessment_doc, lesson_doc, preview_doc
 from .markup import plain
 from .mascots import MASCOTS, hop, sprite
 from .mascots import name as mascot_name
 from .store import CHART_DIRECTIONS, CHART_PRESETS, CHART_SIZES, chart_preset, chart_size_label
 from . import offline, plugins
 from .exporting import FORMAT_ORDER, PLUGIN_FORMATS, ExportError, export, export_everything, export_subdirs, open_path
-from .export_png import low_contrast
+from . import fontlib
+from .export_png import low_contrast, render_preview
 from .export_txt import render_lines
 FORMAT_LABEL = {"PDF": "PDF", "DOCX": "WORD (.DOCX - ALSO GOOGLE DOCS)", "TXT": "PLAIN TEXT",
                 "PNG": "BOARD SLIDE (1920x1080 PNG + EDITABLE .PPTX SLIDESHOW)",
@@ -1378,7 +1379,7 @@ class App:
                       ("versions", f"VERSIONS ...... {st['export_versions']}"
                                    + ("  (A = ORIGINAL ORDER; OTHERS SHUFFLED)" if st["export_versions"] > 1 else ""))]
             if st[fkey] in ("PNG", "ALL") and kind == "lesson":
-                f += [("board", f"BOARD SLIDE ... {BOARD_STYLES[st['board_style']]}  (CHANGE SECTIONS)")]
+                f += [("board", f"BOARD SLIDE ... {BOARD_STYLES[st['board_style']]}  (BOARD DESIGNER)")]
             if st[fkey] != "PNG":
                 f += [("font", f"FONT .......... {st['font'].upper()}  /  {st['page'].upper()} PAPER")]
             f += [("folder", f"FOLDER ........ {os.path.join(self.store.export_dir(), *export_subdirs(kind, obj))}"),
@@ -1452,22 +1453,79 @@ class App:
                        hints="1-0 OPEN FILE  F OPEN FOLDER  ESC DONE")
 
     def board_settings(self):
+        """The board designer: fonts, where things go, and which sections show."""
         ui, st = self.ui, self.st
+        cycle = {k: list(v) for k, v in BOARD_CHOICES.items()}
+
+        def choice(key):
+            return BOARD_CHOICES[key].get(st.get(key), next(iter(BOARD_CHOICES[key].values()))).upper()
 
         def fields():
-            on = st.get("board_sections") or []
-            f = [("style", f"STYLE ............... {BOARD_STYLES[st['board_style']]}"),
-                 ("std_text", "STANDARDS SHOW ...... " + ("CODE + FULL TEXT" if st.get("board_std_text", True) else "CODES ONLY"))]
-            for key, label, col in BOARD_SECTIONS:
-                f.append((key, f"[{'X' if key in on else ' '}] {label.upper():<19} ({BOARD_SIDES[col].upper()})"))
-            return f
+            head = st.get("board_head_font", "")
+            return [("style", f"COLORS .............. {BOARD_STYLES[st['board_style']]}"),
+                    ("font", f"TEXT FONT ........... {fontlib.label(st.get('board_font', '')).upper()}"),
+                    ("head", f"HEADING FONT ........ {(fontlib.label(head) if head else 'SAME AS TEXT').upper()}"),
+                    ("board_layout", f"COLUMNS ............. {choice('board_layout')}"),
+                    ("board_panels", f"SECTION BOXES ....... {choice('board_panels')}"),
+                    ("board_title_align", f"TITLE ............... {choice('board_title_align')}"),
+                    ("board_codes_place", f"CLASS CODES ......... {choice('board_codes_place')}"),
+                    ("big", "TEXT SIZE ........... " + ("EXTRA BIG (MAY USE MORE SLIDES)" if st.get("board_big_text")
+                                                         else "BIGGEST THAT FITS")),
+                    ("sections", "SECTIONS, SIDES & ORDER..."),
+                    ("preview", "PREVIEW A SLIDE"),
+                    ("install", "PUT CHALKBOARD'S FONTS ON THIS COMPUTER (FOR POWERPOINT)" +
+                     (" - DONE" if fontlib.fonts_installed() else ""))]
 
         def on_open(f, i):
             key = f[0]
             if key == "style":
                 order = list(BOARD_STYLES)
                 st["board_style"] = order[(order.index(st["board_style"]) + 1) % len(order)]
-            elif key == "std_text":
+            elif key in ("font", "head"):
+                self.font_picker("board_font" if key == "font" else "board_head_font")
+            elif key in cycle:
+                order = cycle[key]
+                cur = st.get(key) if st.get(key) in order else order[0]
+                st[key] = order[(order.index(cur) + 1) % len(order)]
+            elif key == "big":
+                st["board_big_text"] = not st.get("board_big_text")
+            elif key == "sections":
+                self.board_sections()
+            elif key == "preview":
+                self.board_preview()
+                return i
+            elif key == "install":
+                try:
+                    folder = fontlib.install_fonts()
+                    ui.msg = f"FONTS SAVED TO {folder}. RESTART POWERPOINT OR KEYNOTE TO SEE THEM."
+                except OSError as e:
+                    ui.msg = "?COULDN'T SAVE THE FONTS: " + str(e).upper()
+                return i
+            self.save()
+            return i
+
+        def on_key(k, item, i):
+            if ch(k).upper() == "P":
+                self.board_preview()
+
+        ui.list_screen("BOARD DESIGNER", fields, lambda f, w: (f[1], ui.HI), on_open=on_open, on_key=on_key,
+                       info_fn=lambda: "1920x1080 PNG + SLIDESHOW. EMPTY SECTIONS ARE LEFT OFF; TEXT SIZES ITSELF.",
+                       hints="1-0 CHANGE  P PREVIEW  ESC BACK")
+
+    def board_sections(self):
+        ui, st = self.ui, self.st
+
+        def fields():
+            on = st.get("board_sections") or []
+            f = [("std_text", "STANDARDS SHOW ...... " + ("CODE + FULL TEXT" if st.get("board_std_text", True)
+                                                          else "CODES ONLY"))]
+            for key, label, col in board_sections(st):
+                f.append((key, f"[{'X' if key in on else ' '}] {label.upper():<19} ({BOARD_SIDES[col].upper()})"))
+            return f
+
+        def on_open(f, i):
+            key = f[0]
+            if key == "std_text":
                 st["board_std_text"] = not st.get("board_std_text", True)
             else:
                 on = [k for k in st.get("board_sections") or [] if k != key]
@@ -1475,9 +1533,88 @@ class App:
             self.save()
             return i
 
-        ui.list_screen("BOARD SLIDE OPTIONS", fields, lambda f, w: (f[1], ui.HI), on_open=on_open,
-                       info_fn=lambda: "1920x1080 PNG. EMPTY SECTIONS ARE LEFT OFF; TEXT AUTO-SIZES TO FIT.",
-                       hints="1-0 CHANGE  ESC BACK")
+        def on_key(k, item, i):
+            c = ch(k).upper()
+            if not item or item[0] == "std_text":
+                return None
+            key = item[0]
+            side = dict((x[0], x[2]) for x in board_sections(st)).get(key)
+            if c == "S" and side in ("left", "right"):
+                st.setdefault("board_sides", {})[key] = "right" if side == "left" else "left"
+                self.save()
+                return i
+            if c in ("+", "-", "=", "_") and side != "top":
+                if move_board_section(st, key, 1 if c in ("+", "=") else -1):
+                    self.save()
+                    keys = [x[0] for x in fields()]
+                    return keys.index(key)
+            if c == "R" and ui.confirm("PUT EVERY SECTION BACK IN ITS USUAL PLACE"):
+                st["board_sides"], st["board_order"] = {}, []
+                self.save()
+            return None
+
+        ui.list_screen("BOARD SECTIONS", fields, lambda f, w: (f[1], ui.HI), on_open=on_open, on_key=on_key,
+                       info_fn=lambda: "COLUMNS: " + BOARD_CHOICES["board_layout"].get(
+                           st.get("board_layout", "auto"), "").upper() + " (BOARD DESIGNER > COLUMNS)",
+                       hints="RETURN ON/OFF  S SIDE  +/- MOVE  R RESET  ESC BACK")
+
+    def font_picker(self, key):
+        """Pick a board font: Chalkboard's own, the standard ones, or any font on this computer."""
+        ui, st = self.ui, self.st
+        rows, _, x0 = ui.dims()
+        ui.draw(rows - 1, x0, ui.tx("LOOKING FOR FONTS..."), ui.HI)
+        ui.s.refresh()
+        top = [("", "SAME AS TEXT FONT" if key == "board_head_font" else fontlib.label("").upper(), "")]
+        tags = {"chalkboard": "  (CHALKBOARD'S OWN)", "standard": "", "system": ""}
+        everything = top + [(n, n, tags[k]) for n, k in fontlib.families()
+                            if not (n == "Helvetica" and key == "board_font")]  # (the standard one, above)
+        query = [""]
+
+        def items():
+            q = query[0].lower()
+            return [x for x in everything if not q or q in x[1].lower()]
+
+        def row(x, w):
+            mark = "* " if x[0] == st.get(key, "") else "  "
+            return mark + x[1] + x[2], None
+
+        def on_open(x, i):
+            st[key] = x[0]
+            self.save()
+            ui.msg = "FONT: " + (x[1] if x[1] else "STANDARD").upper()
+            return "back"
+
+        def on_key(k, x, i):
+            c = ch(k)
+            if k in (curses.KEY_BACKSPACE, 127, 8) or c in ("\x7f", "\b"):
+                query[0] = query[0][:-1]
+                return 0
+            if len(c) == 1 and c.isprintable() and not c.isdigit():
+                query[0] += c
+                return 0
+            return None
+
+        cur = st.get(key, "")
+        start = next((i for i, x in enumerate(everything) if x[0] == cur), 0)
+        ui.list_screen("BOARD FONT", items, row, on_open=on_open, on_key=on_key, start=start,
+                       info_fn=lambda: (f"FIND: {query[0]}_" if query[0] else
+                                        f"{len(everything)} FONTS. TYPE TO FIND ONE. * = THE ONE IN USE"),
+                       hints="1-0 PICK  TYPE TO FIND  ESC CANCEL", empty="NO FONT MATCHES. BACKSPACE TO ERASE.")
+
+    def board_preview(self):
+        """Render the first board slide of the newest lesson (or a sample) and open it."""
+        ui = self.ui
+        rows, _, x0 = ui.dims()
+        ui.draw(rows - 1, x0, ui.tx("DRAWING A PREVIEW..."), ui.HI)
+        ui.s.refresh()
+        path = os.path.join(self.store.dir, "board-preview.png")
+        try:
+            n = render_preview(preview_doc(self.store), path)
+        except Exception as e:  # noqa: BLE001 - say what went wrong, never crash the planner
+            ui.msg = "?" + str(e).upper()
+            return
+        open_path(path)
+        ui.msg = "PREVIEW OPENED" + (f" (SLIDE 1 OF {n})" if n > 1 else "") + "."
 
     # ------------------------------------------------------------- settings
     def logo_settings(self):
@@ -1672,7 +1809,7 @@ class App:
             ("font", "DOCUMENT FONT", "font"),
             ("page", "PAPER SIZE", "page"),
             ("export_dir", "EXPORT FOLDER", "folder"),
-            ("board_style", "BOARD SLIDE (DISPLAY PNG)", "board"),
+            ("board_style", "BOARD SLIDE DESIGNER", "board"),
             ("logo", "SCHOOL LOGO (BOARD SLIDES)", "logo"),
             ("class_periods", "CLASS PERIODS & CODES", "periods"),
             ("primary_color", "SCHOOL COLOR 1 (BACKGROUND)", "color"),

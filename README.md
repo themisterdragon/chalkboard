@@ -246,9 +246,14 @@ Redhounds, Cardinals, Cougars, Owls, and Wolves. Use Left/Right to browse and
 Return to pick. Your mascot appears in the boot sequence and runs along the
 progress bar while files export. With no mascot, the Chalkboard logo runs the
 bar instead. It's drawn with text characters in the screen color, so it adds
-almost nothing to the load on any machine. The mascot is only in the terminal
-app and the window version's terminal view; the window view shows a plain
-progress bar in its status bar.
+almost nothing to the load on any machine.
+
+The window view has a chibi version of every mascot, in full color and wearing
+a jersey in your school colors (Settings > School Colors). It waits in a corner
+of the home screen, hops and cheers ("GO DRAGONS!") when you click it, and
+cheers again when an export finishes. It only moves when something happens, so
+it costs nothing while it waits. Pick it under Settings > School Mascot in
+either view. The art is in `data/chibis.json`.
 
 ### Lesson sections
 
@@ -318,6 +323,36 @@ Board slides are drawn with the same engine as the PDF, then turned into a PNG
 by a tool the computer already has: `sips` on macOS (built in), or poppler's
 `pdftoppm`, `mutool`, or Ghostscript on Linux/Windows. Pick which sections
 appear under Settings > Board Slide (or from the export screen).
+
+**Board Designer:** Settings > Board Designer (in the window version, also from
+the export screen) changes how every board slide looks, with a live preview of
+your newest lesson in the window version (`P` previews it in the terminal app):
+
+- **Fonts** for the text and for the headings and title: the standard one,
+  Times, any font on your computer (type to find it), or one of Chalkboard's
+  own: **Chalkboard Pixel** (square pixels, like the logo), **Chalkboard
+  Chalk** (dusty, hand-drawn chalk), and **Chalkboard Marquee** (round dots,
+  like a theater sign). Each has bold and italic. Board pictures always show
+  the font you picked. The slideshow asks PowerPoint or Keynote for it by
+  name, so it shows there on computers that have the font. "Put Chalkboard's
+  Fonts on This Computer" installs Chalkboard's three fonts for you (no
+  administrator needed). A font with no bold or italic of its own gets a
+  thickened or slanted stand-in.
+- **Columns:** balanced (sections move between columns to keep the text big),
+  keep each section on its side, or one column.
+- **Sections look like** cards, outlined boxes, or plain chalk with a line
+  under each heading.
+- **Title** on the left with the date on the right, or centered with the date
+  underneath. **Class codes** in the bottom right or bottom left corner.
+- **Extra-big text:** a bigger smallest size, so a full lesson continues onto
+  more slides instead of shrinking.
+- **Sections, Sides & Order:** show or hide each section, switch its side, and
+  move it up or down (`S`, `+`/`-` in the terminal app; `R` puts everything
+  back).
+
+Chalkboard's fonts are its own pixel lettering (`data/pixelfont.json`), built
+into real TrueType fonts when they're needed. They're free to use and share
+under the SIL Open Font License 1.1.
 
 **School logo:** Settings > School Logo takes a PNG or JPEG and puts it left of
 the title or in the top right corner of every board slide. A PNG with a

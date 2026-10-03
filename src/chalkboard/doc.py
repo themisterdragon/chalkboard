@@ -15,7 +15,7 @@ import random
 import re
 
 from .organizers import auto_lines
-from .store import (ANNOTATION, ANNOTATION_COLS, BELL_SHEET, BOARD_SECTIONS, CHART_DIRECTIONS, LESSON_FIELDS,
+from .store import (ANNOTATION, ANNOTATION_COLS, BELL_SHEET, board_sections, periods_for, CHART_DIRECTIONS, LESSON_FIELDS,
                     WEEKDAYS, fmt_points, points_of, vocab_pairs)
 
 LETTERS = "ABCDEFGHIJ"
@@ -139,13 +139,14 @@ def code_blocks(codes):
     return out
 
 
-def board_doc(lesson, store, period=None):
+def board_doc(lesson, store, period=None, settings=None):
     """The at-a-glance pieces of a lesson for a classroom display (see export_png).
-    period: one of Settings > Class Periods; its codes fill the Class Codes panel."""
-    st = store.settings
+    period: one of Settings > Class Periods; its codes fill the Class Codes panel.
+    settings: instead of the store's (the board designer previews changes before saving them)."""
+    st = settings if settings is not None else store.settings
     wanted = st.get("board_sections") or []
     cols = {"top": [], "left": [], "right": []}
-    for key, label, col in BOARD_SECTIONS:
+    for key, label, col in board_sections(st):
         if key not in wanted:
             continue
         if key == "class_codes":
@@ -172,7 +173,35 @@ def board_doc(lesson, store, period=None):
             "meta": meta, "footer": footer, "top": cols["top"], "left": cols["left"], "right": cols["right"],
             "style": st.get("board_style", "chalk"),
             "colors": (st.get("primary_color", ""), st.get("secondary_color", ""), st.get("text_color", "")),
-            "logo": store.logo(), "logo_place": st.get("logo_place", "left")}
+            "logo": store.logo(), "logo_place": st.get("logo_place", "left"),
+            "font": st.get("board_font", ""), "head_font": st.get("board_head_font", ""),
+            "title_align": st.get("board_title_align", "left"), "codes_place": st.get("board_codes_place", "right"),
+            "layout": st.get("board_layout", "auto"), "panels": st.get("board_panels", "cards"),
+            "big_text": st.get("board_big_text", False), "order": st.get("board_order") or []}
+
+
+SAMPLE_LESSON = {
+    "title": "Making a Strong Claim", "date": "", "course": "", "unit": "Argument Writing",
+    "question": "What makes people change their minds?",
+    "targets": "I can write a claim that takes a clear side.\nI can back it up with **two** reasons.",
+    "success": "My claim fits in one sentence.\nEach reason connects to the claim.",
+    "bell_ringer": "Finish the sentence: The best school lunch is ___ because...",
+    "materials": "Notebook\nClaim sentence starters",
+    "vocab": "claim: what you are arguing\nevidence: facts that back it up",
+    "homework": "Write one claim about something you care about.",
+}
+
+
+def preview_doc(store, settings=None):
+    """A board slide to try designs on: the newest lesson, or a sample when there are none yet."""
+    from datetime import date
+    lessons = sorted(store.data.get("lessons") or [], key=lambda x: x.get("updated", ""), reverse=True)
+    today = date.today()
+    lesson = lessons[0] if lessons else dict(SAMPLE_LESSON, date=f"{today:%b} {today.day}, {today.year}",
+                                             course=store.settings.get("course", ""))
+    st = settings if settings is not None else store.settings
+    periods = periods_for(st, lesson)
+    return board_doc(lesson, store, periods[0] if periods else None, st)
 
 
 # -------------------------------------------------------------- assessments --
