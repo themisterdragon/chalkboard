@@ -27,14 +27,40 @@ GOOD_THINGS_FILE = "data/sel_prompts.json"
 GOOD_THINGS_PREFIX = "SEL: "
 
 
-def data_dir():
+def is_beta():
+    from . import __version__
+    return bool(re.search(r"[a-z]", __version__))  # 2.1.0b1, 2.1.0rc1: a test build
+
+
+def data_dir(beta=None):
+    """Where Chalkboard keeps its data. A beta keeps its own (see seed_beta), so trying one can't
+    touch the lessons in the regular app."""
+    if os.environ.get("CHALKBOARD_DATA"):
+        return os.path.expanduser(os.environ["CHALKBOARD_DATA"])
+    beta = is_beta() if beta is None else beta
+    name = "chalkboard-beta" if beta else "chalkboard"
     if sys.platform == "win32":
         base = os.environ.get("APPDATA") or os.path.expanduser("~")
     elif sys.platform == "darwin":
         base = os.path.expanduser("~/Library/Application Support")
     else:
         base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    return os.path.join(base, "chalkboard")
+    return os.path.join(base, name)
+
+
+def seed_beta():
+    """The first time a beta runs, copy the regular app's data into the beta's folder, so it starts
+    with the teacher's own lessons. After that the two are separate."""
+    if not is_beta() or os.environ.get("CHALKBOARD_DATA"):
+        return
+    beta, regular = data_dir(), data_dir(beta=False)
+    if os.path.exists(beta) or not os.path.isdir(regular):
+        return
+    import shutil
+    try:
+        shutil.copytree(regular, beta, ignore=shutil.ignore_patterns("backups", "plugins", "*.tmp"))
+    except OSError:
+        pass
 
 
 def default_export_dir():
@@ -582,6 +608,7 @@ def sort_items(items, how):
 
 class Store:
     def __init__(self):
+        seed_beta()
         self.dir = data_dir()
         self.path = os.path.join(self.dir, "data.json")
         self.warning = None
