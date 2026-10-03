@@ -433,7 +433,8 @@ class TermHost:
                         (f"<{MOD}-equal>", lambda: self.zoom(1)), (f"<{MOD}-plus>", lambda: self.zoom(1)),
                         (f"<{MOD}-minus>", lambda: self.zoom(-1))):
             self.canvas.bind(seq, lambda e, fn=fn: (fn(), "break")[1])
-        gui.root.after_idle(lambda: self.run(boot))
+        # a timer, not after_idle: on macOS, Tk stops drawing while a wait loop runs inside an idle callback
+        gui.root.after(1, lambda: self.run(boot))
 
     def family(self):
         """The computer's own terminal font: Terminal's on a Mac, Windows Terminal's on Windows,

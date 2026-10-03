@@ -100,7 +100,7 @@ class Button(tk.Canvas):
 
     def invoke(self):
         if self.enabled and self.command:
-            self.after_idle(self.command)
+            self.after(1, self.command)  # not after_idle: see TermHost.start
 
     def draw(self):
         sk, S = self.skin, self.skin.S

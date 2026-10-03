@@ -402,8 +402,8 @@ class Gui:
         if self.term or self.modals:
             return
         self.save()
-        self.settings["gui_mode"] = "terminal"
-        self.save()
+        # "terminal" is remembered only when you quit from it (left_terminal), so a terminal view
+        # that hangs can't come back on every launch
         from .term import TermHost
         self.term = TermHost(self)
         self.term_text = self.text_px()
@@ -421,6 +421,7 @@ class Gui:
         self.view = None  # its boxes still hold what they showed before; the terminal view may have changed it
         self.mtime = self.file_mtime()
         if why == "quit":
+            self.settings["gui_mode"] = "terminal"
             self.quit()
             return
         self.settings["gui_mode"] = "window"

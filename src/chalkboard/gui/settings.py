@@ -167,7 +167,7 @@ class SettingsView:
 
     def setup(self):
         from .setup import run_setup
-        self.gui.root.after_idle(lambda: run_setup(self.gui))
+        self.gui.root.after(1, lambda: run_setup(self.gui))  # not after_idle: see TermHost.start
 
     def set(self, **kw):
         self.gui.settings.update(kw)
