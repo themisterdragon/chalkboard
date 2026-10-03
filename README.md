@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" width="128" height="128" alt="The Chalkboard logo: a pixel-art green chalkboard on a wooden easel with &quot;Ab&quot; written on it in chalk"></p>
+
 # Chalkboard
 
 A lesson planner and quiz builder for teachers. Plan a lesson, put it on the
