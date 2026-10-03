@@ -1,3 +1,6 @@
+**2.0.1** fixes a crash on Macs: Chalkboard Terminal wouldn't open, and switching to the terminal view or
+running setup again froze the app. If you're on 2.0.0 on a Mac, replace it with this one; your lessons are kept.
+
 **Chalkboard 2.0** is one app with two views. Open **Chalkboard** and plan with windows, buttons, and menus,
 or switch to the retro **terminal view** (green screen, keyboard-driven) any time with View > Switch to
 Terminal View or **Ctrl+Shift+W** (Cmd+Shift+W on a Mac). Both views work on the same lessons, so you never
@@ -61,10 +64,10 @@ window app is now just called **Chalkboard**.
 
 | You have | Download |
 |----------|----------|
-| A Mac | `Chalkboard-2.0.0.dmg`. Open it and drag Chalkboard to Applications; nothing else to install. (`Chalkboard-Terminal-2.0.0.dmg` is the terminal-only app.) |
-| Windows | `Chalkboard-2.0.0-windows.exe`, nothing else to install. (`Chalkboard-Terminal-2.0.0-windows.exe` is the terminal-only app; run it from Windows Terminal for the best look.) |
-| Linux | `chalkboard-2.0.0-linux.tar.gz`: unpack it, then `sh install.sh`. It offers to install anything missing (Python, Tk, and the tool that makes board pictures) and adds Chalkboard to your app menu. |
-| Python, any OS | `chalkboard-gui.pyz` (`python3 chalkboard-gui.pyz`, needs Python with Tk), or the `.whl` with pipx: `pipx install chalkboard_planner-2.0.0-py3-none-any.whl` |
+| A Mac | `Chalkboard-2.0.1.dmg`. Open it and drag Chalkboard to Applications; nothing else to install. (`Chalkboard-Terminal-2.0.1.dmg` is the terminal-only app.) |
+| Windows | `Chalkboard-2.0.1-windows.exe`, nothing else to install. (`Chalkboard-Terminal-2.0.1-windows.exe` is the terminal-only app; run it from Windows Terminal for the best look.) |
+| Linux | `chalkboard-2.0.1-linux.tar.gz`: unpack it, then `sh install.sh`. It offers to install anything missing (Python, Tk, and the tool that makes board pictures) and adds Chalkboard to your app menu. |
+| Python, any OS | `chalkboard-gui.pyz` (`python3 chalkboard-gui.pyz`, needs Python with Tk), or the `.whl` with pipx: `pipx install chalkboard_planner-2.0.1-py3-none-any.whl` |
 
 **First launch:** the apps aren't signed by Apple or Microsoft, so your computer asks before
 opening them the first time.

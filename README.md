@@ -135,7 +135,7 @@ window version), or run either directly with `python3 chalkboard.pyz`.
 
 **Python package (any OS, including Windows):**
 
-    pipx install chalkboard_planner-2.0.0-py3-none-any.whl
+    pipx install chalkboard_planner-2.0.1-py3-none-any.whl
 
 On Windows this pulls in `windows-curses` automatically.
 
@@ -404,6 +404,6 @@ here belong to their owners.
     pip wheel --no-deps -w dist .      # -> dist/*.whl
     python3 scripts/make_icon.py       # -> macos/Chalkboard.icns (only to change the icon)
 
-Pushing a version tag (`git tag v2.0.0 && git push --tags`) builds all of these on
+Pushing a version tag (`git tag v2.0.1 && git push --tags`) builds all of these on
 GitHub's Mac and Windows runners (the `.exe` with PyInstaller), tests them, and
 attaches them to a draft release.
