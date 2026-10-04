@@ -129,6 +129,9 @@ class AssessmentList(ItemList):
 
     def cmd_new(self):
         a = new_assessment_dialog(self.gui, unit=self.unit.get())
+        if a and self.new_class():
+            a["course"] = self.new_class()
+            self.gui.save()
         if a:
             self.gui.show(open_factory(a))
 
@@ -180,6 +183,8 @@ class AssessmentEditor:
         tool(bar, sk, "Preview", self.cmd_preview)
         tool(bar, sk, "Answer Key", self.cmd_key)
         tool(bar, sk, "Export…", self.cmd_export)
+        gap(bar, sk)
+        W.FormatBar(bar, sk, f).pack(side="left")
         W.label(bar, sk, "Changes save by themselves.", dim=True).pack(side="right")
         tk.Frame(f, bg=sk["dark"], height=S).pack(fill="x")
 
@@ -309,10 +314,7 @@ class AssessmentEditor:
         W.skin_menu(m, self.gui.skin)
         for t, _, _ in QUESTION_TYPES:
             m.add_command(label=f"{TYPE_TEXT[t]}", command=lambda t=t: self.add(t))
-        try:
-            m.tk_popup(self.add_btn.winfo_rootx(), self.add_btn.winfo_rooty() + self.add_btn.winfo_height())
-        finally:
-            m.grab_release()
+        W.popup_menu(m, self.add_btn.winfo_rootx(), self.add_btn.winfo_rooty() + self.add_btn.winfo_height())
 
     def default_std(self):
         s = self.a.get("standards") or []
@@ -378,10 +380,7 @@ class AssessmentEditor:
         for label, fn in (("Edit…", self.edit), ("Copy", self.duplicate), ("Delete", self.delete),
                           ("Move Up", lambda: self.move(-1)), ("Move Down", lambda: self.move(1))):
             m.add_command(label=label, command=fn)
-        try:
-            m.tk_popup(e.x_root, e.y_root)
-        finally:
-            m.grab_release()
+        W.popup_menu(m, e.x_root, e.y_root)
 
     def cmd_preview(self):
         self.gui.save()
@@ -409,7 +408,10 @@ def question_dialog(gui, a, q, new=False):
     sk, S = gui.skin, gui.skin.S
     d = W.Dialog(gui, ("New " if new else "Edit ") + TYPE_TEXT[t] + (" Question" if t not in ("passage", "section") else ""))
     body = d.body
-    W.label(body, sk, TYPE_HELP[t], dim=True).pack(anchor="w", pady=(0, 6 * S))
+    top = tk.Frame(body, bg=W.bg_of(body))
+    top.pack(fill="x", pady=(0, 6 * S))
+    W.label(top, sk, TYPE_HELP[t], dim=True).pack(side="left", anchor="w")
+    W.FormatBar(top, sk, body).pack(side="right")
     texts = {}
 
     def line(label, key, width=50):
@@ -715,6 +717,8 @@ class SheetEditor:
         bar = toolbar(f, sk)
         tool(bar, sk, "Preview", self.cmd_preview)
         tool(bar, sk, "Export…", self.cmd_export)
+        gap(bar, sk)
+        W.FormatBar(bar, sk, f).pack(side="left")
         W.label(bar, sk, KIND_HELP[a.get("kind")], dim=True).pack(side="right")
         tk.Frame(f, bg=sk["dark"], height=S).pack(fill="x")
         area = W.ScrollArea(f, sk, gui, maxwidth=1000 * S)

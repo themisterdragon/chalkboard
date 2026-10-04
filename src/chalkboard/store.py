@@ -27,14 +27,40 @@ GOOD_THINGS_FILE = "data/sel_prompts.json"
 GOOD_THINGS_PREFIX = "SEL: "
 
 
-def data_dir():
+def is_beta():
+    from . import __version__
+    return bool(re.search(r"[a-z]", __version__))  # 2.1.0b1, 2.1.0rc1: a test build
+
+
+def data_dir(beta=None):
+    """Where Chalkboard keeps its data. A beta keeps its own (see seed_beta), so trying one can't
+    touch the lessons in the regular app."""
+    if os.environ.get("CHALKBOARD_DATA"):
+        return os.path.expanduser(os.environ["CHALKBOARD_DATA"])
+    beta = is_beta() if beta is None else beta
+    name = "chalkboard-beta" if beta else "chalkboard"
     if sys.platform == "win32":
         base = os.environ.get("APPDATA") or os.path.expanduser("~")
     elif sys.platform == "darwin":
         base = os.path.expanduser("~/Library/Application Support")
     else:
         base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    return os.path.join(base, "chalkboard")
+    return os.path.join(base, name)
+
+
+def seed_beta():
+    """The first time a beta runs, copy the regular app's data into the beta's folder, so it starts
+    with the teacher's own lessons. After that the two are separate."""
+    if not is_beta() or os.environ.get("CHALKBOARD_DATA"):
+        return
+    beta, regular = data_dir(), data_dir(beta=False)
+    if os.path.exists(beta) or not os.path.isdir(regular):
+        return
+    import shutil
+    try:
+        shutil.copytree(regular, beta, ignore=shutil.ignore_patterns("backups", "plugins", "*.tmp"))
+    except OSError:
+        pass
 
 
 def default_export_dir():
@@ -72,7 +98,19 @@ DEFAULT_SETTINGS = {
     "lesson_sort": "updated",
     "assess_sort": "updated",
     "logo_place": "left",
+    # Board Designer: fonts ("" = the standard one) and where things go on a board slide
+    "board_font": "",
+    "board_head_font": "",       # "" = same as board_font
+    "board_title_align": "left",
+    "board_codes_place": "right",
+    "board_layout": "auto",
+    "board_panels": "cards",
+    "board_big_text": False,
+    "board_sides": {},           # section key -> "left" / "right", where the teacher moved it
+    "board_order": [],           # section keys in the teacher's order ([] = the usual order)
     "class_periods": [],
+    "advanced": False,           # Settings > Advanced Mode: show the nitpicky options (they apply either way)
+    "page_layouts": {},          # page kind -> {option: value}, only what the teacher changed (see PAGE_LAYOUTS)
     "backup_dir": "",
     "last_backup": "",
 }
@@ -84,7 +122,8 @@ MY_STANDARDS = "My Own Standards"  # the custom standards you typed in, when exp
 SAFETY_BACKUPS = 10  # automatic copies kept in the data folder from before each import
 
 # list sort orders: key -> menu label
-SORTS = {"updated": "DATE MODIFIED", "created": "DATE CREATED", "title": "TITLE (A-Z)", "unit": "UNIT"}
+SORTS = {"updated": "DATE MODIFIED", "created": "DATE CREATED", "title": "TITLE (A-Z)", "unit": "UNIT",
+         "class": "BY CLASS"}  # by class: pick a class first, then see its lessons by unit
 
 BOARD_SECTIONS = [
     # lesson key, heading on the slide, column
@@ -100,6 +139,39 @@ BOARD_SECTIONS = [
     ("class_codes", "Class Codes", "right"),  # from Settings > Class Periods, not the lesson
 ]
 BOARD_SIDES = {"top": "across the top", "left": "left side", "right": "right side"}
+# Board Designer choices: setting -> {value: label}, first value is the default
+BOARD_CHOICES = {
+    "board_layout": {"auto": "Balanced (moves sections to fit)", "sides": "Keep each section on its side",
+                     "one": "One column"},
+    "board_panels": {"cards": "Cards", "outline": "Outlined boxes", "chalk": "Plain chalk (no boxes)"},
+    "board_title_align": {"left": "Left, date on the right", "center": "Centered, date underneath"},
+    "board_codes_place": {"right": "Bottom right", "left": "Bottom left"},
+}
+
+
+def board_sections(settings):
+    """BOARD_SECTIONS in the teacher's order, with the sides they picked: [(key, label, side)]."""
+    sides = settings.get("board_sides") or {}
+    order = settings.get("board_order") or []
+    rank = {k: i for i, k in enumerate(order)}
+    out = [(k, label, sides.get(k, col) if col != "top" and sides.get(k) in ("left", "right") else col)
+           for k, label, col in BOARD_SECTIONS]
+    default = [k for k, _, _ in BOARD_SECTIONS]
+    return sorted(out, key=lambda x: (x[2] != "top", rank.get(x[0], len(rank) + default.index(x[0]))))
+
+
+def move_board_section(settings, key, step):
+    """Move a section up (-1) or down (+1) in the board's order. Returns True if it moved."""
+    keys = [k for k, _, col in board_sections(settings) if col != "top"]
+    if key not in keys:
+        return False
+    i = keys.index(key)
+    j = i + step
+    if not 0 <= j < len(keys):
+        return False
+    keys[i], keys[j] = keys[j], keys[i]
+    settings["board_order"] = keys
+    return True
 LOGO_PLACES = {"left": "LEFT OF THE TITLE", "right": "TOP RIGHT CORNER"}
 LOGO_FILE = "logo.json"
 
@@ -109,6 +181,127 @@ def periods_for(settings, lesson):
     course = (lesson.get("course") or "").strip().lower()
     return [p for p in settings.get("class_periods") or []
             if (p.get("codes") or "").strip() and (p.get("course") or "").strip().lower() in ("", course)]
+MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+SCHOOL_YEAR_START = 7  # July: a school year runs July through June, so Oct 2026 and Mar 2027 are one year
+_MONTH = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?"
+_TO = r"\s*(?:-|–|to)\s*"
+_DATE_PATTERNS = [
+    # Oct 4, October 4-6, 2026, Oct 30 - Nov 2
+    re.compile(_MONTH + r"\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?(?:" + _TO + r"(?:" + _MONTH +
+               r"\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?)?", re.I),
+    # 10/4, 10/4/2026, 10/4/26 - 10/6/26
+    re.compile(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?(?:" + _TO + r"(?:(\d{1,2})/)?(\d{1,2})(?:/(\d{2,4}))?)?"),
+    # 2026-10-04
+    re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b"),
+]
+
+
+def school_year(day):
+    """The year a date's school year starts: Oct 4, 2026 and Mar 1, 2027 are both 2026 (2026-27)."""
+    return day.year if day.month >= SCHOOL_YEAR_START else day.year - 1
+
+
+def school_year_label(start):
+    return f"{start}-{(start + 1) % 100:02d}"
+
+
+def _stamp_day(stamp):
+    """'2026-10-02 16:23' -> date(2026, 10, 2), or None."""
+    import datetime
+    try:
+        return datetime.date(*map(int, (stamp or "")[:10].split("-")))
+    except (TypeError, ValueError):
+        return None
+
+
+def guess_year(month, day, near):
+    """The year for a date typed without one: the one that puts it from two months before `near`
+    (when the lesson was made) to ten months after, the way lessons get planned."""
+    import datetime
+    for y in (near.year - 1, near.year, near.year + 1):
+        try:
+            gap = (datetime.date(y, month, day) - near).days
+        except ValueError:
+            continue
+        if -62 <= gap < 304:
+            return y
+    return near.year
+
+
+def parse_dates(text, near=None):
+    """The days a free-typed Date(s) names, in order: "Oct 4-6, 2026" -> three dates.
+    A date typed without a year is the one nearest `near` (default: today); see guess_year."""
+    import datetime
+    near = near or datetime.date.today()
+    full = lambda y: (2000 + int(y) if len(y) == 2 else int(y)) if y else None
+    found = []
+    for n, pat in enumerate(_DATE_PATTERNS):
+        for m in pat.finditer(text or ""):
+            g = m.groups()
+            if n == 2:
+                y1, m1, d1, m2, d2, y2 = int(g[0]), int(g[1]), int(g[2]), None, None, None
+            elif n == 0:
+                m1, d1, y1 = MONTHS.index(g[0][:3].lower()) + 1, int(g[1]), full(g[2])
+                m2 = MONTHS.index(g[3][:3].lower()) + 1 if g[3] else m1
+                d2, y2 = g[4], full(g[5])
+            else:
+                m1, d1, y1 = int(g[0]), int(g[1]), full(g[2])
+                m2, d2, y2 = int(g[3]) if g[3] else m1, g[4], full(g[5])
+            try:
+                if y1 is None and y2 is not None:  # "Oct 30 - Nov 2, 2026": the year is at the end
+                    y1 = y2 - (1 if m2 < m1 else 0)
+                start = datetime.date(y1 or guess_year(m1, d1, near), m1, d1)
+                if d2:
+                    end = datetime.date(y2 or (start.year + (1 if m2 < m1 else 0)), m2, int(d2))
+                else:
+                    end = start
+            except (ValueError, TypeError):
+                continue
+            for i in range(0, min(max((end - start).days, 0), 30) + 1):
+                found.append(start + datetime.timedelta(days=i))
+        if found:
+            break
+    return list(dict.fromkeys(found))
+
+
+def lesson_dates(x):
+    """The days a lesson (or assessment) is planned for. A date typed without a year is read from when
+    the lesson was made, so a lesson copied into next year doesn't land on this year's days."""
+    return parse_dates(x.get("date"), _stamp_day(x.get("created")) or _stamp_day(x.get("updated")))
+
+
+def fmt_date(day, weekday=False, year=True):
+    """date(2026, 10, 4) -> 'Oct 4, 2026' (or 'Sun, Oct 4, 2026')."""
+    out = f"{MONTHS[day.month - 1].title()} {day.day}" + (f", {day.year}" if year else "")
+    return (day.strftime("%a") + ", " + out) if weekday else out
+
+
+def fmt_range(a, b=None):
+    """The way the calendar writes a lesson's Date(s): 'Oct 4, 2026', 'Oct 4-6, 2026',
+    'Oct 30 - Nov 2, 2026', or 'Dec 30, 2026 - Jan 2, 2027'."""
+    if b is None or b == a:
+        return fmt_date(a)
+    a, b = min(a, b), max(a, b)
+    if a.year != b.year:
+        return f"{fmt_date(a)} - {fmt_date(b)}"
+    if a.month != b.month:
+        return f"{fmt_date(a, year=False)} - {fmt_date(b)}"
+    return f"{MONTHS[a.month - 1].title()} {a.day}-{b.day}, {a.year}"
+
+
+def day_plan(settings, lessons, day):
+    """Each class period (in Settings order) with the lesson planned for it on `day` (a date), or None.
+    A period with a course gets that course's lesson; one without a course takes any lesson."""
+    out = []
+    for p in settings.get("class_periods") or []:
+        course = (p.get("course") or "").strip().lower()
+        fits = [l for l in lessons if day in lesson_dates(l)
+                and (not course or (l.get("course") or "").strip().lower() == course)]
+        fits.sort(key=lambda l: l.get("updated", ""), reverse=True)
+        out.append((p, fits[0] if fits else None))
+    return out
+
+
 BOARD_STYLES = {"chalk": "CHALKBOARD (DARK GREEN)", "white": "WHITEBOARD (WHITE)", "school": "SCHOOL COLORS"}
 
 
@@ -183,6 +376,9 @@ def normalize_data(d):
         for key, after in (("question", None), ("vocab", "success")):
             if key not in on:
                 on.insert(on.index(after) + 1 if after in on else (0 if after is None else len(on)), key)
+    for key in ("board_font", "board_head_font"):  # early 2.1 betas had fonts of their own; back to the usual
+        if settings.get(key) in ("Chalkboard Pixel", "Chalkboard Chalk", "Chalkboard Marquee"):
+            settings[key] = ""
     d.pop("_raw_settings", None)
     return d
 
@@ -346,12 +542,134 @@ LESSON_FIELDS = [
 ]
 
 ASSESSMENT_KINDS = ["Quiz", "Test", "Assignment", "Worksheet", "Exit Ticket", "Homework", "Unit Exam"]
+# Kinds a make-up sheet never prints: the student takes these with the teacher.
+MAKEUP_HELD = ["Quiz", "Test", "Unit Exam"]
 # Fixed-layout handouts: no questions or answer key, their own editor and page layout.
 ANNOTATION = "Annotation Sheet"
 BELL_SHEET = "Bell Ringer Sheet"
 SHEET_KINDS = [ANNOTATION, BELL_SHEET]
 ANNOTATION_COLS = [("Line", 0.36), ("Symbol", 0.14), ("Reason for Annotating", 0.50)]
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+# Advanced Mode > Page Layouts: how each kind of printed page is laid out.
+# kind -> (menu name, [(option, label, type, default)]). Types: "fields" (a comma list of
+# labels, blank = none), "line", "text", "num", "bool", or a LAYOUT_CHOICES key.
+LAYOUT_CHOICES = {
+    "name_place": {"below": "Under the title", "top": "At the very top"},
+    "title_align": {"center": "Centered", "left": "Left"},
+    "heading_style": {"line": "Bold, with a line under", "plain": "Bold, no line", "caps": "ALL CAPS, with a line under"},
+    "number_style": {"1.": "1.  2.  3.", "1)": "1)  2)  3)", "Q1.": "Q1.  Q2.  Q3.", "#1": "#1  #2  #3"},
+    "std_text": {"full": "Code and full text", "codes": "Codes only"},
+}
+
+
+def _page(name_fields, name_place, *more):
+    return [("name_fields", "Name line", "fields", name_fields),
+            ("name_place", "Name line goes", "name_place", name_place),
+            ("title_align", "Title", "title_align", "center"),
+            ("heading_style", "Headings", "heading_style", "line")] + list(more) + [
+            ("show_footer", "Footer at the bottom of each page", "bool", True),
+            ("footer_text", "Footer says (blank = your name, course, school)", "line", "")]
+
+
+PAGE_LAYOUTS = {
+    "lesson": ("Lesson Plans", _page(
+        "", "top",
+        ("show_meta", "Course, unit, and date under the title", "bool", True),
+        ("std_text", "Standards", "std_text", "full"),
+        ("head_standards", "Heading: Standards", "line", "Standards"),
+        *[("head_" + k, "Heading: " + label, "line", label) for k, label, kind in LESSON_FIELDS
+          if kind in ("text", "vocab", "attached")])),
+    "makeup": ("Make-Up Work", _page(
+        "Name, Date Missed, Due", "below",
+        ("welcome", "Note to the student (blank = the usual \"We missed you!\" note)", "text", ""),
+        ("head_question", "Heading: Essential Question", "line", "Today's Big Question"),
+        ("head_targets", "Heading: Learning Targets", "line", "Today's Goals"),
+        ("head_success", "Heading: Success Criteria", "line", "How You'll Know You've Got It"),
+        ("head_vocab", "Heading: Vocabulary", "line", "Words to Know"),
+        ("head_materials", "Heading: Materials", "line", "What You'll Need"),
+        ("head_steps", "Heading over the steps", "line", "Your Make-Up Steps"),
+        ("head_bell_ringer", "Step: Bell Ringer", "line", "Bell Ringer"),
+        ("head_instruction", "Step: Direct Instruction", "line", "What We Learned"),
+        ("head_guided", "Step: Guided Practice", "line", "Class Practice"),
+        ("head_independent", "Step: Independent Practice", "line", "On Your Own"),
+        ("head_closure", "Step: Exit Ticket", "line", "Exit Ticket"),
+        ("head_homework", "Step: Homework", "line", "Homework"),
+        ("head_see_me", "Step: quizzes and tests to take with you", "line", "See Me"),
+        ("classwork", "Print the lesson's linked worksheets and assignments after the sheet", "bool", True),
+        ("write_lines", "Writing lines under the Bell Ringer and Exit Ticket", "num", 4),
+        ("signoff", "Sign-off line at the end (blank = none)", "fields", "Turned In, Teacher Initials"))),
+    "assessment": ("Quizzes & Tests", _page(
+        "Name, Date, Period", "below",
+        ("directions_label", "Label before the directions (blank = none)", "line", "Directions:"),
+        ("number_style", "Question numbers", "number_style", "1."))),
+    "annotation": ("Annotation Sheets", _page(
+        "Name, Date", "top",
+        ("columns", "Chart columns", "fields", ", ".join(c for c, _ in ANNOTATION_COLS)))),
+    "bell": ("Bell Ringer Sheets", _page("Name, Period", "top")),
+}
+
+
+def page_layout(settings, kind):
+    """The layout for one kind of page: the defaults, with whatever the teacher changed on top."""
+    saved = (settings.get("page_layouts") or {}).get(kind) or {}
+    out = {}
+    for key, _, typ, default in PAGE_LAYOUTS[kind][1]:
+        v = saved.get(key, default)
+        if typ in LAYOUT_CHOICES and v not in LAYOUT_CHOICES[typ]:
+            v = default
+        elif typ == "num":
+            try:
+                v = max(0, min(30, int(v)))
+            except (TypeError, ValueError):
+                v = default
+        elif typ == "bool":
+            v = bool(v)
+        elif not isinstance(v, str):
+            v = default
+        out[key] = v
+    return out
+
+
+def set_page_layout(settings, kind, values):
+    """Save a page's layout, keeping only what differs from the defaults (so later defaults still reach it)."""
+    changed = {key: values[key] for key, _, _, default in PAGE_LAYOUTS[kind][1]
+               if key in values and values[key] != default}
+    layouts = dict(settings.get("page_layouts") or {})
+    if changed:
+        layouts[kind] = changed
+    else:
+        layouts.pop(kind, None)
+    settings["page_layouts"] = layouts
+
+
+def layout_fields(text, most=6):
+    """'Name, Date, Period' -> ['Name', 'Date', 'Period'] (at most `most` of them)."""
+    return [x.strip().rstrip(":").strip() for x in (text or "").split(",") if x.strip().rstrip(":").strip()][:most]
+
+
+# the board slide settings Advanced Mode > Board Designer changes, and their defaults
+BOARD_DESIGN_KEYS = ("board_font", "board_head_font", "board_title_align", "board_codes_place", "board_layout",
+                     "board_panels", "board_big_text", "board_sides", "board_order")
+
+
+def advanced_changes(settings):
+    """Names of the page layouts (and the board design) the teacher has changed from the defaults."""
+    out = [PAGE_LAYOUTS[k][0] for k in PAGE_LAYOUTS if (settings.get("page_layouts") or {}).get(k)]
+    if any(settings.get(k, DEFAULT_SETTINGS[k]) != DEFAULT_SETTINGS[k] for k in BOARD_DESIGN_KEYS):
+        out.append("Board Slide Design")
+    return out
+
+
+def reset_advanced(settings, what=None):
+    """Back to the usual layout. what: a PAGE_LAYOUTS kind, "board", or None for everything."""
+    if what in (None, "board"):
+        for k in BOARD_DESIGN_KEYS:
+            settings[k] = copy.deepcopy(DEFAULT_SETTINGS[k])
+    if what is None:
+        settings["page_layouts"] = {}
+    elif what != "board":
+        set_page_layout(settings, what, {})
 
 QUESTION_TYPES = [
     # type, label, description
@@ -527,7 +845,32 @@ def unit_sort_key(u):
     return (0, int(m.group()), u.lower()) if m else (1, 0, (u or "").lower())
 
 
+def class_of(x):
+    return (x.get("course") or "").strip()
+
+
+def classes(settings, items):
+    """[(class name, how many items)] for By Class: the class periods' courses first, in their order,
+    then the rest A-Z, then "" (nothing in the Course field yet) when anything has no class."""
+    count = {}
+    for x in items:
+        count[class_of(x).lower()] = count.get(class_of(x).lower(), 0) + 1
+    names = {}
+    for name in [(p.get("course") or "").strip() for p in settings.get("class_periods") or []] + \
+            sorted((class_of(x) for x in items), key=str.lower):
+        if name and name.lower() not in names:
+            names[name.lower()] = name
+    out = [(n, count.get(k, 0)) for k, n in names.items()]
+    return out + ([("", count[""])] if count.get("") else [])
+
+
+def in_class(x, name):
+    return class_of(x).lower() == (name or "").strip().lower()
+
+
 def sort_items(items, how):
+    if how == "class":  # inside a class: by unit, the way a course runs
+        how = "unit"
     if how == "title":
         return sorted(items, key=lambda x: (x.get("title") or "").lower())
     if how == "unit":
@@ -539,6 +882,7 @@ def sort_items(items, how):
 
 class Store:
     def __init__(self):
+        seed_beta()
         self.dir = data_dir()
         self.path = os.path.join(self.dir, "data.json")
         self.warning = None

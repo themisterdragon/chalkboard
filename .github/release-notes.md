@@ -1,72 +1,60 @@
-**2.0.2** fixes Chalkboard freezing on Macs when you switch to the terminal view or run setup again. If it opens frozen, install this one; your lessons are kept. (2.0.1 fixed Chalkboard Terminal not opening.)
+**Chalkboard 2.1** adds the Board Designer, a Day Slideshow for passing time, a Curriculum Map, and
+word-processor formatting in the window app. Everything new stays out of the way until you want it.
 
-**Chalkboard 2.0** is one app with two views. Open **Chalkboard** and plan with windows, buttons, and menus,
-or switch to the retro **terminal view** (green screen, keyboard-driven) any time with View > Switch to
-Terminal View or **Ctrl+Shift+W** (Cmd+Shift+W on a Mac). Both views work on the same lessons, so you never
-lose your place. Setup asks which one you'd like to start with. If you'd rather have only the terminal,
-**Chalkboard Terminal** is still its own download.
+### Board slides
 
-Chalkboard is still fully offline: it never goes online, and now it holds itself to that while it runs.
+- **Board Designer** (Settings > Advanced Mode): pick the fonts for the text and headings (the standard ones
+  or any font on your computer), balanced or fixed columns, card / outlined / plain-chalk sections, where the
+  title and class codes go, and extra-big text, with a live preview. Show, hide, and reorder each section,
+  and switch its side. Reset to Default puts it all back.
+- **Day Slideshow** (Lesson Plans): pick a day on the calendar, and every class period's board slide goes
+  into one slideshow (and a PDF), in period order. At passing time, just go to the next slide.
+- **School mascots in the window app:** your mascot, in your school colors, waits on the home screen and
+  cheers when an export finishes.
 
-### New for your classroom display
+### Planning
 
-- **Board slides you can edit.** Every board export now includes a slideshow for PowerPoint, Keynote, or
-  Google Slides. The title, each panel, the date, and your class codes are real text boxes, so you can fix a
-  typo, change a code, or reuse it next school year.
-- **Bigger, easier-to-read slides.** Text sizes itself to fill the slide. When a lesson has too much to read
-  from the back row, standards shrink to just their codes, then the board continues on a second slide.
-- **Your school logo** on board slides (PNG or JPEG, from Settings).
-- **Class codes per period:** add each class period under Settings > Class Periods & Codes, and each period
-  gets its own slide with its own codes in big type.
+- **Advanced Mode** (Settings) for the nitpicky options, off by default. **Page Layouts** set the name line,
+  titles, headings, and footers for lesson plans, make-up work, quizzes and tests, annotation sheets, and
+  bell ringer sheets, with a live preview and Reset to Default.
+- **Curriculum Map** (Lesson Plans): each class's units in order with dates, essential questions,
+  standards, lessons, and assessments, plus where each standard is taught. Save it as PDF, Word, or a
+  spreadsheet, for any school year.
+- **Calendars** for picking a lesson's date(s). Dates now carry their year, so next year's copy of a lesson
+  never mixes with this year's.
+- **Sort by class** (Lesson Plans and Assessments): pick a class, then see and add its lessons.
+- **Make-up sheets carry the classwork:** a lesson's linked worksheets, assignments, and exit tickets print
+  right after its make-up sheet (student copies). Quizzes and tests show up as a "See Me" step instead.
 
-### New for planning
+### Formatting
 
-- **Essential Question** and **Words to Know** sections for lessons, with a one-click **vocab quiz** from
-  your word list. Hide any section you don't use (Sections…), so the editor stays short.
-- **Charts and graphic organizers** as a question type: tables, T-charts, KWL, Venn diagrams, webs,
-  sequences, Frayer models, and plot diagrams.
-- **Bold, italic, and underline:** Ctrl+B, Ctrl+I, Ctrl+U on a word or a selection (Ctrl+T for italic in the
-  terminal view).
-- **Web addresses become links** you can click in the PDF, Word, and slideshow files.
+- **B / I / U buttons** in every editor, and text boxes show bold, italic, and underline as they'll print
+  instead of the `**` and `__` marks. Ctrl+B / Ctrl+I / Ctrl+U (Cmd on a Mac), and Undo takes back
+  formatting too. The terminal view still shows the marks; both read the same files.
+- Bold and italic on the same word now prints right everywhere.
 
-### New for keeping and sharing your work
+### Fixes
 
-- **Back Up Everything** saves all your lessons, assessments, standards, and settings into one file in any
-  folder. **Import Backup** brings it back on this computer or another one, either adding what you don't
-  have or replacing everything. Chalkboard keeps a copy of what you had first.
-- **Export Everything** (File menu) makes one folder with every lesson and assessment as PDF and Word, sorted
-  by class and unit, plus a backup file. Keep it, or drag the whole folder into Google Drive.
-- **Share your standards:** Standards Library > **Export to Share** saves the standards you imported or wrote
-  yourself as a file a colleague can import.
-
-### Looks and comfort
-
-- A new **Modern** look that matches your computer, next to Bevel and Pinstripe, and **dark mode** for every
-  look (it can follow your computer's setting).
-- Every look meets WCAG 2.1 AA contrast. Known gap: screen readers can't read the window version or its
-  terminal view yet; the standalone terminal app may work better with one.
-- In the terminal view, a **school mascot** of your choice (from Settings) joins the startup screen and runs
-  along the export progress bar. Nineteen to pick from, Dragons included.
-
-### For tinkerers
-
-- **Plugins:** a Python file in the `plugins` folder can add an export format, a mascot, or a step after each
-  export. A broken plugin is switched off with a note, and Chalkboard keeps working. The offline guard covers
-  plugins too. See `examples/plugins/markdown_export.py`.
-- **PORTING.md** maps the code for anyone bringing Chalkboard to another system.
+- Settings > **Sections & School Colors** opens again (the button did nothing in 2.0).
+- The window opens sized to the screen, so on a small laptop it no longer runs under the Windows taskbar
+  and hides a dialog's buttons.
+- Drop-down and right-click menus close when you click elsewhere (Linux).
+- **Tidier export folders:** the PDFs you print stay on top of each lesson's folder; answer keys, board
+  slides, Word files, and text files get folders of their own. Exporting an older lesson again tidies it.
 
 **Upgrading:** your lessons and settings carry over on their own. They live in your data file, not in the
-app. If you have **Chalkboard Window** from 1.8, you can delete it once Chalkboard 2.0 is installed. The
-window app is now just called **Chalkboard**.
+app. Tried a 2.1 beta? The beta kept its own copy of your lessons. To bring that work over: in the beta,
+File > Back Up Everything; then in Chalkboard 2.1, File > Import Backup and choose "Add what I don't have."
+After that you can delete the beta.
 
 **Which download?**
 
 | You have | Download |
 |----------|----------|
-| A Mac | `Chalkboard-2.0.2.dmg`. Open it and drag Chalkboard to Applications; nothing else to install. (`Chalkboard-Terminal-2.0.2.dmg` is the terminal-only app.) |
-| Windows | `Chalkboard-2.0.2-windows.exe`, nothing else to install. (`Chalkboard-Terminal-2.0.2-windows.exe` is the terminal-only app; run it from Windows Terminal for the best look.) |
-| Linux | `chalkboard-2.0.2-linux.tar.gz`: unpack it, then `sh install.sh`. It offers to install anything missing (Python, Tk, and the tool that makes board pictures) and adds Chalkboard to your app menu. |
-| Python, any OS | `chalkboard-gui.pyz` (`python3 chalkboard-gui.pyz`, needs Python with Tk), or the `.whl` with pipx: `pipx install chalkboard_planner-2.0.2-py3-none-any.whl` |
+| A Mac | `Chalkboard-2.1.0.dmg`. Open it and drag Chalkboard to Applications; nothing else to install. (`Chalkboard-Terminal-2.1.0.dmg` is the terminal-only app.) |
+| Windows | `Chalkboard-2.1.0-windows.exe`, nothing else to install. (`Chalkboard-Terminal-2.1.0-windows.exe` is the terminal-only app; run it from Windows Terminal for the best look.) |
+| Linux | `chalkboard-2.1.0-linux.tar.gz`: unpack it, then `sh install.sh`. It offers to install anything missing (Python, Tk, and the tool that makes board pictures) and adds Chalkboard to your app menu. |
+| Python, any OS | `chalkboard-gui.pyz` (`python3 chalkboard-gui.pyz`, needs Python with Tk), or the `.whl` with pipx: `pipx install chalkboard_planner-2.1.0-py3-none-any.whl` |
 
 **First launch:** the apps aren't signed by Apple or Microsoft, so your computer asks before
 opening them the first time.

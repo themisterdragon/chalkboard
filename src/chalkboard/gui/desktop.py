@@ -44,6 +44,22 @@ def plural(n, word, many=None):
     return f"{n:,} {word if n == 1 else (many or word + 's')}"
 
 
+def work_area(root):
+    """(left, top, right, bottom) of the screen minus the taskbar / Dock / menu bar."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            r = wintypes.RECT()
+            if ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(r), 0):  # SPI_GETWORKAREA
+                return r.left, r.top, r.right, r.bottom
+        except (AttributeError, OSError, ValueError):
+            pass
+    sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    mw, mh = root.maxsize()  # the Mac leaves out the menu bar and the Dock here
+    return 0, 0, min(sw, mw), min(sh - 20, mh)
+
+
 class Gui:
     def __init__(self, args):
         self.args = args
@@ -69,8 +85,13 @@ class Gui:
         except tk.TclError:
             pass
         S = self.skin.S
-        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        self.root.geometry(f"{min(sw - 40, 1180 * S)}x{min(sh - 80, 800 * S)}")
+        self.fit_window()
+        if sys.platform == "win32":  # Windows places a new window itself; move it where it fits once it shows
+            def shown(e):
+                if e.widget is self.root:
+                    self.root.unbind("<Map>")
+                    self.root.after(1, self.fit_window)
+            self.root.bind("<Map>", shown)
         self.root.minsize(760 * S, 520 * S)
         for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             self.root.bind_all(seq, self.wheel, add="+")
@@ -92,6 +113,14 @@ class Gui:
             self.root.after(300, lambda: run_setup(self))
         self.root.after(2000, self.watch_file)
         self.root.after(3000, self.watch_os_look)
+
+    def fit_window(self):
+        """Size and center the window inside the screen's work area, so a small screen doesn't hide the
+        bottom of the window (and a dialog's buttons) behind the taskbar or the Dock."""
+        S = self.skin.S
+        x0, y0, x1, y1 = work_area(self.root)
+        w, h = min(x1 - x0 - 40, 1180 * S), min(y1 - y0 - 60, 800 * S)
+        self.root.geometry(f"{w}x{h}+{x0 + (x1 - x0 - w) // 2}+{y0 + max(0, (y1 - y0 - h - 40) // 2)}")
 
     # ------------------------------------------------------------ plumbing
     @property
@@ -136,13 +165,13 @@ class Gui:
         sk = self.skin
         self.desk = tk.Canvas(self.root, bg=sk["desk"], highlightthickness=0, bd=0)
         self.desk.place(x=0, y=0, relwidth=1, relheight=1)  # on top of the old desktop until that's removed
-        if sk["desk2"]:
-            self.desk.bind("<Configure>", self.tile_desk)
+        if sk["desk2"]:  # tiled with this look's colors, even while a new look replaces it
+            self.desk.bind("<Configure>", lambda e, c=self.desk, sk=sk: self.tile_desk(e, c, sk))
         self.window = None
         self.shadow = None
 
-    def tile_desk(self, e):
-        c, img = self.desk, self.skin.desk_tile()
+    def tile_desk(self, e, c, sk):
+        img = sk.desk_tile()
         c.delete("tile")
         n = img.width()
         for y in range(0, e.height + n, n):
@@ -302,6 +331,8 @@ class Gui:
         f.add_command(label="Import Standards…", command=self.cmd_import)
         f.add_command(label="Open Export Folder", command=self.open_export_folder)
         f.add_command(label="Export Everything…", command=lambda: self.top_level(self.export_everything))
+        f.add_command(label="Day Slideshow…", command=lambda: self.top_level(self.day_slideshow))
+        f.add_command(label="Curriculum Map…", command=lambda: self.top_level(self.curriculum_map))
         f.add_separator()
         f.add_command(label="Back Up Everything…", command=lambda: self.backup("backup_now"))
         f.add_command(label="Import Backup…", command=lambda: self.backup("import_backup"))
@@ -568,6 +599,14 @@ class Gui:
         from . import settings
         getattr(settings, name)(self)
 
+    def curriculum_map(self):
+        from .export import curriculum_map
+        curriculum_map(self)
+
+    def day_slideshow(self):
+        from .export import day_slideshow
+        day_slideshow(self)
+
     def export_everything(self):
         from .export import export_everything_dialog
         export_everything_dialog(self)
@@ -729,6 +768,9 @@ class Home:
             cell.bind("<FocusIn>", lambda e, i=i: self.mark(i))
             self.cells.append((cell, lab))
         W.label(box, sk, "Double-click an icon (or use the arrow keys and Return) to open it.", dim=True).pack(pady=(26 * S, 0))
+        from .buddy import Buddy
+        self.buddy = Buddy(f, gui)  # the school mascot, if one is picked: click it for a cheer
+        self.buddy.place(relx=1.0, rely=1.0, x=-16 * S, y=-10 * S, anchor="se")
         d = gui.store.data
         gui.status(f"{plural(len(d['lessons']), 'lesson plan')}   ·   {plural(len(d['assessments']), 'assessment')}",
                    f"{gui.store.kas_count:,} standards")

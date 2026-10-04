@@ -47,11 +47,16 @@ LMS. A make-up sheet for absent students is one more click.
 - **SEL bell ringers**: no warm-up planned? Press `G` for a random
   social-emotional learning prompt (137 built in). Chalkboard avoids prompts your
   other lessons already use.
-- **Bold, italic, underline**: type `**bold**`, `*italic*`, or `__underline__`
-  in any lesson section, question, or directions. In the terminal editor,
-  Ctrl-B, Ctrl-T, and Ctrl-U add them around the word at the cursor (press
-  again to take them off), and the text shows up bold, italic, or underlined
-  as you type. PDF, Word, and board slides print the formatting; plain text
+- **Bold, italic, underline**: in the window app, the **B**, *I*, and U̲
+  buttons above a lesson, assessment, or question work like a word
+  processor's: select text and click, or click and keep typing (click again
+  to stop). Ctrl-B, Ctrl-I, and Ctrl-U do the same (Cmd on a Mac). Text shows
+  as it will print, with no marks. Underline and italic always cover whole
+  words; bold can cover part of one. Behind the scenes it's saved as
+  `**bold**`, `*italic*`, and `__underline__`, which you can also type
+  yourself. In the terminal editor you see those marks, and Ctrl-B, Ctrl-T,
+  and Ctrl-U add them around the word at the cursor (press again to take
+  them off). PDF, Word, and board slides print the formatting; plain text
   leaves the marks out. Fill-in-the-blank lines (`___`) and math like
   `5 * 3` are left alone.
 - **Assessments & assignments**: quizzes, tests, worksheets, exit tickets, homework
@@ -92,8 +97,11 @@ LMS. A make-up sheet for absent students is one more click.
 - **Make-up sheets**: a student-facing PDF (plus an editable .docx) for anyone who missed class, built
   from the lesson: goals, success criteria, materials, then a checklist of
   steps (bell ringer and exit ticket get writing lines) with Name / Date
-  Missed / Due and a Turned In / Teacher Initials line. Teacher-only fields
-  (differentiation, checks, notes) are left off.
+  Missed / Due and a Turned In / Teacher Initials line. The lesson's linked
+  worksheets, assignments, and annotation sheets print right after it (student
+  copies), so it's one file to hand over; quizzes and tests stay with you and
+  show up as a "See Me" step instead. Teacher-only fields (differentiation,
+  checks, notes) are left off.
 - **Board slides**: a 1920x1080 PNG of a lesson's standards, "I can"
   statements, success criteria, bell ringer, materials, and homework for an
   interactive display, projector, or TV. Text sizes itself to fit, panels move between
@@ -135,7 +143,7 @@ window version), or run either directly with `python3 chalkboard.pyz`.
 
 **Python package (any OS, including Windows):**
 
-    pipx install chalkboard_planner-2.0.2-py3-none-any.whl
+    pipx install chalkboard_planner-2.1.0-py3-none-any.whl
 
 On Windows this pulls in `windows-curses` automatically.
 
@@ -246,9 +254,14 @@ Redhounds, Cardinals, Cougars, Owls, and Wolves. Use Left/Right to browse and
 Return to pick. Your mascot appears in the boot sequence and runs along the
 progress bar while files export. With no mascot, the Chalkboard logo runs the
 bar instead. It's drawn with text characters in the screen color, so it adds
-almost nothing to the load on any machine. The mascot is only in the terminal
-app and the window version's terminal view; the window view shows a plain
-progress bar in its status bar.
+almost nothing to the load on any machine.
+
+The window view has a chibi version of every mascot, in full color and wearing
+a jersey in your school colors (Settings > School Colors). It waits in a corner
+of the home screen, hops and cheers ("GO DRAGONS!") when you click it, and
+cheers again when an export finishes. It only moves when something happens, so
+it costs nothing while it waits. Pick it under Settings > School Mascot in
+either view. The art is in `data/chibis.json`.
 
 ### Lesson sections
 
@@ -312,12 +325,33 @@ another cloud, a plugin saves them into the folder that app syncs.
 | Your data | `~/.local/share/chalkboard/data.json` (macOS: `~/Library/Application Support/chalkboard`, Windows: `%APPDATA%\chalkboard`). A `.bak` copy is kept automatically. |
 | Imported standards | a `standards` folder next to `data.json`, one JSON file per subject |
 | Backups | wherever you pick (Settings > Back Up; first suggested: `~/Documents/Chalkboard/Backups`). Each is one dated `.json` file with your lessons, assessments, settings, and imported standards. |
-| Exports | `~/Documents/Chalkboard` (changeable in Settings). Every export is filed by class, then unit, then lesson, like `English 10/Unit 3/The Raven/`; assessments go in their unit folder. A blank course or unit is skipped. Export All also puts a lesson's linked worksheets in its folder. |
+| Exports | `~/Documents/Chalkboard` (changeable in Settings). Every export is filed by class, then unit, then lesson, like `English 10/Unit 3/The Raven/`; assessments go in their unit folder. A blank course or unit is skipped. Export All also puts a lesson's linked worksheets in its folder. Inside each folder, the PDFs you print sit on top; answer keys, board slides (PNG + slideshow), Word files, and text files each get a subfolder (`Answer Keys/`, `Board Slides/`, `Word/`, `Text/`). Re-exporting a lesson from before 2.1 tidies its old files into those subfolders. |
 
 Board slides are drawn with the same engine as the PDF, then turned into a PNG
 by a tool the computer already has: `sips` on macOS (built in), or poppler's
 `pdftoppm`, `mutool`, or Ghostscript on Linux/Windows. Pick which sections
 appear under Settings > Board Slide (or from the export screen).
+
+**Board Designer:** Settings > Board Designer (in the window version, also from
+the export screen) changes how every board slide looks, with a live preview of
+your newest lesson in the window version (`P` previews it in the terminal app):
+
+- **Fonts** for the text and for the headings and title: the standard one,
+  Times, or any font on your computer (type to find it). Board pictures
+  always show the font you picked. The slideshow asks PowerPoint or Keynote
+  for it by name, so it shows there on computers that have the font. A font
+  with no bold or italic of its own gets a thickened or slanted stand-in.
+- **Columns:** balanced (sections move between columns to keep the text big),
+  keep each section on its side, or one column.
+- **Sections look like** cards, outlined boxes, or plain chalk with a line
+  under each heading.
+- **Title** on the left with the date on the right, or centered with the date
+  underneath. **Class codes** in the bottom right or bottom left corner.
+- **Extra-big text:** a bigger smallest size, so a full lesson continues onto
+  more slides instead of shrinking.
+- **Sections, Sides & Order:** show or hide each section, switch its side, and
+  move it up or down (`S`, `+`/`-` in the terminal app; `R` puts everything
+  back).
 
 **School logo:** Settings > School Logo takes a PNG or JPEG and puts it left of
 the title or in the top right corner of every board slide. A PNG with a
@@ -404,6 +438,6 @@ here belong to their owners.
     pip wheel --no-deps -w dist .      # -> dist/*.whl
     python3 scripts/make_icon.py       # -> macos/Chalkboard.icns (only to change the icon)
 
-Pushing a version tag (`git tag v2.0.2 && git push --tags`) builds all of these on
+Pushing a version tag (`git tag v2.1.0 && git push --tags`) builds all of these on
 GitHub's Mac and Windows runners (the `.exe` with PyInstaller), tests them, and
 attaches them to a draft release.

@@ -8,14 +8,14 @@ from tkinter import filedialog
 from ..images import read_image
 from .. import plugins
 from ..exporting import (FORMAT_ORDER, PLUGIN_FORMATS, ExportError, export, export_everything, export_folder,
-                         open_path)
-from ..store import BOARD_SECTIONS, BOARD_SIDES, BOARD_STYLES, SHEET_KINDS
+                         files_folder, open_path)
+from ..store import BOARD_SECTIONS, BOARD_SIDES, BOARD_STYLES, GRADE_CHOICES, SHEET_KINDS, board_sections
 from . import widgets as W
 
 FORMAT_TEXT = {
     "PDF": "PDF", "DOCX": "Word (.docx, also opens in Google Docs)", "TXT": "Plain text (for Google Classroom)",
     "PNG": "Board slide (1920×1080 PNG + editable slideshow for PowerPoint, Keynote, Google Slides)",
-    "MAKEUP": "Make-up sheet for absent students (PDF + Word)", "ALL": "All of the above",
+    "MAKEUP": "Make-up sheet + classwork for absent students (PDF + Word)", "ALL": "All of the above",
 }
 INCLUDE_TEXT = {"BOTH": "Student copy and answer key", "STUDENT": "Student copy only", "KEY": "Answer key only"}
 STYLE_TEXT = {"chalk": "Chalkboard (dark green)", "white": "Whiteboard (white)", "school": "School colors"}
@@ -86,7 +86,14 @@ def export_dialog(gui, kind, obj):
     board = W.group(right, sk, "Board Slide")
     style = vars_["board_style"] = tk.StringVar(value=st.get("board_style", "chalk"))
     W.Dropdown(board, sk, list(STYLE_TEXT.items()), style, width=24).pack(anchor="w")
-    W.Button(board, sk, "Sections & Colors…", lambda: board_options(gui), small=True).pack(anchor="w", pady=(6 * S, 0))
+    row = tk.Frame(board, bg=board["bg"])
+    row.pack(anchor="w", pady=(6 * S, 0))
+    W.Button(row, sk, "Sections & Colors…", lambda: board_options(gui), small=True).pack(side="left")
+
+    def design():
+        from .board import board_designer
+        board_designer(gui)
+    W.Button(row, sk, "Board Designer…", design, small=True).pack(side="left", padx=(6 * S, 0))
 
     paper = W.group(right, sk, "Font & Paper")
     font = vars_["font"] = tk.StringVar(value=st.get("font", "Times"))
@@ -123,7 +130,9 @@ def export_dialog(gui, kind, obj):
             note.configure(text=f"{n} linked worksheet{'s' if n != 1 else ''}: "
                            + ("included (PDF + Word)." if f == "ALL" else "pick All of the above to include them."))
         rel = os.path.relpath(export_folder(gui.store, kind, obj), gui.store.export_dir())
-        sub.configure(text=f"Files go in the subfolder {rel} (class, then unit{', then lesson' if kind == 'lesson' else ''}).")
+        sub.configure(text=f"Files go in the subfolder {rel} (class, then unit{', then lesson' if kind == 'lesson' else ''}). "
+                           "PDFs go right in it; answer keys, board slides, Word, and text files get folders "
+                           "of their own.")
     fmt.trace_add("write", update)
     update()
 
@@ -150,16 +159,20 @@ def browse(gui, var):
 
 def export_done(gui, files):
     sk, S = gui.skin, gui.skin.S
-    folder = os.path.dirname(files[0])
+    folder = files_folder(files)
     n = len(files)
     d = W.Dialog(gui, "Export Complete")
     top = tk.Frame(d.body, bg=sk["window"])
     top.pack(fill="x")
+    from .buddy import Buddy
+    pal = Buddy(top, gui, scale=2 * S)  # the school mascot cheers the export on (packed first: it keeps its room)
+    pal.pack(side="right", padx=(12 * S, 0))
+    gui.root.after(150, pal.cheer)
     tk.Label(top, image=sk.icon("folder", 2), bg=sk["window"]).pack(side="left", padx=(0, 12 * S))
-    W.label(top, sk, f"Saved {n} file{'s' if n != 1 else ''} to\n{folder}", wrap=520 * S).pack(side="left")
+    W.label(top, sk, f"Saved {n} file{'s' if n != 1 else ''} to\n{folder}", wrap=440 * S).pack(side="left")
     lv = W.ListView(d.body, sk, [("name", "File", 520, True)], height=min(8, max(3, n)))
     lv.pack(fill="both", expand=True, pady=(10 * S, 0))
-    lv.set_rows([(p, [os.path.basename(p)]) for p in files])
+    lv.set_rows([(p, [os.path.relpath(p, folder)]) for p in files])
 
     def open_file():
         p = lv.selected()
@@ -187,7 +200,7 @@ def board_options(gui):
     g.pack(fill="x")
     on = list(st.get("board_sections") or [])
     secs = {}
-    for i, (key, label, col) in enumerate(BOARD_SECTIONS):
+    for i, (key, label, col) in enumerate(board_sections(st)):
         v = secs[key] = tk.BooleanVar(value=key in on)
         W.Check(g, sk, f"{label}  ({BOARD_SIDES[col]})", v).grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 18 * S))
     stdtext = tk.BooleanVar(value=st.get("board_std_text", True))
@@ -437,3 +450,159 @@ def export_everything_dialog(gui):
         msg += "\n\nThese didn't export:\n" + "\n".join(problems[:6]) + ("\n…" if len(problems) > 6 else "")
     if W.confirm(gui, "Everything Exported", msg, "Open Folder", "Done"):
         open_path(folder)
+
+
+def day_slideshow(gui):
+    """One slideshow with every class period's board slide in order, for passing time."""
+    import datetime
+    from ..exporting import export_day
+    from ..store import day_plan, fmt_date
+    from .calendar import Calendar, lesson_marks
+    from .desktop import first_line
+    gui.save()
+    st = gui.settings
+    sk, S = gui.skin, gui.skin.S
+    periods = st.get("class_periods") or []
+    if not periods:
+        if W.confirm(gui, "Day Slideshow", "A day slideshow puts each class period's board slide in order, so the "
+                                           "next class is one click away. First, add your class periods.",
+                     yes="Add Class Periods…", icon="info"):
+            class_periods(gui)
+        if not st.get("class_periods"):
+            return
+        periods = st["class_periods"]
+    lessons = sorted(gui.store.data["lessons"], key=lambda l: l.get("updated", ""), reverse=True)
+    d = W.Dialog(gui, "Day Slideshow")
+    W.label(d.body, sk, "Every class period's board slide, in order, in one slideshow (and a PDF). At passing time, "
+                        "just go to the next slide. Pick the day; dots are days with lessons.",
+            wrap=600 * S).pack(anchor="w")
+    cols = tk.Frame(d.body, bg=sk["window"])
+    cols.pack(fill="x", pady=(10 * S, 0))
+    left = tk.Frame(cols, bg=sk["window"])
+    left.pack(side="left", anchor="n")
+    right = tk.Frame(cols, bg=sk["window"])
+    right.pack(side="left", anchor="n", fill="x", expand=True, padx=(16 * S, 0))
+    picked = {"day": datetime.date.today()}
+    day_text = W.label(right, sk, "", bold=True)
+    day_text.pack(anchor="w")
+    found = W.label(right, sk, "", dim=True, wrap=330 * S)
+    found.pack(anchor="w", pady=(2 * S, 8 * S))
+    g = W.group(right, sk, "Class Periods")
+    g.pack(fill="x")
+    picks = []
+    for i, p in enumerate(periods):
+        course = (p.get("course") or "").strip()
+        W.label(g, sk, (p.get("name") or f"Class {i + 1}") + (f" ({course})" if course else "") + ":").grid(
+            row=2 * i, column=0, sticky="w", pady=(4 * S, 0))
+        mine = [l for l in lessons if not course or (l.get("course") or "").strip().lower() == course.lower()]
+        v = tk.StringVar(value="")
+        W.Dropdown(g, sk, [("", "(skip this period)")] + [(l["id"], (l.get("title") or "Untitled") + (
+            f" — {first_line(l.get('date'))}" if l.get("date") else "")) for l in mine], v, width=30).grid(
+            row=2 * i + 1, column=0, sticky="w")
+        picks.append((p, v))
+
+    def match(day, _=None):
+        picked["day"] = day
+        day_text.configure(text=fmt_date(day, weekday=True))
+        plan = day_plan(st, lessons, day)
+        for (p, v), (_, l) in zip(picks, plan):
+            v.set(l["id"] if l else "")
+        n = sum(1 for _, l in plan if l)
+        found.configure(text=f"Found a lesson for {n} of {len(plan)} periods. Change any of them below." if n else
+                        "No lessons are dated this day. Pick them below, or pick another day.")
+    cal = Calendar(left, sk, picked["day"], on_pick=match, marks=lesson_marks(gui))
+    cal.pack()
+    match(picked["day"])
+    d.buttons([("Make Slideshow", True), ("Cancel", None)])
+    d.harvest = lambda: d.__dict__.update(chosen=[(p, v.get()) for p, v in picks])
+    if not d.run(focus=cal):
+        return
+    by_id = {l["id"]: l for l in lessons}
+    gui.status("Making the day slideshow…")
+    gui.root.update_idletasks()
+    try:
+        files = export_day(gui.store, [(p, by_id.get(i)) for p, i in d.chosen], picked["day"])
+    except ExportError as e:
+        W.alert(gui, "Day Slideshow", str(e)[:1].upper() + str(e)[1:].lower(), "warn")
+        gui.status("")
+        return
+    export_done(gui, files)
+
+
+def curriculum_map(gui, course=None):
+    """Curriculum Map: a class's units in order with dates, standards, lessons, and assessments."""
+    import datetime
+    from ..doc import curriculum_doc, school_years
+    from ..exporting import MAP_FORMATS, export_map
+    from ..store import classes, school_year, school_year_label
+    from .desktop import grade_label
+    gui.save()
+    st = gui.settings
+    sk, S = gui.skin, gui.skin.S
+    found = [(n, c) for n, c in classes(st, gui.store.data["lessons"]) if c]
+    if not found:
+        W.alert(gui, "Curriculum Map", "Plan a few lessons first. The map is built from your lessons' units, dates, "
+                                       "and standards.")
+        return
+    d = W.Dialog(gui, "Curriculum Map")
+    W.label(d.body, sk, "Every unit in the order you teach it, with its dates, essential questions, standards, "
+                        "lessons, and assessments, then where each standard is taught. It's built from your lessons, "
+                        "so the more dates, units, and standards they have, the fuller the map.",
+            wrap=520 * S).pack(anchor="w")
+    g = tk.Frame(d.body, bg=sk["window"])
+    g.pack(anchor="w", pady=(10 * S, 0))
+    W.label(g, sk, "Class:").grid(row=0, column=0, sticky="w", pady=2 * S, padx=(0, 8 * S))
+    cls = tk.StringVar(value=course if course in [n for n, _ in found] else found[0][0])
+    W.Dropdown(g, sk, [(n, f"{n or 'No class yet'} ({c} lesson{'s' if c != 1 else ''})") for n, c in found] +
+               [("*all*", "All my classes")], cls, width=30).grid(row=0, column=1, sticky="w", pady=2 * S)
+    # one school year at a time, so next year's copies of lessons don't double up this year's map
+    years = school_years(gui.store.data["lessons"])
+    now_year = school_year(datetime.date.today())
+    year = tk.StringVar(value=str(now_year if now_year in years else years[0]) if years else "")
+    W.label(g, sk, "School year:").grid(row=1, column=0, sticky="w", pady=2 * S, padx=(0, 8 * S))
+    W.Dropdown(g, sk, [(str(y), school_year_label(y)) for y in years] + [("", "Every year")], year, width=14).grid(
+        row=1, column=1, sticky="w", pady=2 * S)
+    subjects = gui.store.subjects
+    subj = tk.StringVar(value=st.get("subject") if st.get("subject") in subjects else "")
+    grades = tk.StringVar(value=st.get("grades", ""))
+    W.label(g, sk, "Not-taught-yet list:").grid(row=2, column=0, sticky="w", pady=2 * S, padx=(0, 8 * S))
+    W.Dropdown(g, sk, [("", "Leave it off")] + [(x, x) for x in subjects], subj, width=30).grid(
+        row=2, column=1, sticky="w", pady=2 * S)
+    W.label(g, sk, "Grades:").grid(row=3, column=0, sticky="w", pady=2 * S, padx=(0, 8 * S))
+    W.Dropdown(g, sk, [(x, grade_label(x)) for x in GRADE_CHOICES], grades, width=14).grid(
+        row=3, column=1, sticky="w", pady=2 * S)
+    the_year = lambda: int(year.get()) if year.get() else None
+    fg = W.group(d.body, sk, "Save as")
+    fg.pack(fill="x", pady=(10 * S, 0))
+    want = {f: tk.BooleanVar(value=f in ("PDF", "CSV")) for f in MAP_FORMATS}
+    for f, label in MAP_FORMATS.items():
+        W.Check(fg, sk, label, want[f]).pack(anchor="w")
+    W.label(fg, sk, "The spreadsheet has one row per lesson, for sorting or sharing with your school.", dim=True,
+            wrap=480 * S).pack(anchor="w", pady=(4 * S, 0))
+
+    def chosen():
+        return None if cls.get() == "*all*" else cls.get()
+
+    def preview():
+        c = chosen()
+        if c is None:
+            c = found[0][0]
+        gui.preview(curriculum_doc(gui.store, c, subj.get(), grades.get(), the_year()))
+    row = tk.Frame(d.body, bg=sk["window"])
+    row.pack(anchor="w", pady=(10 * S, 0))
+    W.Button(row, sk, "Preview…", preview, small=True).pack(side="left")
+    d.buttons([("Save Map", True), ("Cancel", None)])
+    d.harvest = lambda: d.__dict__.update(picked=(chosen(), [f for f in MAP_FORMATS if want[f].get()],
+                                                  subj.get(), grades.get(), the_year()))
+    if not d.run():
+        return
+    course, fmts, subject, grade, yr = d.picked
+    if not fmts:
+        W.alert(gui, "Curriculum Map", "Check at least one way to save it (PDF, Word, or spreadsheet).", "warn")
+        return
+    try:
+        files = export_map(gui.store, course, fmts, subject, grade, year=yr)
+    except ExportError as e:
+        W.alert(gui, "Curriculum Map", str(e)[:1].upper() + str(e)[1:].lower(), "warn")
+        return
+    export_done(gui, files)

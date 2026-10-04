@@ -2,28 +2,34 @@
 
 import argparse
 import copy
+import datetime
 import os
 import re
 import textwrap
 
 from . import __version__
 from .ui import APP, BACK, UI, ExportBar, big, ch, curses, truncate
-from .store import (LOGO_PLACES, ALL, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SECTIONS, BOARD_SIDES, BOARD_STYLES, DEFAULT_SUBJECT,
+from .store import (LOGO_PLACES, ALL, BOARD_CHOICES, board_sections, move_board_section, ANNOTATION, ASSESSMENT_KINDS, BELL_SHEET, BOARD_SIDES, BOARD_STYLES, DEFAULT_SUBJECT,
                     FIXED_FIELDS, VOCAB_HINT, shown_fields, GOOD_THINGS_PREFIX, GRADE_CHOICES, LESSON_FIELDS, QUESTION_TYPES, SHEET_KINDS, SORTS, TYPE_LABEL,
                     TYPE_TAG, WEEKDAYS, Store, fmt_points, grades_match, new_assessment, new_lesson, new_question, now,
                     parse_hex, parse_points, points_of, sort_items)
-from .doc import LETTERS, assessment_doc, lesson_doc
+from .doc import LETTERS, assessment_doc, curriculum_doc, layout_sample, lesson_doc, preview_doc, school_years
 from .markup import plain
 from .mascots import MASCOTS, hop, sprite
 from .mascots import name as mascot_name
 from .store import CHART_DIRECTIONS, CHART_PRESETS, CHART_SIZES, chart_preset, chart_size_label
+from .store import LAYOUT_CHOICES, PAGE_LAYOUTS, advanced_changes, page_layout, reset_advanced, set_page_layout
+from .store import (classes, day_plan, fmt_date, fmt_range, in_class, lesson_dates, school_year,
+                    school_year_label)
 from . import offline, plugins
-from .exporting import FORMAT_ORDER, PLUGIN_FORMATS, ExportError, export, export_everything, export_subdirs, open_path
-from .export_png import low_contrast
+from .exporting import (FORMAT_ORDER, PLUGIN_FORMATS, ExportError, export, export_day, export_everything,
+                        export_map, export_subdirs, files_folder, open_path)
+from . import fontlib
+from .export_png import low_contrast, render_preview
 from .export_txt import render_lines
 FORMAT_LABEL = {"PDF": "PDF", "DOCX": "WORD (.DOCX - ALSO GOOGLE DOCS)", "TXT": "PLAIN TEXT",
                 "PNG": "BOARD SLIDE (1920x1080 PNG + EDITABLE .PPTX SLIDESHOW)",
-                "MAKEUP": "MAKE-UP SHEET FOR ABSENT STUDENTS (PDF + DOCX)", "ALL": "ALL FORMATS"}
+                "MAKEUP": "MAKE-UP SHEET + CLASSWORK FOR ABSENT STUDENTS (PDF + DOCX)", "ALL": "ALL FORMATS"}
 INCLUDE_LABEL = {"STUDENT": "STUDENT COPY ONLY", "KEY": "ANSWER KEY ONLY", "BOTH": "STUDENT COPY + ANSWER KEY"}
 SPACE_LABEL = {"lines": "LINED", "blank": "BLANK SPACE", "box": "BORDERED BOX"}
 PRESET_LABEL = {k: label for k, label, _ in CHART_PRESETS}
@@ -203,6 +209,8 @@ class App:
     def filtered(self, pool, state, fields):
         """Sort, then narrow a list by the unit/type filters and search in state."""
         xs = sort_items(pool, self.st.get(state["sort"], "updated"))
+        if self.st.get(state["sort"]) == "class" and state.get("cls") is not None:
+            xs = [x for x in xs if in_class(x, state["cls"])]
         if state["unit"]:
             xs = [x for x in xs if (x.get("unit") or "").strip() == state["unit"]]
         if state.get("kind"):
@@ -211,6 +219,8 @@ class App:
 
     def filter_info(self, state, count, noun):
         bits = [f"{count} {noun}"]
+        if self.st.get(state["sort"]) == "class" and state.get("cls") is not None:
+            bits.insert(0, "CLASS: " + (state["cls"] or "NO CLASS YET").upper())
         if state["unit"]:
             bits.append(f"UNIT: {state['unit']}")
         if state.get("kind"):
@@ -219,6 +229,45 @@ class App:
             bits.append(f"SEARCH: '{state['q']}'")
         bits.append("SORT: " + SORTS[self.st.get(state["sort"], "updated")])
         return "   ".join(bits)
+
+    def class_list(self, title, state, pool, items, row, on_open, on_key, noun, **kw):
+        """A lesson or assessment list that, sorted By Class, first shows the classes: pick one to see
+        (and add to) just its items. Esc inside a class goes back to the classes."""
+        ui = self.ui
+        state.setdefault("cls", None)
+        is_cls = lambda x: isinstance(x, tuple) and x[:1] == ("class",)
+
+        def picking():
+            return self.st.get(state["sort"]) == "class" and state["cls"] is None and not state["q"]
+
+        def items2():
+            return [("class", n, c) for n, c in classes(self.st, pool)] if picking() else items()
+
+        def row2(x, w):
+            if is_cls(x):
+                return f"{(x[1] or 'NO CLASS YET').upper()}  ({x[2]} {noun}{'' if x[2] == 1 else 'S'})", ui.HI
+            return row(x, w)
+
+        def on_open2(x, i):
+            if is_cls(x):
+                state["cls"] = x[1]
+                return 0
+            return on_open(x, i)
+
+        def on_key2(k, x, i):
+            return on_key(k, None if is_cls(x) else x, i)
+
+        info = kw.pop("info_fn")
+        hints = kw.pop("hints")
+        while True:
+            ui.list_screen(title, items2, row2, on_open=on_open2, on_key=on_key2,
+                           info_fn=lambda: "PICK A CLASS. (O CHANGES THE SORT.)" if picking() else info(),
+                           hints=hints.replace("ESC BACK", "ESC ALL CLASSES") if (
+                               self.st.get(state["sort"]) == "class" and state["cls"] is not None) else hints, **kw)
+            if self.st.get(state["sort"]) == "class" and state["cls"] is not None and not state["q"]:
+                state["cls"] = None
+                continue
+            return
 
     def filter_key(self, c, state, pool):
         """/ search, U unit, T type (if state has one), O sort order. True if c was one of them."""
@@ -271,7 +320,7 @@ class App:
     # -------------------------------------------------------------- lessons
     def lessons_screen(self):
         ui = self.ui
-        state = {"q": "", "unit": "", "sort": "lesson_sort"}
+        state = {"q": "", "unit": "", "sort": "lesson_sort", "cls": None}
 
         def items():
             return self.filtered(self.store.data["lessons"], state, ("title", "unit", "course", "date", "standards"))
@@ -294,6 +343,8 @@ class App:
                 l["title"] = t
                 if state["unit"]:
                     l["unit"] = state["unit"]
+                if self.st.get("lesson_sort") == "class" and state["cls"]:
+                    l["course"] = state["cls"]
                 self.save()
                 self.lesson_editor(l)
                 return 0
@@ -325,10 +376,22 @@ class App:
                 self.preview(lesson_doc(l, self.store))
             return None
 
-        ui.list_screen("LESSON PLANS", items, row, on_open=lambda l, i: self.lesson_editor(l),
-                       on_key=on_key, info_fn=lambda: self.filter_info(state, len(items()), "LESSONS"),
-                       hints="N NEW  R RENAME  C COPY  D DEL  X EXPORT  B BOARD  M MAKE-UP  P PREVIEW  / SEARCH  U UNIT  O SORT  ESC BACK",
-                       empty="NO LESSONS MATCH. PRESS N TO PLAN ONE." if self.store.data["lessons"] else "NO LESSONS YET. PRESS N TO PLAN ONE.")
+        def on_key_any(k, l, i):
+            if ch(k).lower() == "w":
+                self.day_slideshow()
+                return None
+            if ch(k).lower() == "y":
+                self.curriculum_map(state.get("cls") if self.st.get("lesson_sort") == "class" else None)
+                return None
+            return on_key(k, l, i)
+
+        self.class_list("LESSON PLANS", state, self.store.data["lessons"], items, row,
+                        lambda l, i: self.lesson_editor(l), on_key_any, "LESSON",
+                        info_fn=lambda: self.filter_info(state, len(items()), "LESSONS"),
+                        hints="N NEW  R RENAME  C COPY  D DEL  X EXPORT  B BOARD  M MAKE-UP  W WHOLE DAY  Y YEAR MAP  P PREVIEW  "
+                              "/ SEARCH  U UNIT  O SORT  ESC BACK",
+                        empty="NO LESSONS MATCH. PRESS N TO PLAN ONE." if self.store.data["lessons"]
+                        else "NO LESSONS YET. PRESS N TO PLAN ONE.")
 
     def lesson_editor(self, lesson):
         ui = self.ui
@@ -355,7 +418,13 @@ class App:
 
         def on_open(field, i):
             key, label, kind = field
-            if kind == "line":
+            if kind == "line" and key == "date":  # a calendar (it writes the year), or / to type it
+                days = lesson_dates(lesson)
+                got = ui.calendar("DATE(S): " + (lesson.get("title") or "UNTITLED").upper(),
+                                  days[0] if days else None, days[-1] if days else None, self.lesson_marks(),
+                                  allow_range=True, allow_type=True)
+                v = ui.prompt(label, lesson.get(key, "")) if got == "type" else fmt_range(*got) if got else None
+            elif kind == "line":
                 v = ui.prompt(label, lesson.get(key, ""))
             elif kind == "text" and key == "bell_ringer":
                 v = ui.edit_text(label, lesson.get(key, ""), fill=self.store.good_thing,
@@ -727,7 +796,7 @@ class App:
     # ---------------------------------------------------------- assessments
     def assessments_screen(self):
         ui = self.ui
-        state = {"q": "", "unit": "", "kind": "", "sort": "assess_sort"}
+        state = {"q": "", "unit": "", "kind": "", "sort": "assess_sort", "cls": None}
 
         def items():
             return self.filtered(self.store.data["assessments"], state, ("title", "kind", "course", "unit", "standards"))
@@ -736,6 +805,9 @@ class App:
             c = ch(k).lower()
             if c == "n":
                 a = self.new_assessment_flow(unit=state["unit"])
+                if a and self.st.get("assess_sort") == "class" and state["cls"]:
+                    a["course"] = state["cls"]
+                    self.save()
                 if a:
                     self.open_assessment(a)
                     return 0
@@ -768,11 +840,13 @@ class App:
                 self.preview(assessment_doc(a, self.store))
             return None
 
-        ui.list_screen("ASSESSMENTS & ASSIGNMENTS", items, self.assessment_row, on_open=lambda a, i: self.open_assessment(a),
-                       on_key=on_key, info_fn=lambda: self.filter_info(state, len(items()), "ITEMS"),
-                       hints="1-0 OPEN  N NEW  R RENAME  C COPY  D DEL  X EXPORT  P PREVIEW  / SEARCH  U UNIT  T TYPE  O SORT  ESC BACK",
-                       empty="NOTHING MATCHES. PRESS N TO BUILD SOMETHING." if self.store.data["assessments"]
-                       else "NOTHING YET. PRESS N TO BUILD A QUIZ, TEST OR ASSIGNMENT.")
+        self.class_list("ASSESSMENTS & ASSIGNMENTS", state, self.store.data["assessments"], items, self.assessment_row,
+                        lambda a, i: self.open_assessment(a), on_key, "ITEM",
+                        info_fn=lambda: self.filter_info(state, len(items()), "ITEMS"),
+                        hints="1-0 OPEN  N NEW  R RENAME  C COPY  D DEL  X EXPORT  P PREVIEW  / SEARCH  U UNIT  T TYPE  "
+                              "O SORT  ESC BACK",
+                        empty="NOTHING MATCHES. PRESS N TO BUILD SOMETHING." if self.store.data["assessments"]
+                        else "NOTHING YET. PRESS N TO BUILD A QUIZ, TEST OR ASSIGNMENT.")
 
     def assessment_row(self, a, w):
         kind = a.get("kind", "")
@@ -1378,7 +1452,7 @@ class App:
                       ("versions", f"VERSIONS ...... {st['export_versions']}"
                                    + ("  (A = ORIGINAL ORDER; OTHERS SHUFFLED)" if st["export_versions"] > 1 else ""))]
             if st[fkey] in ("PNG", "ALL") and kind == "lesson":
-                f += [("board", f"BOARD SLIDE ... {BOARD_STYLES[st['board_style']]}  (CHANGE SECTIONS)")]
+                f += [("board", f"BOARD SLIDE ... {BOARD_STYLES[st['board_style']]}  (BOARD DESIGNER)")]
             if st[fkey] != "PNG":
                 f += [("font", f"FONT .......... {st['font'].upper()}  /  {st['page'].upper()} PAPER")]
             f += [("folder", f"FOLDER ........ {os.path.join(self.store.export_dir(), *export_subdirs(kind, obj))}"),
@@ -1419,6 +1493,115 @@ class App:
         if done:
             self.export_done(done)
 
+    def lesson_marks(self):
+        """For ui.calendar: days that already have a lesson."""
+        days = {d for l in self.store.data["lessons"] for d in lesson_dates(l)}
+        return lambda d: d in days
+
+    def day_slideshow(self):
+        """W in Lesson Plans: every class period's board slide, in order, in one slideshow (and a PDF)."""
+        ui, st = self.ui, self.st
+        if not st.get("class_periods"):
+            ui.msg = "?ADD YOUR CLASS PERIODS FIRST: SETTINGS > CLASS PERIODS & CODES."
+            return
+        got = ui.calendar("DAY SLIDESHOW: PICK THE DAY", datetime.date.today(), marks=self.lesson_marks())
+        if not got:
+            return
+        md = got[0]
+        lessons = sorted(self.store.data["lessons"], key=lambda l: l.get("updated", ""), reverse=True)
+        plan = [list(x) for x in day_plan(st, lessons, md)]
+
+        def row(x, w):
+            p, l = x
+            name = (p.get("name") or "CLASS") + (f" ({p['course']})" if (p.get("course") or "").strip() else "")
+            return f"{name.upper()[:30]:<31} {(l.get('title') or 'UNTITLED') if l else '(SKIPPED)'}", ui.HI
+
+        def on_open(x, i):
+            course = (x[0].get("course") or "").strip().lower()
+            mine = [l for l in lessons if not course or (l.get("course") or "").strip().lower() == course]
+            labels = ["(SKIP THIS PERIOD)"] + [(l.get("title") or "untitled") + (
+                f"  {first_line(l.get('date'))}" if l.get("date") else "") for l in mine]
+            j = ui.choose("LESSON FOR " + (x[0].get("name") or "THIS CLASS").upper(), labels,
+                          mine.index(x[1]) + 1 if x[1] in mine else 0)
+            if j is not None:
+                x[1] = mine[j - 1] if j else None
+            return i
+
+        def on_key(k, x, i):
+            if ch(k).upper() == "M":
+                try:
+                    files = export_day(self.store, plan, md)
+                except ExportError as e:
+                    ui.msg = f"?{e}"
+                    return None
+                self.export_done(files)
+                return "back"
+            return None
+
+        n = sum(1 for _, l in plan if l)
+        ui.list_screen("DAY SLIDESHOW: " + fmt_date(md, weekday=True).upper(), lambda: plan, row, on_open=on_open,
+                       on_key=on_key,
+                       info_fn=lambda: f"FOUND {n} OF {len(plan)} PERIODS WITH A LESSON THAT DAY. "
+                                       "EACH PERIOD'S SLIDE, IN ORDER, IN ONE SLIDESHOW + PDF.",
+                       hints="1-0 PICK A LESSON  M MAKE THE SLIDESHOW  ESC CANCEL")
+
+    def curriculum_map(self, course=None):
+        """Y in Lesson Plans: a class's units in order with dates, standards, lessons, and assessments."""
+        ui, st = self.ui, self.st
+        found = [(n, c) for n, c in classes(st, self.store.data["lessons"]) if c]
+        if not found:
+            ui.msg = "?PLAN A FEW LESSONS FIRST. THE MAP IS BUILT FROM THEIR UNITS, DATES, AND STANDARDS."
+            return
+        names = [n for n, _ in found]
+        j = ui.choose("CURRICULUM MAP FOR WHICH CLASS?",
+                      [f"{(n or 'NO CLASS YET').upper()}  ({c} LESSON{'S' if c != 1 else ''})" for n, c in found] +
+                      ["ALL MY CLASSES"], names.index(course) if course in names else 0)
+        if j is None:
+            return
+        course = names[j] if j < len(names) else None
+        subject = st.get("subject") if st.get("subject") in self.store.subjects else ""
+        grades = st.get("grades", "")
+        years = school_years(self.store.data["lessons"])
+        this = school_year(datetime.date.today())
+        year = this if this in years else (years[0] if years else None)
+        while True:
+            opts = ["PREVIEW", "SAVE: PDF + SPREADSHEET (CSV)", "SAVE: WORD + SPREADSHEET (CSV)",
+                    "SAVE: PDF + WORD + SPREADSHEET",
+                    "NOT-TAUGHT-YET LIST: " + (f"{subject} {grade_label(grades)}".upper() if subject else "OFF"),
+                    "SCHOOL YEAR: " + (school_year_label(year) if year else "EVERY YEAR")]
+            k = ui.choose("CURRICULUM MAP: " + ("ALL MY CLASSES" if course is None else (course or "NO CLASS YET")
+                                                ).upper(), opts, 0)
+            if k is None:
+                return
+            if k == 0:
+                self.preview(curriculum_doc(self.store, names[0] if course is None else course, subject, grades, year))
+            elif k == 5:
+                m = ui.choose("WHICH SCHOOL YEAR?", [school_year_label(y) for y in years] + ["EVERY YEAR"],
+                              years.index(year) if year in years else len(years))
+                if m is not None:
+                    year = years[m] if m < len(years) else None
+            elif k == 4:
+                subs = self.store.subjects
+                if not subs:
+                    ui.msg = "?IMPORT STANDARDS FIRST (MAIN MENU > STANDARDS LIBRARY > I)."
+                    continue
+                m = ui.choose("LIST WHAT ISN'T TAUGHT YET FROM", ["(LEAVE THE LIST OFF)"] + [x.upper() for x in subs],
+                              subs.index(subject) + 1 if subject in subs else 0)
+                if m is not None:
+                    subject = subs[m - 1] if m else ""
+                if subject:
+                    g = self.pick_grade(grades)
+                    grades = g if g is not None else grades
+            else:
+                fmts = [["PDF", "CSV"], ["DOCX", "CSV"], ["PDF", "DOCX", "CSV"]][k - 1]
+                try:
+                    files = export_map(self.store, course, fmts, subject, grades, year=year)
+                except ExportError as e:
+                    ui.msg = f"?{e}"
+                    return
+                self.export_done(files)
+                return
+
     def export_now(self, lesson, fmt="PNG"):
         files = self.do_export("lesson", lesson, fmt)
         if files:
@@ -1436,7 +1619,7 @@ class App:
 
     def export_done(self, files):
         ui = self.ui
-        folder = os.path.dirname(files[0])
+        folder = files_folder(files)
 
         def on_open(path, i):
             ui.msg = "OPENING..." if open_path(path) else "?COULD NOT OPEN FILE"
@@ -1446,28 +1629,88 @@ class App:
                 ui.msg = "OPENING FOLDER..." if open_path(folder) else "?COULD NOT OPEN FOLDER"
             return None
 
-        ui.list_screen("EXPORT COMPLETE", lambda: files, lambda p, w: (os.path.basename(p), ui.HI),
+        ui.list_screen("EXPORT COMPLETE", lambda: files, lambda p, w: (os.path.relpath(p, folder), ui.HI),
                        on_open=on_open, on_key=on_key,
                        info_fn=lambda: f"SAVED {len(files)} FILE{'S' if len(files) != 1 else ''} TO {folder}",
                        hints="1-0 OPEN FILE  F OPEN FOLDER  ESC DONE")
 
     def board_settings(self):
+        """The board designer: fonts, where things go, and which sections show."""
         ui, st = self.ui, self.st
+        cycle = {k: list(v) for k, v in BOARD_CHOICES.items()}
+
+        def choice(key):
+            return BOARD_CHOICES[key].get(st.get(key), next(iter(BOARD_CHOICES[key].values()))).upper()
 
         def fields():
-            on = st.get("board_sections") or []
-            f = [("style", f"STYLE ............... {BOARD_STYLES[st['board_style']]}"),
-                 ("std_text", "STANDARDS SHOW ...... " + ("CODE + FULL TEXT" if st.get("board_std_text", True) else "CODES ONLY"))]
-            for key, label, col in BOARD_SECTIONS:
-                f.append((key, f"[{'X' if key in on else ' '}] {label.upper():<19} ({BOARD_SIDES[col].upper()})"))
-            return f
+            head = st.get("board_head_font", "")
+            if not st.get("advanced"):
+                return [("style", f"COLORS .............. {BOARD_STYLES[st['board_style']]}"),
+                        ("sections", "SECTIONS ..."),
+                        ("preview", "PREVIEW A SLIDE")]
+            return [("style", f"COLORS .............. {BOARD_STYLES[st['board_style']]}"),
+                    ("font", f"TEXT FONT ........... {fontlib.label(st.get('board_font', '')).upper()}"),
+                    ("head", f"HEADING FONT ........ {(fontlib.label(head) if head else 'SAME AS TEXT').upper()}"),
+                    ("board_layout", f"COLUMNS ............. {choice('board_layout')}"),
+                    ("board_panels", f"SECTION BOXES ....... {choice('board_panels')}"),
+                    ("board_title_align", f"TITLE ............... {choice('board_title_align')}"),
+                    ("board_codes_place", f"CLASS CODES ......... {choice('board_codes_place')}"),
+                    ("big", "TEXT SIZE ........... " + ("EXTRA BIG (MAY USE MORE SLIDES)" if st.get("board_big_text")
+                                                         else "BIGGEST THAT FITS")),
+                    ("sections", "SECTIONS, SIDES & ORDER..."),
+                    ("preview", "PREVIEW A SLIDE"),
+                    ("reset", "RESET THE BOARD DESIGN TO DEFAULT")]
 
         def on_open(f, i):
             key = f[0]
             if key == "style":
                 order = list(BOARD_STYLES)
                 st["board_style"] = order[(order.index(st["board_style"]) + 1) % len(order)]
-            elif key == "std_text":
+            elif key in ("font", "head"):
+                self.font_picker("board_font" if key == "font" else "board_head_font")
+            elif key in cycle:
+                order = cycle[key]
+                cur = st.get(key) if st.get(key) in order else order[0]
+                st[key] = order[(order.index(cur) + 1) % len(order)]
+            elif key == "big":
+                st["board_big_text"] = not st.get("board_big_text")
+            elif key == "reset":
+                if not ui.confirm("PUT FONTS, COLUMNS, BOXES, AND SECTION PLACES BACK TO THE USUAL"):
+                    return i
+                reset_advanced(st, "board")
+                ui.msg = "THE BOARD DESIGN IS BACK TO THE USUAL ONE."
+            elif key == "sections":
+                self.board_sections()
+            elif key == "preview":
+                self.board_preview()
+                return i
+            self.save()
+            return i
+
+        def on_key(k, item, i):
+            if ch(k).upper() == "P":
+                self.board_preview()
+
+        ui.list_screen("BOARD DESIGNER" if st.get("advanced") else "BOARD SLIDES", fields, lambda f, w: (f[1], ui.HI),
+                       on_open=on_open, on_key=on_key,
+                       info_fn=lambda: "1920x1080 PNG + SLIDESHOW. EMPTY SECTIONS ARE LEFT OFF; TEXT SIZES ITSELF." + (
+                           "" if st.get("advanced") else " FONTS + LAYOUT: SETTINGS > ADVANCED MODE."),
+                       hints="1-0 CHANGE  P PREVIEW  ESC BACK")
+
+    def board_sections(self):
+        ui, st = self.ui, self.st
+
+        def fields():
+            on = st.get("board_sections") or []
+            f = [("std_text", "STANDARDS SHOW ...... " + ("CODE + FULL TEXT" if st.get("board_std_text", True)
+                                                          else "CODES ONLY"))]
+            for key, label, col in board_sections(st):
+                f.append((key, f"[{'X' if key in on else ' '}] {label.upper():<19} ({BOARD_SIDES[col].upper()})"))
+            return f
+
+        def on_open(f, i):
+            key = f[0]
+            if key == "std_text":
                 st["board_std_text"] = not st.get("board_std_text", True)
             else:
                 on = [k for k in st.get("board_sections") or [] if k != key]
@@ -1475,9 +1718,88 @@ class App:
             self.save()
             return i
 
-        ui.list_screen("BOARD SLIDE OPTIONS", fields, lambda f, w: (f[1], ui.HI), on_open=on_open,
-                       info_fn=lambda: "1920x1080 PNG. EMPTY SECTIONS ARE LEFT OFF; TEXT AUTO-SIZES TO FIT.",
-                       hints="1-0 CHANGE  ESC BACK")
+        def on_key(k, item, i):
+            c = ch(k).upper()
+            if not item or item[0] == "std_text":
+                return None
+            key = item[0]
+            side = dict((x[0], x[2]) for x in board_sections(st)).get(key)
+            if c == "S" and side in ("left", "right"):
+                st.setdefault("board_sides", {})[key] = "right" if side == "left" else "left"
+                self.save()
+                return i
+            if c in ("+", "-", "=", "_") and side != "top":
+                if move_board_section(st, key, 1 if c in ("+", "=") else -1):
+                    self.save()
+                    keys = [x[0] for x in fields()]
+                    return keys.index(key)
+            if c == "R" and ui.confirm("PUT EVERY SECTION BACK IN ITS USUAL PLACE"):
+                st["board_sides"], st["board_order"] = {}, []
+                self.save()
+            return None
+
+        ui.list_screen("BOARD SECTIONS", fields, lambda f, w: (f[1], ui.HI), on_open=on_open, on_key=on_key,
+                       info_fn=lambda: "COLUMNS: " + BOARD_CHOICES["board_layout"].get(
+                           st.get("board_layout", "auto"), "").upper() + " (BOARD DESIGNER > COLUMNS)",
+                       hints="RETURN ON/OFF  S SIDE  +/- MOVE  R RESET  ESC BACK")
+
+    def font_picker(self, key):
+        """Pick a board font: the standard ones or any font on this computer."""
+        ui, st = self.ui, self.st
+        rows, _, x0 = ui.dims()
+        ui.draw(rows - 1, x0, ui.tx("LOOKING FOR FONTS..."), ui.HI)
+        ui.s.refresh()
+        top = [("", "SAME AS TEXT FONT" if key == "board_head_font" else fontlib.label("").upper(), "")]
+        tags = {"standard": "", "system": ""}
+        everything = top + [(n, n, tags[k]) for n, k in fontlib.families()
+                            if not (n == "Helvetica" and key == "board_font")]  # (the standard one, above)
+        query = [""]
+
+        def items():
+            q = query[0].lower()
+            return [x for x in everything if not q or q in x[1].lower()]
+
+        def row(x, w):
+            mark = "* " if x[0] == st.get(key, "") else "  "
+            return mark + x[1] + x[2], None
+
+        def on_open(x, i):
+            st[key] = x[0]
+            self.save()
+            ui.msg = "FONT: " + (x[1] if x[1] else "STANDARD").upper()
+            return "back"
+
+        def on_key(k, x, i):
+            c = ch(k)
+            if k in (curses.KEY_BACKSPACE, 127, 8) or c in ("\x7f", "\b"):
+                query[0] = query[0][:-1]
+                return 0
+            if len(c) == 1 and c.isprintable() and not c.isdigit():
+                query[0] += c
+                return 0
+            return None
+
+        cur = st.get(key, "")
+        start = next((i for i, x in enumerate(everything) if x[0] == cur), 0)
+        ui.list_screen("BOARD FONT", items, row, on_open=on_open, on_key=on_key, start=start,
+                       info_fn=lambda: (f"FIND: {query[0]}_" if query[0] else
+                                        f"{len(everything)} FONTS. TYPE TO FIND ONE. * = THE ONE IN USE"),
+                       hints="1-0 PICK  TYPE TO FIND  ESC CANCEL", empty="NO FONT MATCHES. BACKSPACE TO ERASE.")
+
+    def board_preview(self):
+        """Render the first board slide of the newest lesson (or a sample) and open it."""
+        ui = self.ui
+        rows, _, x0 = ui.dims()
+        ui.draw(rows - 1, x0, ui.tx("DRAWING A PREVIEW..."), ui.HI)
+        ui.s.refresh()
+        path = os.path.join(self.store.dir, "board-preview.png")
+        try:
+            n = render_preview(preview_doc(self.store), path)
+        except Exception as e:  # noqa: BLE001 - say what went wrong, never crash the planner
+            ui.msg = "?" + str(e).upper()
+            return
+        open_path(path)
+        ui.msg = "PREVIEW OPENED" + (f" (SLIDE 1 OF {n})" if n > 1 else "") + "."
 
     # ------------------------------------------------------------- settings
     def logo_settings(self):
@@ -1659,9 +1981,102 @@ class App:
             elif k in BACK:
                 return
 
+    def page_layouts(self):
+        """Advanced Mode > Page Layouts: pick a kind of page."""
+        ui, st = self.ui, self.st
+        kinds = list(PAGE_LAYOUTS)
+
+        def row(k, w):
+            changed = " (CHANGED)" if (st.get("page_layouts") or {}).get(k) else ""
+            return PAGE_LAYOUTS[k][0].upper() + changed + " ...", ui.HI
+
+        def on_open(k, i):
+            self.page_layout(k)
+            return i
+
+        def on_key(k, item, i):
+            if ch(k).upper() == "R" and advanced_changes(st) and ui.confirm(
+                    "PUT EVERY PAGE LAYOUT AND THE BOARD DESIGN BACK TO THE USUAL"):
+                reset_advanced(st)
+                self.save()
+                ui.msg = "EVERYTHING IS BACK TO THE USUAL LAYOUT."
+                return i
+            return None
+
+        ui.list_screen("PAGE LAYOUTS", lambda: kinds, row, on_open=on_open, on_key=on_key,
+                       info_fn=lambda: "NAME LINES, TITLES, HEADINGS, AND FOOTERS FOR EACH KIND OF PAGE.",
+                       hints="1-0 CHANGE  R RESET EVERYTHING  ESC BACK")
+
+    def page_layout(self, kind):
+        """One kind of page's layout options."""
+        ui, st = self.ui, self.st
+        name, options = PAGE_LAYOUTS[kind]
+
+        def lay():
+            return page_layout(st, kind)
+
+        def row(opt, w):
+            key, label, typ, _ = opt
+            v = lay()[key]
+            if typ == "bool":
+                v = "YES" if v else "NO"
+            elif typ in LAYOUT_CHOICES:
+                v = LAYOUT_CHOICES[typ][v].upper()
+            elif typ == "num":
+                v = str(v) if v else "NONE"
+            elif typ == "text":
+                v = first_line(v) or "(THE USUAL)"
+            else:
+                v = v or ("(NONE)" if typ == "fields" else "(THE USUAL)" if key == "footer_text" else "(NONE)")
+            return f"{label.upper()[:44]:<45} {v}", ui.HI
+
+        def change(key, value):
+            values = lay()
+            values[key] = value
+            set_page_layout(st, kind, values)
+            self.save()
+
+        def on_open(opt, i):
+            key, label, typ, _ = opt
+            cur = lay()[key]
+            if typ == "bool":
+                change(key, not cur)
+            elif typ in LAYOUT_CHOICES:
+                order = list(LAYOUT_CHOICES[typ])
+                change(key, order[(order.index(cur) + 1) % len(order)])
+            elif typ == "num":
+                v = ui.prompt(label.upper() + " (0-12)", str(cur))
+                if v is not None and v.strip().isdigit():
+                    change(key, min(12, int(v)))
+            elif typ == "text":
+                v = ui.edit_text(label.upper(), cur, "BLANK KEEPS THE USUAL NOTE. ESC SAVES.")
+                if v is not None:
+                    change(key, v.strip())
+            else:
+                hint = " (COMMAS BETWEEN, BLANK = NONE)" if typ == "fields" else ""
+                v = ui.prompt(label.upper() + hint, cur)
+                if v is not None:
+                    change(key, v.strip())
+            return i
+
+        def on_key(k, opt, i):
+            c = ch(k).upper()
+            if c == "P":
+                self.preview(layout_sample(self.store, kind, st))
+            elif c == "R" and ui.confirm(f"PUT THE {name.upper()} LAYOUT BACK TO THE USUAL"):
+                reset_advanced(st, kind)
+                self.save()
+                ui.msg = f"{name.upper()}: BACK TO THE USUAL LAYOUT."
+                return i
+            return None
+
+        ui.list_screen("PAGE LAYOUT: " + name.upper(), lambda: options, row, on_open=on_open, on_key=on_key,
+                       info_fn=lambda: "EVERY EXPORT (PDF, WORD, TEXT) FOLLOWS THIS LAYOUT.",
+                       hints="1-0 CHANGE  P PREVIEW  R RESET TO DEFAULT  ESC BACK")
+
     def settings_screen(self):
         ui, st = self.ui, self.st
-        fields = [
+        everything = [
             ("teacher", "TEACHER NAME (FOR FOOTERS)", "line"),
             ("school", "SCHOOL", "line"),
             ("course", "DEFAULT COURSE", "line"),
@@ -1672,7 +2087,7 @@ class App:
             ("font", "DOCUMENT FONT", "font"),
             ("page", "PAPER SIZE", "page"),
             ("export_dir", "EXPORT FOLDER", "folder"),
-            ("board_style", "BOARD SLIDE (DISPLAY PNG)", "board"),
+            ("board_style", "BOARD SLIDE DESIGNER", "board"),
             ("logo", "SCHOOL LOGO (BOARD SLIDES)", "logo"),
             ("class_periods", "CLASS PERIODS & CODES", "periods"),
             ("primary_color", "SCHOOL COLOR 1 (BACKGROUND)", "color"),
@@ -1685,7 +2100,12 @@ class App:
             ("backup_dir", "BACK UP EVERYTHING NOW", "backup"),
             ("", "EXPORT EVERYTHING (PDF + WORD)", "everything"),
             ("", "IMPORT A BACKUP", "restore"),
+            ("advanced", "ADVANCED MODE", "advanced"),
+            ("page_layouts", "  PAGE LAYOUTS", "layouts"),
         ]
+
+        def fields():
+            return [f for f in everything if f[2] != "layouts" or st.get("advanced")]
 
         def row(f, w):
             key, label, kind = f
@@ -1711,6 +2131,13 @@ class App:
                 v = "A FOLDER TO KEEP OR DRAG INTO GOOGLE DRIVE ..."
             elif kind == "board":
                 v = BOARD_STYLES.get(v, "") + " ..."
+            elif kind == "advanced":
+                changed = advanced_changes(st)
+                v = ("ON" if v else "OFF: NAME LINES, HEADINGS, FONTS ...") + (
+                    f"  ({len(changed)} CHANGED, STILL USED)" if changed and not v else "")
+            elif kind == "layouts":
+                n = len(st.get("page_layouts") or {})
+                v = f"{n} CHANGED ..." if n else "ALL THE USUAL ..."
             elif kind == "sections":
                 n = len([k for k in v or [] if k not in FIXED_FIELDS])
                 v = f"{n} HIDDEN ..." if n else "ALL SHOWN ..."
@@ -1772,6 +2199,12 @@ class App:
                 ui.apply_theme()
             elif kind == "bool":
                 st[key] = not st.get(key)
+            elif kind == "advanced":
+                st[key] = not st.get(key)
+                ui.msg = ("ADVANCED MODE ON: PAGE LAYOUTS + MORE IN THE BOARD SLIDE DESIGNER" if st[key] else
+                          "ADVANCED MODE OFF. ANYTHING YOU CHANGED STILL APPLIES.")
+            elif kind == "layouts":
+                self.page_layouts()
             elif kind == "board":
                 self.board_settings()
             elif kind == "sections":
@@ -1794,7 +2227,7 @@ class App:
             self.save()
             return i
 
-        ui.list_screen("SETTINGS", lambda: fields, row, on_open=on_open,
+        ui.list_screen("SETTINGS", fields, row, on_open=on_open,
                        info_fn=lambda: f"DATA FILE: {self.store.path}",
                        hints="1-0 CHANGE  ESC BACK")
 

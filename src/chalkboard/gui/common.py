@@ -3,10 +3,11 @@
 import copy
 import tkinter as tk
 
-from ..store import SORTS, now, sort_items
+from ..store import SORTS, classes, in_class, now, sort_items
 from . import widgets as W
 
-SORT_LABEL = {"updated": "Date modified", "created": "Date created", "title": "Title (A-Z)", "unit": "Unit"}
+SORT_LABEL = {"updated": "Date modified", "created": "Date created", "title": "Title (A-Z)", "unit": "Unit",
+              "class": "By class"}
 assert set(SORT_LABEL) == set(SORTS)
 
 
@@ -214,7 +215,18 @@ class ItemList:
         W.Dropdown(filt, sk, list(SORT_LABEL.items()), self.sort, self.set_sort, width=14).pack(
             side="left", padx=(6 * S, 0))
 
-        self.list = W.ListView(f, sk, self.columns, height=14)
+        # By Class: a "◄ All Classes" bar over the list inside a class, or the class picker instead of the list
+        self.cls = getattr(gui, "open_class", {}).get(self.kind)  # None = picking a class
+        self.class_slot = tk.Frame(f, bg=sk["window"])
+        self.class_slot.pack(fill="x", padx=8 * S)
+        self.class_bar = tk.Frame(self.class_slot, bg=sk["window"])
+        W.Button(self.class_bar, sk, "◄ All Classes", self.all_classes, small=True).pack(side="left")
+        self.class_name = W.label(self.class_bar, sk, "", bold=True)
+        self.class_name.pack(side="left", padx=(10 * S, 0))
+        body = tk.Frame(f, bg=sk["window"])
+        body.pack(fill="both", expand=True)
+        self.picker = tk.Frame(body, bg=sk["window"], padx=8 * S)
+        self.list = W.ListView(body, sk, self.columns, height=14)
         self.list.pack(fill="both", expand=True, padx=8 * S, pady=(0, 8 * S))
         self.list.on_open(self.cmd_open)
         self.list.on_select(self.update_tools)
@@ -254,8 +266,47 @@ class ItemList:
         self.gui.save()
         self.refresh()
 
+    def by_class(self):
+        return self.sort.get() == "class"
+
+    def picking(self):
+        """Showing the class picker: By Class with no class open (a search looks across every class)."""
+        return self.by_class() and self.cls is None and not self.q.get().strip()
+
+    def open_class(self, name):
+        self.cls = name
+        if not hasattr(self.gui, "open_class"):
+            self.gui.open_class = {}
+        self.gui.open_class[self.kind] = name  # come back to the same class
+        self.refresh()
+        self.list.focus()
+
+    def all_classes(self):
+        self.open_class(None)
+        kids = self.picker.winfo_children()
+        if len(kids) > 1:
+            kids[1].winfo_children()[0].focus_set()
+
+    def show_picker(self):
+        sk, S = self.gui.skin, self.gui.skin.S
+        for w in self.picker.winfo_children():
+            w.destroy()
+        found = classes(self.gui.settings, self.pool)
+        W.label(self.picker, sk, f"Pick a class to see its {self.noun}s and add new ones." if found else
+                f"No {self.noun}s yet. Click New to make your first one.", wrap=600 * S).pack(anchor="w",
+                                                                                      pady=(4 * S, 8 * S))
+        grid = tk.Frame(self.picker, bg=sk["window"])
+        grid.pack(anchor="w")
+        for i, (name, n) in enumerate(found):
+            text = f"{name or 'No class yet'}   ({n} {self.noun}{'' if n == 1 else 's'})"
+            W.Button(grid, sk, text, lambda name=name: self.open_class(name), minwidth=220).grid(
+                row=i // 3, column=i % 3, sticky="w", padx=(0, 8 * S), pady=(0, 8 * S))
+        self.gui.status(f"{len(found)} class{'es' if len(found) != 1 else ''}")
+
     def items(self):
         xs = sort_items(self.pool, self.sort.get())
+        if self.by_class() and self.cls is not None and not self.picking():
+            xs = [x for x in xs if in_class(x, self.cls)]
         unit = self.unit.get()
         if unit:
             xs = [x for x in xs if (x.get("unit") or "").strip() == unit]
@@ -265,6 +316,21 @@ class ItemList:
         return [x for x in xs if self.match(x)]
 
     def refresh(self, select=None):
+        S = self.gui.skin.S
+        if self.picking():
+            self.class_bar.pack_forget()
+            self.list.pack_forget()
+            self.picker.pack(fill="both", expand=True)
+            self.show_picker()
+            self.update_tools()
+            return
+        self.picker.pack_forget()
+        self.list.pack(fill="both", expand=True, padx=8 * S, pady=(0, 8 * S))
+        if self.by_class() and self.cls is not None and not self.q.get().strip():
+            self.class_name.configure(text=self.cls or "No class yet")
+            self.class_bar.pack(fill="x", pady=(0, 6 * S))
+        else:
+            self.class_bar.pack_forget()
         units = self.gui.store.units(self.pool)
         self.unit_dd.set_options([("", "All units")] + [(u, u) for u in units])
         if self.unit.get() and self.unit.get() not in units:
@@ -295,7 +361,14 @@ class ItemList:
         if self.q.get():
             self.q.set("")
             return True
+        if self.by_class() and self.cls is not None:
+            self.all_classes()
+            return True
         return False
+
+    def new_class(self):
+        """The class a new item goes in: the open one, under By Class."""
+        return self.cls if self.by_class() and self.cls else None
 
     def cmd_find(self):
         self.search.focus_set()
@@ -309,10 +382,7 @@ class ItemList:
                 m.add_separator()
             else:
                 m.add_command(label=label, command=fn)
-        try:
-            m.tk_popup(e.x_root, e.y_root)
-        finally:
-            m.grab_release()
+        W.popup_menu(m, e.x_root, e.y_root)
 
     # shared actions
     def cmd_rename(self):

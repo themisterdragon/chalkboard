@@ -57,6 +57,9 @@ class LessonList(ItemList):
         self.needs(tool(bar, sk, "Export…", self.cmd_export))
         self.needs(tool(bar, sk, "Board Slide", lambda: self.quick("PNG")))
         self.needs(tool(bar, sk, "Make-Up Sheet", lambda: self.quick("MAKEUP")))
+        gap(bar, sk)
+        tool(bar, sk, "Day Slideshow…", self.cmd_day)
+        tool(bar, sk, "Curriculum Map…", self.cmd_map)
 
     def row(self, l):
         return [l.get("title") or "(untitled lesson)", l.get("unit") or "", l.get("course") or "",
@@ -75,6 +78,8 @@ class LessonList(ItemList):
         l["title"] = t.strip()
         if self.unit.get():
             l["unit"] = self.unit.get()
+        if self.new_class():
+            l["course"] = self.new_class()
         self.gui.store.data["lessons"].append(l)
         self.gui.save()
         self.gui.show(editor_factory(l["id"]))
@@ -104,6 +109,15 @@ class LessonList(ItemList):
             from .export import export_dialog
             export_dialog(self.gui, "lesson", l)
 
+    def cmd_map(self):
+        from .export import curriculum_map
+        l = self.selected()
+        curriculum_map(self.gui, self.new_class() or (l.get("course") if l else None))
+
+    def cmd_day(self):
+        from .export import day_slideshow
+        day_slideshow(self.gui)
+
     def quick(self, fmt):
         l = self.selected()
         if l:
@@ -125,6 +139,8 @@ class LessonEditor:
         tool(bar, sk, "Make-Up Sheet", lambda: self.quick("MAKEUP"))
         gap(bar, sk)
         tool(bar, sk, "Sections…", self.cmd_sections)
+        gap(bar, sk)
+        W.FormatBar(bar, sk, f).pack(side="left")
         W.label(bar, sk, "Changes save by themselves.", dim=True).pack(side="right")
         tk.Frame(f, bg=sk["dark"], height=S).pack(fill="x")
 
@@ -156,10 +172,27 @@ class LessonEditor:
         for key, r, c, span in spec:
             W.label(g, sk, LABEL[key] + ":").grid(row=r, column=c, sticky="w", padx=(0 if c == 0 else 16 * S, 8 * S),
                                                   pady=3 * S)
+            if key == "date":  # the entry, and a calendar to pick from (it writes the year, so next year's
+                box = tk.Frame(g, bg=g["bg"])  # copy of a lesson never lands on this year's days)
+                box.grid(row=r, column=c + 1, columnspan=span, sticky="ew", pady=3 * S)
+                fld = LineField(box, self.gui, l, key, width=18)
+                fld.entry.pack(side="left", fill="x", expand=True)
+                W.Button(box, sk, "Calendar…", lambda f=fld: self.pick_date(f), small=True).pack(
+                    side="left", padx=(6 * S, 0))
+                continue
             fld = LineField(g, self.gui, l, key, width=24, on_change=self.retitle if key == "title" else None)
             fld.entry.grid(row=r, column=c + 1, columnspan=span, sticky="ew", pady=3 * S)
             if key == "title":
                 self.title_entry = fld.entry
+
+    def pick_date(self, fld):
+        from ..store import fmt_range, lesson_dates
+        from .calendar import pick_dates
+        days = lesson_dates(self.lesson)
+        got = pick_dates(self.gui, "Date(s): " + (self.lesson.get("title") or "untitled"),
+                         days[0] if days else None, days[-1] if days else None)
+        if got:
+            fld.var.set(fmt_range(*got))
 
     def build_field(self, g, key):
         sk, S, l = self.gui.skin, self.gui.skin.S, self.lesson

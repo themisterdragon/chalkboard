@@ -4,10 +4,11 @@ import os
 import tkinter as tk
 from tkinter import filedialog
 
-from ..store import GRADE_CHOICES
+from ..store import GRADE_CHOICES, PAGE_LAYOUTS, advanced_changes, reset_advanced
 from . import widgets as W
 from .common import AutoText, LineField
 from .desktop import grade_label
+from .board import board_designer
 from .export import STYLE_TEXT, board_options, browse, class_periods, logo_options, logo_text, periods_text
 from .skin import SKINS, TEXT_SIZES, THEMES, auto_scale
 
@@ -26,7 +27,7 @@ class SettingsView:
         self.gui = gui
         st = gui.settings
         sk, S = gui.skin, gui.skin.S
-        area = W.ScrollArea(parent, sk, gui, maxwidth=1000 * S)
+        area = self.area = W.ScrollArea(parent, sk, gui, maxwidth=1000 * S)
         area.pack(fill="both", expand=True)
         p = area.inner
         cols = tk.Frame(p, bg=sk["window"])
@@ -91,14 +92,21 @@ class SettingsView:
                 sections.configure(text=sections_text(gui))
         W.Button(g, sk, "Choose Sections…", pick_sections, small=True).pack(anchor="w", pady=(6 * S, 0))
 
+        self.advanced_group(left)
+
         g = W.group(right, sk, "Board Slides")
         g.pack(fill="x")
         style = tk.StringVar(value=st.get("board_style", "chalk"))
         for k, t in STYLE_TEXT.items():
             W.Radio(g, sk, t, style, k).pack(anchor="w")
         style.trace_add("write", lambda *a: self.set(board_style=style.get()))
-        W.Button(g, sk, "Sections & School Colors…", lambda: (board_options(gui), style.set(st.get("board_style"))),
-                 small=True).pack(anchor="w", pady=(6 * S, 0))
+        row = tk.Frame(g, bg=g["bg"])
+        row.pack(anchor="w", pady=(6 * S, 0))
+        W.Button(row, sk, "Sections & School Colors…", lambda: (board_options(gui), style.set(st.get("board_style"))),
+                 small=True).pack(side="left")
+        if st.get("advanced"):
+            W.Button(row, sk, "Board Designer…", lambda: board_designer(gui) and self.reloaded(), small=True).pack(
+                side="left", padx=(6 * S, 0))
         logo = W.label(g, sk, logo_text(gui), dim=True, wrap=440 * S)
         periods = W.label(g, sk, periods_text(gui), dim=True, wrap=440 * S)
 
@@ -110,6 +118,37 @@ class SettingsView:
         W.Button(g, sk, "Class Periods & Codes…", lambda: class_periods(gui, update), small=True).pack(
             anchor="w", pady=(8 * S, 0))
         periods.pack(anchor="w", pady=(2 * S, 0))
+
+        g = W.group(right, sk, "School Mascot")
+        g.pack(fill="x", pady=(10 * S, 0))
+        from .buddy import Buddy
+        from ..mascots import MASCOTS
+        row = tk.Frame(g, bg=g["bg"])
+        row.pack(fill="x")
+        spot = tk.Frame(row, bg=g["bg"])
+        spot.pack(side="left", anchor="n", padx=(0, 10 * S))
+        left_m = tk.Frame(row, bg=g["bg"])
+        left_m.pack(side="left", anchor="n", fill="x", expand=True)
+        mas = tk.StringVar(value=st.get("mascot") or "")
+        W.Dropdown(left_m, sk, [("", "None")] + [(k, n.title()) for k, (n, _) in MASCOTS.items()], mas,
+                   width=16).pack(anchor="w")
+        W.label(left_m, sk, "Wears your school colors on the home screen. Click it for a cheer; it cheers your "
+                            "exports too.", dim=True, wrap=260 * S).pack(anchor="w", pady=(6 * S, 0))
+        pet = {"w": None}
+
+        def show_pet(cheer=False):
+            if pet["w"]:
+                pet["w"].destroy()
+            pet["w"] = Buddy(spot, gui, scale=3 * S, bubble=False)
+            pet["w"].pack()
+            if cheer:
+                pet["w"].cheer()
+
+        def mascot_changed(*a):
+            self.set(mascot=mas.get())
+            show_pet(cheer=True)
+        mas.trace_add("write", mascot_changed)
+        show_pet()
 
         g = W.group(right, sk, "This Window")
         g.pack(fill="x", pady=(10 * S, 0))
@@ -162,8 +201,67 @@ class SettingsView:
         g.bind("<Configure>", lambda e: [t.configure(wraplength=max(200 * S, e.width - 24 * S)) for t in texts])
         gui.status("Changes save by themselves.")
 
+    def advanced_group(self, parent):
+        """Advanced Mode: the nitpicky layout options stay out of sight until a teacher asks for them."""
+        gui, st = self.gui, self.gui.settings
+        sk, S = gui.skin, gui.skin.S
+        g = W.group(parent, sk, "Advanced Mode")
+        g.pack(fill="x", pady=(10 * S, 0))
+        on = tk.BooleanVar(value=bool(st.get("advanced")))
+        W.Check(g, sk, "Show advanced options", on).pack(anchor="w")
+
+        def flip(*a):
+            self.set(advanced=on.get())
+            gui.root.after(1, self.reloaded)
+        on.trace_add("write", flip)
+        changed = advanced_changes(st)
+        if not st.get("advanced"):
+            text = "Change how printed pages and board slides are laid out: name lines, titles, headings, " \
+                   "footers, fonts, and more."
+            if changed:
+                text += f"\n\nYou've changed: {', '.join(changed)}. Those changes still apply. Turn this on to " \
+                        "change them or reset them."
+            W.label(g, sk, text, dim=True, wrap=400 * S).pack(anchor="w", pady=(4 * S, 0))
+            return
+        W.label(g, sk, "Page layouts: pick a kind of page to change its name line, title, headings, and "
+                       "footer. Each one has a preview and a Reset to Default button.", dim=True,
+                wrap=400 * S).pack(anchor="w", pady=(4 * S, 6 * S))
+        grid = tk.Frame(g, bg=g["bg"])
+        grid.pack(anchor="w")
+        laid = st.get("page_layouts") or {}
+        for i, (kind, (name, _)) in enumerate(PAGE_LAYOUTS.items()):
+            text = name + (" (changed)" if laid.get(kind) else "") + "…"
+            W.Button(grid, sk, text, lambda k=kind: self.layout(k), small=True).grid(
+                row=i // 2, column=i % 2, sticky="w", padx=(0, 6 * S), pady=(0, 6 * S))
+        W.label(g, sk, "Board slide fonts and layout: Board Slides > Board Designer.", dim=True,
+                wrap=400 * S).pack(anchor="w")
+        if changed:
+            W.label(g, sk, "Changed from the usual: " + ", ".join(changed) + ".", dim=True, wrap=400 * S).pack(
+                anchor="w", pady=(6 * S, 0))
+            W.Button(g, sk, "Reset Everything to Default…", self.reset_all, small=True).pack(anchor="w",
+                                                                                            pady=(6 * S, 0))
+
+    def layout(self, kind):
+        from .layouts import page_layout_dialog
+        if page_layout_dialog(self.gui, kind):
+            self.reloaded()
+
+    def reset_all(self):
+        if W.confirm(self.gui, "Reset Everything?", "Every page layout and the board design go back to how "
+                                                    "Chalkboard comes. Your lessons, assessments, colors, and logo "
+                                                    "stay the same.", yes="Reset", icon="warn"):
+            reset_advanced(self.gui.settings)
+            self.gui.save()
+            self.gui.status("Page layouts and the board design are back to the usual ones.")
+            self.reloaded()
+
     def reloaded(self):
+        top = self.area.canvas.yview()[0]
         self.gui.show(SettingsView, push=False)
+        view = self.gui.view
+        if isinstance(view, SettingsView):
+            view.area.update_idletasks()
+            view.area.canvas.yview_moveto(top)  # stay where the teacher was
 
     def setup(self):
         from .setup import run_setup

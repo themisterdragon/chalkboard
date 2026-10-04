@@ -208,11 +208,12 @@ def body_xml(blocks, width, body_h):
         if t == "p":
             used += 360 * (len(b["text"]) // 95 + 1)
         if t == "title":
-            out.append(para([run(plain(b["text"]), b=True, size=17)], align="center", after=40, keep=True,
+            out.append(para([run(plain(b["text"]), b=True, size=17)], align=b.get("align", "center"), after=40, keep=True,
                             new_page=new_page))
             new_page = False
         elif t == "subtitle":
-            out.append(para([run(plain(b["text"]), i=True, size=10.5, color=GRAY)], align="center", after=200))
+            out.append(para([run(plain(b["text"]), i=True, size=10.5, color=GRAY)], align=b.get("align", "center"),
+                            after=200))
         elif t == "fields" and b.get("shares"):
             # label + underlined blank per item, sized like the PDF's shares
             cells, widths = [], []
@@ -233,7 +234,8 @@ def body_xml(blocks, width, body_h):
                 runs.append(run("_" * sizes.get(k, 12) + "     "))
             out.append(para(runs, after=200))
         elif t == "h1":
-            out.append(para([run(plain(b["text"]), b=True, size=12.5)], before=240, after=100, keep=True, border=True))
+            out.append(para([run(plain(b["text"]), b=True, size=12.5)], before=240, after=100, keep=True,
+                            border=b.get("rule", True)))
         elif t == "p":
             st = b.get("style", "normal")
             out.append(para([rich(b["text"], b=st == "bold", i=st in ("italic", "small"),

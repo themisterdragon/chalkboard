@@ -30,13 +30,16 @@ def render_lines(doc, width=WIDTH):
         b = unmark(b)
         t = b["t"]
         if t == "title":
-            out += [b["text"].center(width).rstrip(), ("=" * min(width, len(b["text"]) + 4)).center(width).rstrip()]
+            if b.get("align") == "left":
+                out += [b["text"], "=" * min(width, len(b["text"]))]
+            else:
+                out += [b["text"].center(width).rstrip(), ("=" * min(width, len(b["text"]) + 4)).center(width).rstrip()]
         elif t == "subtitle":
-            out += [b["text"].center(width).rstrip(), ""]
+            out += [b["text"] if b.get("align") == "left" else b["text"].center(width).rstrip(), ""]
         elif t == "fields":
             out += ["   ".join(f"{k}: {'_' * (24 if k == 'Name' else 10)}" for k in b["items"]), ""]
         elif t == "h1":
-            out += ["", b["text"].upper(), "-" * min(width, len(b["text"]))]
+            out += ["", b["text"].upper()] + (["-" * min(width, len(b["text"]))] if b.get("rule", True) else [])
         elif t == "p":
             out += w(b["text"]) + [""]
         elif t == "bullet":

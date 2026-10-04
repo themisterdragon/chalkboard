@@ -7,11 +7,12 @@ Everything takes the Skin as its second argument. Dialogs are frames inside the 
 (not separate OS windows), so tiling window managers and native themes leave them alone.
 """
 
+from bisect import bisect_right
 import tkinter as tk
 from tkinter import ttk
 
 from .skin import MAC, fit
-from ..markup import MARKS, PATTERN, spans, toggle
+from ..markup import B, I, U, WORD, flags_of, marked, tidy
 
 
 def bg_of(w):
@@ -354,10 +355,7 @@ class Dropdown(tk.Canvas):
         cur = tk.StringVar(value=str(self.var.get()))
         for k, l in self.options:
             m.add_radiobutton(label=l, value=str(k), variable=cur, command=lambda k=k: self.choose(k))
-        try:
-            m.tk_popup(self.winfo_rootx(), self.winfo_rooty() + self.winfo_height())
-        finally:
-            m.grab_release()
+        popup_menu(m, self.winfo_rootx(), self.winfo_rooty() + self.winfo_height())
 
     def skin_menu(self, m):
         skin_menu(m, self.skin)
@@ -422,6 +420,20 @@ def skin_menu(m, skin):
                 selectcolor=skin["text"], disabledforeground=skin["off"])
 
 
+def popup_menu(m, x, y):
+    """Show a pop-up menu that closes again when the teacher clicks anywhere else (or presses Esc).
+
+    On Windows and the Mac tk_popup waits until the menu closes, so letting go of the grab
+    afterwards is right. On Linux it returns at once, and letting go there would leave the menu
+    stuck open until something is picked, so the menu keeps its grab.
+    """
+    try:
+        m.tk_popup(x, y)
+    finally:
+        if m.tk.call("tk", "windowingsystem") != "x11":
+            m.grab_release()
+
+
 def entry(parent, skin, var, width=20, **kw):
     S = skin.S
     e = tk.Entry(parent, textvariable=var, width=width, font=skin.f, bg=skin["field"], fg=skin["text"],
@@ -444,96 +456,414 @@ def textbox(parent, skin, height=3, width=40, **kw):
                 relief="flat", bd=0, padx=(6 if skin.modern else 4) * S, pady=(4 if skin.modern else 3) * S,
                 highlightthickness=ring(skin), highlightbackground=skin["edge"],
                 highlightcolor=skin["focus"], insertbackground=skin["text"], insertwidth=max(2, S + 1),
-                selectbackground=skin["sel"], selectforeground=skin["seltext"], undo=True, maxundo=200,
-                spacing1=S, spacing3=S)
+                selectbackground=skin["sel"], selectforeground=skin["seltext"], spacing1=S, spacing3=S)
     opts.update(kw)
-    t = tk.Text(parent, **opts)
-    formatting(t, skin)
-    return t
+    return RichText(parent, skin, **opts)
 
 
-def formatting(t, skin):
-    """**bold**, *italic*, __underline__ in a text box, like the terminal editor: Ctrl-B/I/U
-    (Ctrl-T too, and Cmd on a Mac) wrap the selection or the word at the cursor, and the text
-    shows its formatting with the marks dimmed."""
-    from tkinter import font as tkfont
-    fonts = getattr(skin, "_rich", None)
-    if fonts is None:
-        base = tkfont.Font(font=t.cget("font")).actual()
-        fonts = skin._rich = {k: tkfont.Font(t, **dict(base, **v)) for k, v in
-                              {"b": {"weight": "bold"}, "i": {"slant": "italic"},
-                               "bi": {"weight": "bold", "slant": "italic"}}.items()}
-    t.tag_configure("mark", foreground=skin["dim"])
-    for k, f in fonts.items():
-        t.tag_configure(k, font=f)
-    t.tag_configure("u", underline=True)
-    pending = []
+_CLIP = {}  # the last thing copied from a text box: {"plain": ..., "marked": ...}
+_NAV = {"Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next", "KP_Left", "KP_Right", "KP_Up", "KP_Down",
+        "KP_Home", "KP_End", "KP_Prior", "KP_Next"}
+_BIT = {"b": B, "i": I, "u": U}
 
-    def restyle():
-        pending.clear()
-        try:
-            buf = t.get("1.0", "end-1c")
-            for tag in ("mark", "b", "i", "bi", "u"):
-                t.tag_remove(tag, "1.0", "end")
-        except tk.TclError:  # the box is gone
+
+class RichText(tk.Text):
+    """A text box that shows **bold**, *italic*, and __underline__ as formatting, without the marks.
+
+    What's saved is the same marked text as everywhere else: get() writes the marks and insert()
+    reads them, so callers and the terminal app see no difference. Ctrl-B/I/U (Ctrl-T too, Cmd on
+    a Mac) or a FormatBar format the selection, the word at the cursor, or what you type next.
+    Undo is its own, since Tk's forgets formatting."""
+
+    focused = None  # the text box last typed in
+    listeners = []  # FormatBar refreshers
+
+    def __init__(self, parent, skin, **opts):
+        from tkinter import font as tkfont
+        opts["undo"] = False
+        super().__init__(parent, **opts)
+        fonts = getattr(skin, "_rich", None)
+        if fonts is None:
+            base = tkfont.Font(font=self.cget("font")).actual()
+            fonts = skin._rich = {k: tkfont.Font(self, **dict(base, **v)) for k, v in
+                                  {"b": {"weight": "bold"}, "i": {"slant": "italic"},
+                                   "bi": {"weight": "bold", "slant": "italic"}}.items()}
+        for k, f in fonts.items():
+            self.tag_configure("f" + k, font=f)
+        self.tag_configure("u", underline=True)
+        self.tag_raise("sel")
+        self.style = None  # bits for what's typed next; None = like the text at the cursor
+        self._undo, self._redo, self._last, self._pre = [], [], None, None
+        tags = list(self.bindtags())
+        tags.insert(tags.index("Text") + 1, "RichPost")
+        self.bindtags(tags)
+        for seq in ("<KeyPress>", "<<Cut>>", "<ButtonRelease-2>", "<<PasteSelection>>", "<<Clear>>"):
+            self.bind(seq, self._before, add="+")
+            self.bind_class("RichPost", seq, lambda e: e.widget._after(e))
+        mod = "Command" if MAC else "Control"
+        for key, kind in (("b", "b"), ("i", "i"), ("u", "u"), ("t", "i")):
+            self.bind(f"<{mod}-{key}>", lambda e, k=kind: self.toggle(k))
+            if MAC:
+                self.bind(f"<Control-{key}>", lambda e, k=kind: self.toggle(k))
+        self.bind("<<Paste>>", self._paste)
+        self.bind("<<Copy>>", self._remember, add="+")
+        self.bind("<<Cut>>", self._remember, add="+")
+        self.bind("<<Undo>>", lambda e: self.undo())
+        self.bind("<<Redo>>", lambda e: self.redo())
+        self.bind("<ButtonPress-1>", self._moved, add="+")
+        self.bind("<ButtonRelease-1>", lambda e: self._notify(), add="+")
+        self.bind("<KeyRelease>", lambda e: self._notify(), add="+")
+        self.bind("<FocusIn>", self._focus, add="+")
+
+    # -- the text as plain characters and B/I/U bits (Tk always keeps a final newline)
+    def _off(self, index):
+        return len(super().get("1.0", index))
+
+    @staticmethod
+    def _lines(plain):
+        """Where each line starts, so positions convert without asking Tk for the text again (that made
+        typing in a long box take a third of a second a key). None when Tk and Python could count a
+        line's characters differently (characters past U+FFFF, like emoji)."""
+        if plain and max(plain) > "\uffff":
+            return None
+        starts = [0]
+        at = plain.find("\n")
+        while at >= 0:
+            starts.append(at + 1)
+            at = plain.find("\n", at + 1)
+        return starts
+
+    def _fast_off(self, index, starts):
+        if starts is None:
+            return self._off(index)
+        line, col = str(index).split(".")
+        return starts[int(line) - 1] + int(col)
+
+    def _ix(self, k, starts):
+        if starts is None:
+            return f"1.0+{k}c"
+        line = bisect_right(starts, k)
+        return f"{line}.{k - starts[line - 1]}"
+
+    def _state(self):
+        plain = super().get("1.0", "end")
+        starts = self._lines(plain)
+        fl = [0] * len(plain)
+        for bit, tag in ((B, "b"), (I, "i"), (U, "u")):
+            r = self.tag_ranges(tag)
+            for s, e in zip(r[::2], r[1::2]):
+                for k in range(self._fast_off(s, starts), self._fast_off(e, starts)):
+                    fl[k] |= bit
+        return plain, fl
+
+    def _apply(self, plain, fl):
+        """Show (plain, bits), tidied; marks typed into the text turn into formatting."""
+        text, fl = tidy(plain[:-1], fl[:-1])
+        if text != plain[:-1]:  # take out the marks that became formatting (marks like the cursor follow)
+            k = 0
+            for ch in text:
+                while plain[k] != ch:
+                    super().delete(f"1.0+{k}c")
+                    plain = plain[:k] + plain[k + 1:]
+                k += 1
+            while len(plain) - 1 > len(text):
+                super().delete(f"1.0+{len(text)}c")
+                plain = plain[:len(text)] + plain[len(text) + 1:]
+        for tag in ("b", "i", "u", "fb", "fi", "fbi"):
+            self.tag_remove(tag, "1.0", "end")
+        starts = self._lines(text + "\n")
+        k, n = 0, len(text)
+        while k < n:
+            j = k
+            while j < n and fl[j] == fl[k]:
+                j += 1
+            f = fl[k]
+            if f:
+                a, b = self._ix(k, starts), self._ix(j, starts)
+                for bit, tag in ((B, "b"), (I, "i"), (U, "u")):
+                    if f & bit:
+                        self.tag_add(tag, a, b)
+                face = {B: "fb", I: "fi", B | I: "fbi"}.get(f & (B | I))
+                if face:
+                    self.tag_add(face, a, b)
+            k = j
+
+    def restyle(self):
+        self._apply(*self._state())
+
+    # -- what callers see: marked text in, marked text out
+    def get(self, index1, index2=None):
+        if index2 is None:
+            return super().get(index1)
+        a, b = self._off(index1), self._off(index2)
+        plain, fl = self._state()
+        return marked(plain[a:b], fl[a:b])
+
+    def insert(self, index, chars, *args):
+        if args:
+            return super().insert(index, chars, *args)
+        text, bits = flags_of(chars)
+        at = self._off(index)
+        super().insert(index, text)
+        plain, fl = self._state()
+        fl[at:at + len(text)] = bits
+        self._apply(plain, fl)
+
+    def edit_reset(self):
+        super().edit_reset()
+        self._undo, self._redo, self._last = [], [], None
+
+    # -- typing
+    def context(self):
+        """The bits of the text at the cursor: the character before it, or after it at a line's start."""
+        plain, fl = self._state()
+        p = self._off("insert")
+        if p > 0 and plain[p - 1] != "\n":
+            return fl[p - 1]
+        return fl[p] if p < len(plain) and plain[p] != "\n" else 0
+
+    def _moved(self, e=None):
+        self.style, self._last = None, None
+
+    def _focus(self, e=None):
+        RichText.focused = self
+        self._notify()
+
+    def _before(self, e):
+        if e.type == tk.EventType.KeyPress and e.keysym in _NAV:
+            self._moved()
             return
-        for a, b, kind in spans(buf):
-            ia, ib = f"1.0+{a}c", f"1.0+{b}c"
-            if kind == "mark":
-                t.tag_add("mark", ia, ib)
-                continue
-            face = "".join(k for k in "bi" if k in kind)
-            if face:
-                t.tag_add(face, ia, ib)
-            if "u" in kind:
-                t.tag_add("u", ia, ib)
+        if self.style is None and e.type == tk.EventType.KeyPress and e.char and e.char.isprintable():
+            if self.tag_ranges("sel") and self.compare("sel.first", "<=", "insert") and \
+                    self.compare("insert", "<=", "sel.last"):
+                self.mark_set("insert", "sel.first")
+            self.style = self.context()
+        self._pre = self._state() + (self._off("insert"),)
 
-    def later(e=None):
-        if not pending:
-            pending.append(t.after_idle(restyle))
-
-    def mark(kind):
-        if str(t.cget("state")) == "disabled":
-            return "break"
-        buf = t.get("1.0", "end-1c")
-        if t.tag_ranges("sel"):  # wrap (or unwrap) exactly what's selected
-            a = len(t.get("1.0", "sel.first"))
-            b = a + len(t.get("sel.first", "sel.last"))
-            m = PATTERN.fullmatch(buf[a:b])
-            core = m.group(kind) if m and m.lastgroup == kind else None
-            new = core if core is not None else MARKS[kind] + buf[a:b] + MARKS[kind]
-            new_buf, pos = buf[:a] + new + buf[b:], a + len(new)
-        else:
-            new_buf, pos = toggle(buf, len(t.get("1.0", "insert")), kind)
-        # replace only the part that changed, so undo and scrolling behave
+    def _after(self, e):
+        pre, self._pre = self._pre, None
+        if pre is None:
+            return
+        plain, fl = self._state()
+        if plain == pre[0]:
+            return
         i = 0
-        while i < min(len(buf), len(new_buf)) and buf[i] == new_buf[i]:
+        while i < min(len(plain), len(pre[0])) and plain[i] == pre[0][i]:
             i += 1
         j = 0
-        while j < min(len(buf), len(new_buf)) - i and buf[-1 - j] == new_buf[-1 - j]:
+        while j < min(len(plain), len(pre[0])) - i and plain[-1 - j] == pre[0][-1 - j]:
             j += 1
-        auto = t.cget("autoseparators")
-        t.configure(autoseparators=False)  # one undo step, not a delete and an insert
-        t.edit_separator()
-        t.delete(f"1.0+{i}c", f"1.0+{len(buf) - j}c")
-        t.insert(f"1.0+{i}c", new_buf[i:len(new_buf) - j])
-        t.edit_separator()
-        t.configure(autoseparators=auto)
-        t.tag_remove("sel", "1.0", "end")
-        t.mark_set("insert", f"1.0+{pos}c")
-        restyle()
+        typed = e.type == tk.EventType.KeyPress and bool(e.char) and len(plain) - j > i
+        style = self.style if (typed and self.style is not None) else self.context_of(pre, i)
+        for k in range(i, len(plain) - j):
+            fl[k] = style
+        if typed and style & U and self._last == "type":  # keep the underline going across a typed space
+            k = i
+            while k > 0 and plain[k - 1] in " \t":
+                k -= 1
+            if k < i and k > 0 and fl[k - 1] & U:
+                for x in range(k, i):
+                    fl[x] |= U
+        kind = "type" if typed else "delete" if len(plain) < len(pre[0]) else "other"
+        self._push(pre, kind, boundary=typed and not e.char.strip())
+        if kind != "type":
+            self.style = None
+        self._apply(plain, fl)
+        self.edit_modified(True)
+        self._notify()
+
+    @staticmethod
+    def context_of(pre, at):
+        plain, fl = pre[0], pre[1]
+        if at > 0 and plain[at - 1] != "\n":
+            return fl[at - 1]
+        return 0
+
+    def _remember(self, e=None):
+        if self.tag_ranges("sel"):
+            _CLIP.update(plain=super().get("sel.first", "sel.last"), marked=self.get("sel.first", "sel.last"))
+
+    def _paste(self, e=None):
+        if str(self.cget("state")) == "disabled":
+            return "break"
+        try:
+            clip = self.clipboard_get()
+        except tk.TclError:
+            return "break"
+        pre = self._state() + (self._off("insert"),)
+        if self.tag_ranges("sel"):
+            super().delete("sel.first", "sel.last")
+        self.insert("insert", _CLIP["marked"] if clip == _CLIP.get("plain") else clip)
+        self._push(pre, "other")
+        self.style = None
+        self.see("insert")
+        self.edit_modified(True)
+        self._notify()
         return "break"
 
-    mod = "Command" if MAC else "Control"
-    for key, kind in (("b", "b"), ("i", "i"), ("u", "u"), ("t", "i")):
-        t.bind(f"<{mod}-{key}>", lambda e, k=kind: mark(k))
-        if MAC:
-            t.bind(f"<Control-{key}>", lambda e, k=kind: mark(k))
-    t.bind("<KeyRelease>", later, add="+")
-    t.bind("<ButtonRelease-2>", later, add="+")
-    t.bind("<<Paste>>", later, add="+")
-    t.restyle = later
-    later()
+    # -- formatting
+    def formats(self):
+        """The bits the B/I/U buttons show: all of the selection, or what typing would get."""
+        if self.tag_ranges("sel"):
+            plain, fl = self._state()
+            a, b = self._off("sel.first"), self._off("sel.last")
+            ks = [k for k in range(a, b) if not plain[k].isspace()]
+            return sum(bit for bit in (B, I, U) if ks and all(fl[k] & bit for k in ks))
+        return self.style if self.style is not None else self.context()
+
+    def toggle(self, kind):
+        if str(self.cget("state")) == "disabled":
+            return "break"
+        bit = _BIT[kind]
+        plain, fl = self._state()
+        p = self._off("insert")
+        if self.tag_ranges("sel"):
+            a, b = self._off("sel.first"), self._off("sel.last")
+        elif 0 < p < len(plain) and WORD.match(plain[p - 1]) and WORD.match(plain[p]):  # inside a word
+            a = b = p
+            while a > 0 and WORD.match(plain[a - 1]):
+                a -= 1
+            while b < len(plain) and WORD.match(plain[b]):
+                b += 1
+        else:  # what's typed next
+            self.style = (self.style if self.style is not None else self.context()) ^ bit
+            self._last = None
+            self._notify()
+            return "break"
+        ks = [k for k in range(a, b) if not plain[k].isspace()]
+        on = not all(fl[k] & bit for k in ks) if ks else True
+        new = [(f | bit if on else f & ~bit) if a <= k < b else f for k, f in enumerate(fl)]
+        if tidy(plain[:-1], new[:-1]) != tidy(plain[:-1], fl[:-1]):
+            self._push((plain, fl, p), "format")
+            self._apply(plain, new)
+            self.edit_modified(True)
+        self.style = None
+        self._notify()
+        return "break"
+
+    # -- undo, in whole words, formatting included
+    def _push(self, pre, kind, boundary=False):
+        if kind == "type" and self._last == "type" and not boundary:
+            return
+        snap = (marked(pre[0][:-1], pre[1][:-1]), pre[2])
+        if not self._undo or self._undo[-1][0] != snap[0]:
+            self._undo = self._undo[-199:] + [snap]
+        self._redo, self._last = [], kind
+
+    def _snap(self):
+        return self.get("1.0", "end-1c"), self._off("insert")
+
+    def _restore(self, snap):
+        super().delete("1.0", "end")
+        self.insert("1.0", snap[0])
+        self.mark_set("insert", f"1.0+{snap[1]}c")
+        self.see("insert")
+        self.style, self._last = None, None
+        self.edit_modified(True)
+        self._notify()
+
+    def undo(self):
+        cur = self._snap()
+        while self._undo and self._undo[-1][0] == cur[0]:
+            self._undo.pop()
+        if self._undo and str(self.cget("state")) != "disabled":
+            self._redo.append(cur)
+            self._restore(self._undo.pop())
+        return "break"
+
+    def redo(self):
+        if self._redo and str(self.cget("state")) != "disabled":
+            self._undo.append(self._snap())
+            self._restore(self._redo.pop())
+        return "break"
+
+    def _notify(self):
+        for fn in list(RichText.listeners):
+            fn()
+
+
+class FormatBar(tk.Frame):
+    """B, I, U buttons for the text box last typed in under `scope`. They light up for the formatting
+    at the cursor, and never take the keyboard focus from the text."""
+
+    def __init__(self, parent, skin, scope):
+        from tkinter import font as tkfont
+        super().__init__(parent, bg=bg_of(parent))
+        self.scope = scope
+        base = tkfont.Font(font=skin.f).actual()
+        self.buttons = {}
+        for kind, extra, tip in (("b", {"weight": "bold"}, "Bold"), ("i", {"slant": "italic"}, "Italic"),
+                                 ("u", {"underline": 1}, "Underline")):
+            b = _FormatButton(self, skin, kind.upper(), lambda k=kind: self.press(k))
+            b.font = tkfont.Font(self, **dict(base, **extra))
+            b.tip = tip
+            b.pack(side="left", padx=(0, 2 * skin.S))
+            self.buttons[kind] = b
+        RichText.listeners.append(self.refresh)
+        self.bind("<Destroy>", lambda e: e.widget is self and self.refresh in RichText.listeners and
+                  RichText.listeners.remove(self.refresh))
+        self.refresh()
+
+    def target(self):
+        t = RichText.focused
+        try:
+            if t is not None and t.winfo_exists() and str(t).startswith(str(self.scope) + "."):
+                return t
+        except tk.TclError:
+            pass
+        return None
+
+    def press(self, kind):
+        t = self.target()
+        if t is not None:
+            t.toggle(kind)
+            t.focus_set()
+
+    def refresh(self):
+        try:
+            if not self.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        t = self.target()
+        bits = t.formats() if t is not None else 0
+        for kind, b in self.buttons.items():
+            b.set_enabled(t is not None and str(t.cget("state")) != "disabled")
+            b.set_latched(bool(bits & _BIT[kind]))
+
+
+class _FormatButton(Button):
+    """A small square toggle button that leaves the focus where it is."""
+
+    def __init__(self, parent, skin, text, command):
+        super().__init__(parent, skin, text, command, small=True, minwidth=26)
+        self.configure(takefocus=0)
+        self.latched = False
+
+    def set_enabled(self, on):
+        super().set_enabled(on)
+        self.configure(takefocus=0)
+
+    def set_latched(self, on):
+        if on != self.latched:
+            self.latched = on
+            self.draw()
+
+    def down(self, e):
+        if self.enabled:
+            self.pressed = True
+            self.draw()
+
+    def draw(self):
+        if getattr(self, "latched", False) and self.enabled and not self.pressed:
+            self.pressed, inside = True, self.inside
+            self.inside = True
+            try:
+                super().draw()
+            finally:
+                self.pressed, self.inside = False, inside
+        else:
+            super().draw()
 
 
 def label(parent, skin, text="", bold=False, dim=False, small=False, wrap=0, **kw):

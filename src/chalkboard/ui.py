@@ -538,6 +538,74 @@ class UI:
             if isinstance(result, int) and not isinstance(result, bool):
                 pending = result
 
+    def calendar(self, title, start=None, end=None, marks=None, allow_range=False, allow_type=False):
+        """A month calendar: arrows move, < > (or Page Up/Down) change the month, T is today, Return picks.
+        With allow_range, Space marks a first day and Return picks through the day you're on.
+        marks(day) -> True puts a dot by days that already have something. Returns (first, last) dates,
+        "type" when the teacher pressed / to type a date instead (allow_type), or None for Esc."""
+        import calendar as cal_
+        import datetime as dt
+        today = dt.date.today()
+        cur = start or today
+        anchor = None  # Space: the first day of a range
+        marks = marks or (lambda d: False)
+        weeks_of = cal_.Calendar(firstweekday=6).monthdatescalendar
+        while True:
+            rows, w, x0 = self.dims()
+            lo, hi = (min(anchor, cur), max(anchor, cur)) if anchor else (start, end or start) if start else (None, None)
+            self.begin()
+            self.header(title)
+            label = f"{cal_.month_abbr[cur.month]} {cur.year}"
+            art = big(label, "██") if len(big(label, "██")[0]) <= w - 2 and rows >= 26 else (
+                big(label) if rows >= 22 else [label.upper()])
+            for i, line in enumerate(art):
+                self.put(2 + i, x0 + 2, line, self.HI, raw=True)
+            y = 3 + len(art)
+            self.put(y, x0 + 2, "  ".join(f" {d}" for d in ("SU", "MO", "TU", "WE", "TH", "FR", "SA")), self.DIM)
+            for r, week in enumerate(weeks_of(cur.year, cur.month)):
+                for i, day in enumerate(week):
+                    x = x0 + 2 + i * 5
+                    left, right = ("[", "]") if day == today else (" ", " ")
+                    cell = f"{left}{day.day:>2}{right}{'•' if marks(day) else ' '}"
+                    if day == cur:
+                        attr = self.INV
+                    elif lo and lo <= day <= hi:
+                        attr = self.HI
+                    elif day.month != cur.month:
+                        attr = self.DIM
+                    else:
+                        attr = self.N
+                    self.put(y + 1 + r, x, cell, attr, raw=True)
+            info = cur.strftime("%A, %B ") + f"{cur.day}, {cur.year}"
+            if anchor:
+                info = f"FROM {anchor:%b} {anchor.day} THROUGH {cur:%b} {cur.day} (RETURN PICKS)"
+            self.put(y + 8, x0 + 2, info.upper(), self.HI, raw=True)
+            self.put(y + 9, x0 + 2, "[ ] TODAY   • HAS A LESSON", self.DIM, raw=True)
+            hints = "ARROWS MOVE  < > MONTH  T TODAY  " + ("SPACE STARTS A RANGE  " if allow_range else "") + \
+                    "RETURN PICKS  " + ("/ TYPE IT  " if allow_type else "") + "ESC CANCEL"
+            self.footer(hints)
+            self.show()
+            k = self.key()
+            c = k if isinstance(k, str) else ""
+            step = {curses.KEY_LEFT: -1, curses.KEY_RIGHT: 1, curses.KEY_UP: -7, curses.KEY_DOWN: 7}.get(k)
+            if step:
+                cur += dt.timedelta(days=step)
+            elif k in (curses.KEY_PPAGE, curses.KEY_NPAGE) or c in ("<", ">", ",", "."):
+                n = -1 if k == curses.KEY_PPAGE or c in ("<", ",") else 1
+                m = cur.month - 1 + n
+                y_, m_ = cur.year + m // 12, m % 12 + 1
+                cur = dt.date(y_, m_, min(cur.day, cal_.monthrange(y_, m_)[1]))
+            elif c.lower() == "t" or k == curses.KEY_HOME:
+                cur = today
+            elif c == " " and allow_range:
+                anchor = None if anchor == cur else cur
+            elif c == "/" and allow_type:
+                return "type"
+            elif k in ENTER:
+                return (min(anchor, cur), max(anchor, cur)) if anchor else (cur, cur)
+            elif k in BACK:
+                return None
+
     def choose(self, title, options, current=None, hints="PRESS A NUMBER   ESC CANCEL"):
         """Pick one of [label, ...]; returns its index or None."""
         picked = []

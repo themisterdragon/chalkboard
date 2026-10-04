@@ -5,11 +5,11 @@ import re
 import subprocess
 import sys
 
-from .store import SHEET_KINDS, periods_for
+from .store import SHEET_KINDS, fmt_date, periods_for, school_year_label
 from .doc import LETTERS, assessment_doc, board_doc, lesson_doc, makeup_doc
 from .export_pdf import render_pdf
 from .export_docx import render_docx
-from .export_png import BoardError, render_png
+from .export_png import BoardError, render_day, render_png
 from .export_txt import render_txt
 
 FORMATS = {"PDF": (".pdf", render_pdf), "DOCX": (".docx", render_docx), "TXT": (".txt", render_txt),
@@ -43,6 +43,43 @@ def export_subdirs(kind, obj):
 
 def export_folder(store, kind, obj, root=None):
     return os.path.join(root or store.export_dir(), *export_subdirs(kind, obj))
+
+
+# Inside a lesson's (or unit's) folder, the PDFs you print stay on top and the rest go in subfolders.
+SUBFOLDERS = {"PNG": "Board Slides", "DOCX": "Word", "TXT": "Text"}
+KEYS_FOLDER = "Answer Keys"
+
+
+def subfolder(name, fmt):
+    """The subfolder a file goes in ("" = the item's folder itself)."""
+    if fmt in SUBFOLDERS:
+        return SUBFOLDERS[fmt]
+    return KEYS_FOLDER if fmt == "PDF" and name.endswith(" - Answer Key") else ""
+
+
+def tidy_old(folder, sub, name, wrote):
+    """Before subfolders, every file went straight in the item's folder: remove the old copy of each
+    file just rewritten in a subfolder (and an older board's extra "<name> 2.png" slides)."""
+    if not sub:
+        return
+    old = [os.path.join(folder, os.path.basename(p)) for p in wrote]
+    if wrote and wrote[0].endswith(".png"):
+        pat = re.compile(re.escape(name) + r" \d+\.png$")
+        old += [os.path.join(folder, f) for f in os.listdir(folder) if pat.match(f)]
+    for p in old:
+        if os.path.isfile(p):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+def files_folder(files):
+    """The one folder that holds every file in files: where "Open Folder" goes."""
+    try:
+        return os.path.commonpath([os.path.dirname(p) for p in files])
+    except ValueError:  # different drives
+        return os.path.dirname(files[0])
 
 
 def open_path(path):
@@ -115,9 +152,13 @@ def export(store, kind, obj, fmt, progress=None, root=None):
             ext, fn = FORMATS[f]
             if progress:
                 progress(i, len(jobs), name + ext)
-            path = os.path.join(folder, name + ext)
+            sub = "" if f in PLUGIN_FORMATS else subfolder(name, f)
+            os.makedirs(os.path.join(folder, sub), exist_ok=True)
+            path = os.path.join(folder, sub, name + ext)
             wrote = fn(d, path, item=obj) if f in PLUGIN_FORMATS else fn(d, path, family=st["font"], page=st["page"])
-            files += wrote if isinstance(wrote, list) else [path]
+            wrote = wrote if isinstance(wrote, list) else [path]
+            tidy_old(folder, sub, name, wrote)
+            files += wrote
         if progress:
             progress(len(jobs), len(jobs), "")
         from .plugins import after_export
@@ -126,6 +167,76 @@ def export(store, kind, obj, fmt, progress=None, root=None):
         raise ExportError(str(e)) from e
     except OSError as e:
         raise ExportError(f"EXPORT FAILED: {e}") from e
+    return files
+
+
+def export_day(store, picks, day, root=None):
+    """A whole day's board slides, class period by class period, as one slideshow (.pptx) and PDF,
+    so the next class's slide is one click away at passing time.
+    picks: [(class period, lesson)] in order; a period without a lesson is skipped. day: a date.
+    Returns the files written; raises ExportError with a message for the user."""
+    docs = [board_doc(l, store, p) for p, l in picks if l]
+    if not docs:
+        raise ExportError("PICK A LESSON FOR AT LEAST ONE CLASS PERIOD")
+    folder = os.path.join(root or store.export_dir(), "Day Slideshows")
+    try:
+        os.makedirs(folder, exist_ok=True)
+        # 2026-10-04 sorts by date and never collides with next year's Oct 4
+        files = render_day(docs, os.path.join(folder, f"{day.isoformat()} - Day Slideshow"),
+                           f"{fmt_date(day, weekday=True)} - Day Slideshow")
+    except BoardError as e:
+        raise ExportError(str(e)) from e
+    except OSError as e:
+        raise ExportError(f"EXPORT FAILED: {e}") from e
+    from .plugins import after_export
+    after_export(files)
+    return files
+
+
+MAP_FORMATS = {"PDF": "PDF", "DOCX": "Word", "CSV": "Spreadsheet (CSV)"}
+
+
+def export_map(store, course, fmts, subject="", grades="", root=None, year=None):
+    """A class's curriculum map as PDF / Word / CSV, in the class's export folder (course None: every
+    class in one map, in the export folder). Returns the files."""
+    import csv
+    from .doc import curriculum_doc, curriculum_rows
+    from .store import classes
+    st = store.settings
+    if course is None:  # every class, each starting on a new page
+        from .doc import curriculum_units
+        names = [n for n, count in classes(st, store.data["lessons"]) if count and curriculum_units(store, n, year)]
+        if not names:
+            raise ExportError("NO LESSONS ARE PLANNED YET")
+        docs = [curriculum_doc(store, n, subject, grades, year) for n in names]
+        doc = {"title": "Curriculum Map", "footer": " - ".join(x for x in (st.get("teacher"), "Curriculum Map") if x),
+               "blocks": [b for i, d in enumerate(docs) for b in ([{"t": "pagebreak"}] if i else []) + d["blocks"]]}
+        rows = curriculum_rows(store, names[0], year) + [r for n in names[1:]
+                                                         for r in curriculum_rows(store, n, year)[1:]]
+        folder, base_name = root or store.export_dir(), "Curriculum Map - All Classes"
+    else:
+        doc, rows = curriculum_doc(store, course, subject, grades, year), curriculum_rows(store, course, year)
+        folder = os.path.join(root or store.export_dir(), *([safe_name(course)] if course else []))
+        base_name = "Curriculum Map - " + (course or "No Class")
+    if year:
+        base_name += f" ({school_year_label(year)})"
+    base = os.path.join(folder, safe_name(base_name))
+    files = []
+    try:
+        os.makedirs(folder, exist_ok=True)
+        for f in fmts:
+            if f == "CSV":
+                with open(base + ".csv", "w", newline="", encoding="utf-8-sig") as fh:  # BOM: Excel reads UTF-8
+                    csv.writer(fh).writerows(rows)
+                files.append(base + ".csv")
+            else:
+                ext, fn = FORMATS[f]
+                fn(doc, base + ext, family=st["font"], page=st["page"])
+                files.append(base + ext)
+    except OSError as e:
+        raise ExportError(f"EXPORT FAILED: {e}") from e
+    from .plugins import after_export
+    after_export(files)
     return files
 
 
