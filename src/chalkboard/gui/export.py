@@ -9,7 +9,7 @@ from ..images import read_image
 from .. import plugins
 from ..exporting import (FORMAT_ORDER, PLUGIN_FORMATS, ExportError, export, export_everything, export_folder,
                          open_path)
-from ..store import BOARD_SECTIONS, BOARD_STYLES, SHEET_KINDS
+from ..store import BOARD_SECTIONS, BOARD_SIDES, BOARD_STYLES, SHEET_KINDS
 from . import widgets as W
 
 FORMAT_TEXT = {
