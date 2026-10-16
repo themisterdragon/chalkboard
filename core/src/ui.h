@@ -49,20 +49,22 @@ struct Rect {
 
 // The palettes (skin.py): every pair of colors meets WCAG 2.1 AA, checked by check_contrast.
 struct Skin {
-    std::string kind;   // "bevel", "pinstripe", "modern"
-    std::string name;   // "Bevel"
-    bool dark = false, bevel = false, modern = false, pinstripe = false;
+    std::string kind;   // "modern", "glossy", "bevel", "pinstripe"
+    std::string name;   // "Modern"
+    bool dark = false, bevel = false, modern = false, pinstripe = false, glossy = false;
+    bool soft = false;  // Modern or Glossy: rounded controls, cards, and roomy lists
     int S = 1;          // the scale: pixels per point of the design
     std::unordered_map<std::string, Color> c;
     bool desk2 = false;   // Pinstripe's dithered desktop
     bool status_top = false;
     std::unique_ptr<Font> f, fb, fi, fbi, fsmall, ftitle, fbig, fhuge, fmono;
+    std::unique_ptr<Font> fhead, fpage, fsmallb;   // a card's heading, a page's title, small bold
     double line = 16;   // the text font's line height
     Color operator[](const std::string &k) const;
     int px(double n) const { return (int)(n * S); }
     Font &font(int style);   // 0-3: regular, bold, italic, bold italic
 };
-// kind: "bevel"/"pinstripe"/"modern"; accent: the OS's accent color ("" = none); text_px: the text size
+// kind: "modern"/"glossy"/"bevel"/"pinstripe"; accent: a color for Modern's highlights ("" = Chalkboard green); text_px: the text size
 std::unique_ptr<Skin> make_skin(const std::string &kind, int S, int text_px, bool dark, const std::string &accent);
 // (key, name, about) for each look
 const std::vector<std::vector<std::string>> &skins();
@@ -156,6 +158,11 @@ public:
     void polygon(const std::vector<raster::Pt> &pts, Color c);
     void rrect(const Rect &r, double radius, Color fill, Color edge, double edge_w, bool has_fill = true, bool has_edge = true);
     void oval(const Rect &r, Color fill, Color edge, double edge_w, bool has_fill = true, bool has_edge = true);
+    // a rounded box see-through by alpha (0-1), and one shaded from top to bottom (Glossy, cards)
+    void rrect_a(const Rect &r, double radius, Color c, double alpha);
+    void gradient(const Rect &r, double radius, Color top, Color bottom, double alpha = 1);
+    // a soft shadow under a rounded box (cards, dialogs, menus): depth pixels of blur, strength 0-1
+    void shadow(const Rect &r, double radius, double depth, double strength);
     void dotted(const Rect &r, Color c);   // the classic dotted focus box
     // text on a baseline; returns the x after it
     double text(Font &f, double x, double baseline, const std::string &s, Color c);
@@ -293,9 +300,10 @@ void begin_group(Ui &ui, const std::string &title);
 void end_group(Ui &ui);
 void separator(Ui &ui);
 void progress(Ui &ui, const Rect &r, double frac);
-// the toolbar strip at the top of a screen: begin_toolbar() ... tool() ... end_toolbar()
+// the toolbar strip at the top of a screen (one row): begin_toolbar() ... tool() ... end_toolbar()
 void begin_toolbar(Ui &ui);
-bool tool(Ui &ui, const std::string &text, bool enabled = true);
+// a toolbar button (primary: the screen's main action, in the accent color); buttons that don't fit go in "More"
+bool tool(Ui &ui, const std::string &text, bool enabled = true, bool primary = false);
 void tool_gap(Ui &ui);
 void end_toolbar(Ui &ui);
 

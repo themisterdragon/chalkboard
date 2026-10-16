@@ -10,6 +10,7 @@
 #include "gui.h"
 #include "term.h"
 #include "tui_app.h"
+#include "ui.h"
 #include "version.h"
 
 int main(int argc, char **argv) {
@@ -41,12 +42,27 @@ int main(int argc, char **argv) {
             std::string script = argv[++i], out = argv[++i];
             return gui::run_script(script, out, no_boot);
         }
+        else if (a == "--check-contrast") {   // tests: every look's colors meet WCAG AA (with sample accents)
+            int bad = 0;
+            for (const auto &sk : ui::skins())
+                for (bool dark : {false, true})
+                    for (const char *acc : {"", "#7A0019", "#FFCC00", "#4CBB17", "#333333", "#1F5A3A", "#FFFFFF", "#0057B8", "#FF69B4", "#007AFF",
+                                            "#F2E6A0", "#000000"}) {
+                        if (sk[0] != "modern" && *acc) continue;
+                        for (const auto &p : ui::contrast_problems(sk[0], dark, acc)) {
+                            std::printf("%s %s %s: %s\n", sk[0].c_str(), dark ? "dark" : "light", *acc ? acc : "(default)", p.c_str());
+                            bad++;
+                        }
+                    }
+            std::printf(bad ? "%d problems\n" : "every look passes\n", bad);
+            return bad ? 1 : 0;
+        }
         else if (a == "--terminal") window = 0;
         else if (a.rfind("-psn_", 0) == 0) {   // macOS: older Finders add this when they open the app
         }
         else if (a == "--no-plugins") {   // plugins belong to the window app; nothing to switch off here
         } else if (a == "-h" || a == "--help") {
-            std::printf("chalkboard: retro lesson planner & assessment builder\n\n"
+            std::printf("chalkboard: lesson planner & assessment builder\n\n"
                         "  --window      open in a window (chalkboard-gui does too)\n"
                         "  --terminal    run in this terminal\n"
                         "  --no-boot     skip the boot sequence\n"

@@ -30,44 +30,72 @@ struct SkinSpec {
 //   sel/seltext  selection; selsoft: a selection in a list without the keyboard focus
 //   focus        the keyboard focus ring (3:1)       title*  title bars    menu  menus
 //   trough/thumb/head   scroll bars and list headings
+//   sidebar, sidebar_text, navsel, navsel_text   the sidebar and its current page
+//   line         soft dividers and card outlines (decoration: exempt)
+//   link         text in the accent color (the Back link, "+ Plan" on the week), 4.5:1
+//   Glossy's gels: gel_top/gel_bot/gel_text (the main button), btn_top/btn_bot (the others)
 const std::vector<SkinSpec> &specs() {
     static const std::vector<SkinSpec> S = {
+        {"modern", "Modern", "clean and calm, light or dark: Chalkboard's own look", false,
+         {},
+         {{"desk", "#F7F6F3"}, {"face", "#ECEAE5"}, {"light", "#FFFFFF"}, {"shadow", "#DCD9D2"}, {"dark", "#76746E"}, {"edge", "#86837C"},
+          {"text", "#1E2226"}, {"dim", "#585C63"}, {"off", "#A3A19C"}, {"field", "#FFFFFF"}, {"card", "#FFFFFF"}, {"sel", "#1E6E48"},
+          {"seltext", "#FFFFFF"}, {"selsoft", "#DDEDE4"}, {"focus", "#1E6E48"}, {"title", "#FFFFFF"}, {"title_text", "#1E2226"},
+          {"title_off", "#FFFFFF"}, {"title_off_text", "#585C63"}, {"menu", "#FFFFFF"}, {"window", "#F7F6F3"}, {"trough", "#F7F6F3"},
+          {"thumb", "#8E8B85"}, {"head", "#FFFFFF"}, {"sidebar", "#EEECE7"}, {"sidebar_text", "#2A2E33"}, {"navsel", "#FFFFFF"},
+          {"navsel_text", "#1A6341"}, {"line", "#E4E1DA"}, {"link", "#1A6341"}},
+         {{"desk", "#17181A"}, {"face", "#2C2E32"}, {"light", "#3A3C41"}, {"shadow", "#303236"}, {"dark", "#8E9198"}, {"edge", "#7F838B"},
+          {"text", "#EDEDEF"}, {"dim", "#AEB1B8"}, {"off", "#6B6E74"}, {"field", "#1B1C1F"}, {"card", "#222327"}, {"sel", "#237A51"},
+          {"seltext", "#FFFFFF"}, {"selsoft", "#24392E"}, {"focus", "#5CC392"}, {"title", "#222327"}, {"title_text", "#EDEDEF"},
+          {"title_off", "#222327"}, {"title_off_text", "#AEB1B8"}, {"menu", "#26272B"}, {"window", "#17181A"}, {"trough", "#17181A"},
+          {"thumb", "#80838A"}, {"head", "#222327"}, {"sidebar", "#121315"}, {"sidebar_text", "#D9DADD"}, {"navsel", "#24392E"},
+          {"navsel_text", "#BDE9D2"}, {"line", "#2D2F33"}, {"link", "#6FD3A3"}}},
+        {"glossy", "Glossy", "shiny 2000s glass: gel buttons, sky blue, bubbles", false,
+         {"Segoe UI", "Lucida Grande", "Verdana", "Tahoma", "DejaVu Sans", "Liberation Sans", "Noto Sans", "Adwaita Sans"},
+         {{"desk", "#BFE4F6"}, {"face", "#E6F3FA"}, {"light", "#FFFFFF"}, {"shadow", "#B5D6E8"}, {"dark", "#3D6E8C"}, {"edge", "#5B8AA6"},
+          {"text", "#0D2737"}, {"dim", "#3B586A"}, {"off", "#97AEBC"}, {"field", "#FFFFFF"}, {"card", "#FFFFFF"}, {"sel", "#0B6AAE"},
+          {"seltext", "#FFFFFF"}, {"selsoft", "#CFE9F8"}, {"focus", "#0B6AAE"}, {"title", "#FFFFFF"}, {"title_text", "#0D2737"},
+          {"title_off", "#FFFFFF"}, {"title_off_text", "#3B586A"}, {"menu", "#FFFFFF"}, {"window", "#EAF6FC"}, {"trough", "#E0F0F8"},
+          {"thumb", "#5A86A2"}, {"head", "#F3FAFE"}, {"sidebar", "#D3ECF9"}, {"sidebar_text", "#0D2737"}, {"navsel", "#8ED3F7"},
+          {"navsel_text", "#05202F"}, {"line", "#CBE3F0"}, {"link", "#0A5F9C"},
+          {"gel_top", "#A6E0FF"}, {"gel_bot", "#3E9FE3"}, {"gel_text", "#04182A"}, {"btn_top", "#FFFFFF"}, {"btn_bot", "#D5EBF7"},
+          {"side_top", "#E4F5FD"}, {"side_bot", "#B8E0F4"}},
+         {{"desk", "#081723"}, {"face", "#183448"}, {"light", "#2A4C63"}, {"shadow", "#0F2433"}, {"dark", "#7FA9C4"}, {"edge", "#5F93B5"},
+          {"text", "#E7F5FD"}, {"dim", "#A9C6D8"}, {"off", "#57758A"}, {"field", "#0B2030"}, {"card", "#11283A"}, {"sel", "#3AA6E6"},
+          {"seltext", "#03141F"}, {"selsoft", "#1B4560"}, {"focus", "#5CC3FF"}, {"title", "#11283A"}, {"title_text", "#E7F5FD"},
+          {"title_off", "#11283A"}, {"title_off_text", "#A9C6D8"}, {"menu", "#11283A"}, {"window", "#0A1C2A"}, {"trough", "#0A1C2A"},
+          {"thumb", "#6E9AB5"}, {"head", "#13304A"}, {"sidebar", "#0C2131"}, {"sidebar_text", "#DCEFFA"}, {"navsel", "#3AA6E6"},
+          {"navsel_text", "#03141F"}, {"line", "#1D3B50"}, {"link", "#7FD0FF"},
+          {"gel_top", "#8AD8FF"}, {"gel_bot", "#2E95DC"}, {"gel_text", "#021320"}, {"btn_top", "#2B526C"}, {"btn_bot", "#173246"},
+          {"side_top", "#103049"}, {"side_bot", "#081B29"}}},
         {"bevel", "Bevel", "gray 3-D buttons, blue title bars", false,
          {"Tahoma", "Verdana", "Arial", "Helvetica", "Liberation Sans", "Nimbus Sans", "DejaVu Sans", "Noto Sans", "Adwaita Sans"},
          {{"desk", "#008080"}, {"face", "#C0C0C0"}, {"light", "#FFFFFF"}, {"shadow", "#808080"}, {"dark", "#000000"}, {"edge", "#000000"},
           {"text", "#000000"}, {"dim", "#3C3C3C"}, {"off", "#808080"}, {"field", "#FFFFFF"}, {"card", "#C0C0C0"}, {"sel", "#000080"},
           {"seltext", "#FFFFFF"}, {"selsoft", "#000080"}, {"focus", "#000000"}, {"title", "#000080"}, {"title_text", "#FFFFFF"},
           {"title_off", "#FFFFFF"}, {"title_off_text", "#000000"}, {"menu", "#FFFFFF"}, {"window", "#C0C0C0"}, {"trough", "#E0E0E0"},
-          {"thumb", "#C0C0C0"}, {"head", "#C0C0C0"}},
+          {"thumb", "#C0C0C0"}, {"head", "#C0C0C0"}, {"sidebar", "#C0C0C0"}, {"sidebar_text", "#000000"}, {"navsel", "#000080"},
+          {"navsel_text", "#FFFFFF"}, {"line", "#808080"}, {"link", "#000080"}},
          {{"desk", "#0B3B3B"}, {"face", "#3C3C3C"}, {"light", "#8C8C8C"}, {"shadow", "#1A1A1A"}, {"dark", "#000000"}, {"edge", "#9A9A9A"},
           {"text", "#F0F0F0"}, {"dim", "#C4C4C4"}, {"off", "#7A7A7A"}, {"field", "#1E1E1E"}, {"card", "#3C3C3C"}, {"sel", "#3557C8"},
           {"seltext", "#FFFFFF"}, {"selsoft", "#3557C8"}, {"focus", "#F0F0F0"}, {"title", "#22408F"}, {"title_text", "#FFFFFF"},
           {"title_off", "#2A2A2A"}, {"title_off_text", "#C4C4C4"}, {"menu", "#2A2A2A"}, {"window", "#3C3C3C"}, {"trough", "#262626"},
-          {"thumb", "#4A4A4A"}, {"head", "#3C3C3C"}}},
+          {"thumb", "#4A4A4A"}, {"head", "#3C3C3C"}, {"sidebar", "#3C3C3C"}, {"sidebar_text", "#F0F0F0"}, {"navsel", "#3557C8"},
+          {"navsel_text", "#FFFFFF"}, {"line", "#1A1A1A"}, {"link", "#B4C6FF"}}},
         {"pinstripe", "Pinstripe", "black-and-white, striped title bars", true,
          {"Geneva", "Verdana", "Lucida Grande", "Helvetica", "Arial", "Liberation Sans", "Nimbus Sans", "DejaVu Sans", "Noto Sans", "Adwaita Sans"},
          {{"desk", "#A8A8A8"}, {"desk2", "#888888"}, {"face", "#FFFFFF"}, {"light", "#FFFFFF"}, {"shadow", "#A0A0A0"}, {"dark", "#000000"},
           {"edge", "#000000"}, {"text", "#000000"}, {"dim", "#5A5A5A"}, {"off", "#909090"}, {"field", "#FFFFFF"}, {"card", "#FFFFFF"},
           {"sel", "#000000"}, {"seltext", "#FFFFFF"}, {"selsoft", "#000000"}, {"focus", "#000000"}, {"title", "#FFFFFF"}, {"title_text", "#000000"},
           {"title_off", "#FFFFFF"}, {"title_off_text", "#5A5A5A"}, {"menu", "#FFFFFF"}, {"window", "#FFFFFF"}, {"trough", "#D8D8D8"},
-          {"thumb", "#FFFFFF"}, {"head", "#FFFFFF"}},
+          {"thumb", "#FFFFFF"}, {"head", "#FFFFFF"}, {"sidebar", "#FFFFFF"}, {"sidebar_text", "#000000"}, {"navsel", "#000000"},
+          {"navsel_text", "#FFFFFF"}, {"line", "#000000"}, {"link", "#000000"}},
          {{"desk", "#3A3A3A"}, {"desk2", "#262626"}, {"face", "#141414"}, {"light", "#141414"}, {"shadow", "#6A6A6A"}, {"dark", "#E8E8E8"},
           {"edge", "#E8E8E8"}, {"text", "#F2F2F2"}, {"dim", "#B0B0B0"}, {"off", "#6E6E6E"}, {"field", "#141414"}, {"card", "#141414"},
           {"sel", "#E8E8E8"}, {"seltext", "#000000"}, {"selsoft", "#E8E8E8"}, {"focus", "#F2F2F2"}, {"title", "#141414"}, {"title_text", "#F2F2F2"},
           {"title_off", "#141414"}, {"title_off_text", "#B0B0B0"}, {"menu", "#141414"}, {"window", "#141414"}, {"trough", "#2E2E2E"},
-          {"thumb", "#141414"}, {"head", "#141414"}}},
-        {"modern", "Modern", "your computer's own style, follows light or dark mode", false,
-         {},
-         {{"desk", "#F3F3F5"}, {"face", "#FFFFFF"}, {"light", "#FFFFFF"}, {"shadow", "#D0D0D5"}, {"dark", "#76767C"}, {"edge", "#76767C"},
-          {"text", "#1C1C1E"}, {"dim", "#55555A"}, {"off", "#A0A0A6"}, {"field", "#FFFFFF"}, {"card", "#FFFFFF"}, {"sel", "#0A5FD0"},
-          {"seltext", "#FFFFFF"}, {"selsoft", "#DCDCE2"}, {"focus", "#0A5FD0"}, {"title", "#FFFFFF"}, {"title_text", "#1C1C1E"},
-          {"title_off", "#FFFFFF"}, {"title_off_text", "#55555A"}, {"menu", "#FFFFFF"}, {"window", "#F3F3F5"}, {"trough", "#F3F3F5"},
-          {"thumb", "#8A8A90"}, {"head", "#FFFFFF"}},
-         {{"desk", "#1E1E20"}, {"face", "#3A3A3E"}, {"light", "#3A3A3E"}, {"shadow", "#3E3E43"}, {"dark", "#8E8E94"}, {"edge", "#8E8E94"},
-          {"text", "#F2F2F4"}, {"dim", "#B4B4BA"}, {"off", "#6E6E74"}, {"field", "#161618"}, {"card", "#2A2A2D"}, {"sel", "#2F6FD8"},
-          {"seltext", "#FFFFFF"}, {"selsoft", "#4A4A50"}, {"focus", "#5B9BFF"}, {"title", "#2A2A2D"}, {"title_text", "#F2F2F4"},
-          {"title_off", "#2A2A2D"}, {"title_off_text", "#B4B4BA"}, {"menu", "#2A2A2D"}, {"window", "#1E1E20"}, {"trough", "#1E1E20"},
-          {"thumb", "#8E8E94"}, {"head", "#2A2A2D"}}},
+          {"thumb", "#141414"}, {"head", "#141414"}, {"sidebar", "#141414"}, {"sidebar_text", "#F2F2F2"}, {"navsel", "#E8E8E8"},
+          {"navsel_text", "#000000"}, {"line", "#E8E8E8"}, {"link", "#F2F2F2"}}},
     };
     return S;
 }
@@ -212,9 +240,19 @@ static std::unordered_map<std::string, Color> palette(const SkinSpec &sp, bool d
     if (dark)
         for (const auto &kv : sp.dark) c[kv.first] = hex(kv.second);
     if (std::string(sp.key) == "modern" && !accent.empty()) {
-        c["sel"] = fit(hex(accent), {Color{1, 1, 1}}, 4.6);
+        // the teacher's accent (school colors or the computer's): darkened or lightened until it reads
+        Color a = hex(accent);
+        c["sel"] = fit(a, {Color{1, 1, 1}}, 4.6);
         c["seltext"] = {1, 1, 1};
-        c["focus"] = fit(hex(accent), {c["window"], c["card"], c["field"]}, 3.2);
+        c["focus"] = fit(a, {c["window"], c["card"], c["field"]}, 3.2);
+        c["link"] = fit(a, {c["window"], c["card"], c["sidebar"]}, 4.6);
+        c["selsoft"] = mix(c["card"], c["sel"], dark ? 0.32 : 0.14);
+        if (contrast(c["text"], c["selsoft"]) < 4.6) c["selsoft"] = mix(c["card"], c["sel"], dark ? 0.2 : 0.08);
+        if (dark) {
+            c["navsel"] = mix(c["sidebar"], c["sel"], 0.35);
+            c["navsel_text"] = fit(mix(a, {1, 1, 1}, 0.6), {c["navsel"]}, 4.6);
+        } else
+            c["navsel_text"] = fit(a, {c["navsel"]}, 4.6);
     }
     return c;
 }
@@ -230,6 +268,8 @@ std::unique_ptr<Skin> make_skin(const std::string &kind, int S, int text_px, boo
     k->bevel = k->kind == "bevel";
     k->modern = k->kind == "modern";
     k->pinstripe = k->kind == "pinstripe";
+    k->glossy = k->kind == "glossy";
+    k->soft = k->modern || k->glossy;
     k->S = std::max(1, S);
     k->status_top = sp->status_top;
     k->c = palette(*sp, dark, accent);
@@ -245,6 +285,9 @@ std::unique_ptr<Skin> make_skin(const std::string &kind, int S, int text_px, boo
     k->fbig.reset(new Font(fams, px + 6 * k->S, 1));
     k->fhuge.reset(new Font(fams, px * 3, 1));
     k->fmono.reset(new Font(MONO, px, 0));
+    k->fhead.reset(new Font(fams, px + 2 * k->S, 1));
+    k->fpage.reset(new Font(fams, std::round(px * 1.7), 1));
+    k->fsmallb.reset(new Font(fams, std::max(9.0, px - 2 * k->S), 1));
     k->line = k->f->line;
     return k;
 }
@@ -257,11 +300,21 @@ std::vector<std::string> contrast_problems(const std::string &kind, bool dark, c
     std::vector<std::pair<std::string, std::string>> text = {{"text", "window"}, {"text", "card"},   {"text", "field"},  {"text", "face"},
                                                              {"text", "menu"},   {"text", "head"},   {"dim", "window"},  {"dim", "card"},
                                                              {"dim", "field"},   {"seltext", "sel"}, {"title_text", "title"},
-                                                             {"title_off_text", "title_off"}};
+                                                             {"title_off_text", "title_off"}, {"sidebar_text", "sidebar"},
+                                                             {"navsel_text", "navsel"}, {"link", "window"}, {"link", "card"},
+                                                             {"dim", "sidebar"}, {"text", "head"}};
+    if (c.count("gel_text")) {
+        text.push_back({"gel_text", "gel_top"});
+        text.push_back({"gel_text", "gel_bot"});
+        text.push_back({"text", "btn_top"});
+        text.push_back({"text", "btn_bot"});
+        text.push_back({"sidebar_text", "side_top"});
+        text.push_back({"sidebar_text", "side_bot"});
+    }
     text.push_back({hex(c["selsoft"]) == hex(c["sel"]) ? "seltext" : "text", "selsoft"});
     std::vector<std::pair<std::string, std::string>> edges = {{"edge", "window"}, {"edge", "card"}, {"focus", "window"}, {"focus", "card"},
                                                               {"focus", "field"}};
-    if (kind == "modern") edges.push_back({"thumb", "trough"});
+    if (kind == "modern" || kind == "glossy") edges.push_back({"thumb", "trough"});
     std::vector<std::string> out;
     const std::pair<const std::vector<std::pair<std::string, std::string>> *, double> checks[] = {{&text, 4.5}, {&edges, 3.0}};
     for (const auto &pr : checks)

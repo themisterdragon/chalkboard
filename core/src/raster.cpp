@@ -345,6 +345,21 @@ void Image::mask(const Mask &m, int dx, int dy, Color c, double alpha) {
     }
 }
 
+void Image::mask_gradient(const Mask &m, int dx, int dy, Color top, Color bottom, double gy0, double gy1, double alpha) {
+    int cx0, cy0, cx1, cy1;
+    if (!clipped(cx0, cy0, cx1, cy1)) return;
+    int ox = m.x0 + dx, oy = m.y0 + dy;
+    int x0 = std::max(cx0, ox), y0 = std::max(cy0, oy), x1 = std::min(cx1, ox + m.w), y1 = std::min(cy1, oy + m.h);
+    double span = std::max(1e-6, gy1 - gy0);
+    for (int y = y0; y < y1; y++) {
+        double t = std::max(0.0, std::min(1.0, (y + 0.5 - gy0) / span));
+        Color c{top.r + (bottom.r - top.r) * t, top.g + (bottom.g - top.g) * t, top.b + (bottom.b - top.b) * t};
+        const uint8_t *a = &m.a[(size_t)(y - oy) * (size_t)m.w + (size_t)(x0 - ox)];
+        for (int x = x0; x < x1; x++, a++)
+            if (*a) blend(x, y, c, *a / 255.0 * alpha);
+    }
+}
+
 void Image::blit(const Image &src, int x, int y, int sx, int sy, int sw, int sh) {
     if (sw < 0) sw = src.w - sx;
     if (sh < 0) sh = src.h - sy;

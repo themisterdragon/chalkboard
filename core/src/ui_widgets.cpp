@@ -32,15 +32,15 @@ void bevel_box(Ui &ui, const Rect &r, bool pressed, int t = 0) {
 void focus_ring(Ui &ui, const Rect &r, bool round_ = false) {
     Skin &k = ui.sk();
     int S = ui.S();
-    if (k.modern) {
+    if (k.soft) {
         Rect o{r.x - 3 * S, r.y - 3 * S, r.w + 6 * S, r.h + 6 * S};
         if (round_) ui.oval(o, {}, k["focus"], 2 * S, false, true);
-        else ui.rrect(o, 5 * S, {}, k["focus"], 2 * S, false, true);
+        else ui.rrect(o, 7 * S, {}, k["focus"], 2 * S, false, true);
     } else
         ui.dotted(r, k["focus"]);
 }
 
-Font &button_font(Skin &k, bool small) { return small ? *k.fsmall : (k.modern ? *k.f : *k.fb); }
+Font &button_font(Skin &k, bool small) { return small ? *k.fsmall : (k.soft ? *k.f : *k.fb); }
 
 }  // namespace
 
@@ -48,7 +48,7 @@ double Ui::btn_w(const std::string &label, bool small) {
     Skin &k = sk();
     Font &f = button_font(k, small);
     double w = f.width(label) + (small ? 16 : 26) * S();
-    if (k.modern) w += 6 * S();
+    if (k.soft) w += 6 * S();
     return std::ceil(w);
 }
 
@@ -97,28 +97,42 @@ bool button_at(Ui &ui, Id id, const Rect &r, const std::string &text, bool enabl
     Color fg = enabled ? k["text"] : k["off"];
     double w = r.w, h = r.h;
     double tx = r.x + w / 2, ty = r.y + h / 2;
-    if (k.modern) {
-        double rad = 6 * S, m = 3 * S;
-        Color fill, edge, tcol;
+    if (k.soft) {
+        double m = 3 * S;
+        Rect in{r.x + m, r.y + m, w - 2 * m, h - 2 * m};
+        double rad = k.glossy ? in.h / 2 : 8 * S;
         bool inside = ui.over(r);
-        if (!enabled) {
-            fill = k["window"];
-            edge = k["shadow"];
-            tcol = k["off"];
-        } else if (is_default) {
-            fill = k["sel"];
-            if (down || inside) fill = mix(fill, {0, 0, 0}, down ? 0.18 : 0.1);
-            edge = fill;
-            tcol = k["seltext"];
+        Color tcol;
+        if (focus) ui.rrect({r.x, r.y, w, h}, rad + 3 * S, {}, k["focus"], 2 * S, false, true);
+        if (k.glossy) {
+            // a gel: shaded top to bottom, a shine on its upper half, a darker rim
+            Color top = is_default ? k["gel_top"] : k["btn_top"], bot = is_default ? k["gel_bot"] : k["btn_bot"];
+            if (!enabled) top = bot = mix(k["window"], k["btn_bot"], 0.5);
+            else if (down) std::swap(top, bot);
+            else if (inside) top = mix(top, {1, 1, 1}, 0.35), bot = mix(bot, {1, 1, 1}, 0.12);
+            Color rim = enabled ? mix(bot, {0, 0, 0}, k.dark ? 0.35 : 0.3) : k["shadow"];
+            ui.rrect(in, rad, rim, rim, 0, true, false);
+            ui.gradient(in.in(S), rad - S, top, bot);
+            if (enabled && !down) ui.rrect_a({in.x + 3 * S, in.y + 2 * S, in.w - 6 * S, in.h * 0.45}, rad - 2 * S, {1, 1, 1}, k.dark ? 0.16 : 0.45);
+            tcol = !enabled ? k["off"] : is_default ? k["gel_text"] : k["text"];
         } else {
-            fill = k["face"];
-            if (down || inside) fill = mix(fill, k["text"], down ? 0.16 : 0.07);
-            edge = k["edge"];
-            tcol = k["text"];
+            Color fill;
+            if (!enabled) {
+                fill = mix(k["window"], k["face"], 0.5);
+                tcol = k["off"];
+            } else if (is_default) {
+                fill = k["sel"];
+                if (down || inside) fill = mix(fill, {0, 0, 0}, down ? 0.2 : 0.1);
+                tcol = k["seltext"];
+            } else {
+                fill = k["face"];
+                if (down || inside) fill = mix(fill, k["text"], down ? 0.14 : 0.06);
+                tcol = k["text"];
+            }
+            ui.rrect(in, rad, fill, fill, 0, true, false);
         }
-        if (focus) ui.rrect({r.x + S, r.y + S, w - 2 * S, h - 2 * S}, rad + 2 * S, {}, k["focus"], 2 * S, false, true);
-        ui.rrect({r.x + m, r.y + m, w - 2 * m, h - 2 * m}, rad, fill, edge, S);
-        ui.text_in(f, r, text, tcol, CENTER);
+        Font &tf = is_default && !font && !small ? *k.fb : f;
+        ui.text_in(tf, r, text, tcol, CENTER);
         return clicked;
     }
     if (k.bevel) {
@@ -153,7 +167,7 @@ bool button(Ui &ui, const std::string &text, bool enabled, bool is_default, bool
     Font &f = button_font(k, small);
     double h = f.line + (small ? 8 : 12) * S;
     double w = std::max(min_w * S, std::ceil(f.width(text)) + (small ? 16 : 26) * S);
-    if (k.modern || (is_default && !k.bevel)) {
+    if (k.soft || (is_default && !k.bevel)) {
         w += 6 * S;
         h += 6 * S;
     }
@@ -168,7 +182,7 @@ static bool toggle(Ui &ui, const std::string &text, bool on, bool radio_, bool e
     Skin &k = ui.sk();
     int S = ui.S();
     double b = k.line - 2 * S;
-    double x0 = k.modern ? 4 * S : 0;
+    double x0 = k.soft ? 4 * S : 0;
     double tw = k.f->width(text);
     std::vector<std::string> lines = {text};
     if (wrap > 0 && tw > wrap) {
@@ -176,7 +190,7 @@ static bool toggle(Ui &ui, const std::string &text, bool on, bool radio_, bool e
         tw = 0;
         for (const auto &l : lines) tw = std::max(tw, k.f->width(l));
     }
-    double h = std::max(b, lines.size() * k.line) + (k.modern ? 8 : 6) * S;
+    double h = std::max(b, lines.size() * k.line) + (k.soft ? 8 : 6) * S;
     Rect r = ui.place(std::ceil(x0 + b + 8 * S + tw + 4 * S), h);
     r.w = std::min(r.w, std::ceil(x0 + b + 8 * S + tw + 4 * S));
     Id id = ui.id((radio_ ? "radio:" : "check:") + text);
@@ -188,10 +202,10 @@ static bool toggle(Ui &ui, const std::string &text, bool on, bool radio_, bool e
         clicked = true;
     }
     if (!ui.drawing) return clicked;
-    double y0 = r.y + (k.modern ? 4 : 3) * S, x = r.x + x0;
+    double y0 = r.y + (k.soft ? 4 : 3) * S, x = r.x + x0;
     Rect ib{x, y0, b, b};
     if (radio_) {
-        if (k.modern) {
+        if (k.soft) {
             ui.oval(ib, on ? k["sel"] : k["field"], on ? k["sel"] : k["edge"], S);
             if (on) {
                 double m = std::floor(b / 3);
@@ -204,7 +218,7 @@ static bool toggle(Ui &ui, const std::string &text, bool on, bool radio_, bool e
                 ui.oval(ib.in(m), k["text"], {}, 0, true, false);
             }
         }
-    } else if (k.modern) {
+    } else if (k.soft) {
         Color fill = on && enabled ? k["sel"] : k["field"];
         ui.rrect(ib, 4 * S, fill, on ? k["sel"] : k["edge"], S);
         if (on)
@@ -224,7 +238,7 @@ static bool toggle(Ui &ui, const std::string &text, bool on, bool radio_, bool e
     double tx = x + b + 6 * S;
     for (size_t i = 0; i < lines.size(); i++) ui.text(*k.f, tx, std::round(ty + i * k.line + k.f->ascent), lines[i], fg);
     if (focus) {
-        if (k.modern) focus_ring(ui, {x + S, y0 + S, b - 2 * S, b - 2 * S}, radio_);
+        if (k.soft) focus_ring(ui, {x + S, y0 + S, b - 2 * S, b - 2 * S}, radio_);
         else focus_ring(ui, {tx - S, std::round(ty), std::ceil(tw) + 2 * S, lines.size() * k.line});
     }
     return clicked;
@@ -251,7 +265,7 @@ bool dropdown(Ui &ui, const std::string &key, const std::vector<std::pair<std::s
         for (const auto &o : options) chars = std::max(chars, (double)o.second.size());
     }
     double w = std::min(k.f->width("0") * chars, 520.0 * S) + k.line + 16 * S, h = k.line + 8 * S;
-    if (k.modern) {
+    if (k.soft) {
         w += 6 * S;
         h += 10 * S;
     }
@@ -294,10 +308,15 @@ bool dropdown(Ui &ui, const std::string &key, const std::vector<std::pair<std::s
     if (!ui.drawing) return changed;
     Color fg = enabled ? k["text"] : k["off"];
     std::string label = cur < options.size() ? options[cur].second : value;
-    if (k.modern) {
+    if (k.soft) {
         double m = 3 * S;
-        if (focus) ui.rrect(r.in(S), 8 * S, {}, k["focus"], 2 * S, false, true);
-        ui.rrect(r.in(m), 6 * S, k["field"], k["edge"], S);
+        if (focus) ui.rrect(r, 11 * S, {}, k["focus"], 2 * S, false, true);
+        if (k.glossy) {
+            Rect in = r.in(m);
+            ui.rrect(in, 8 * S, k["edge"], k["edge"], 0, true, false);
+            ui.gradient(in.in(S), 7 * S, k["btn_top"], k["btn_bot"]);
+        } else
+            ui.rrect(r.in(m), 8 * S, k["field"], k["edge"], S);
         double ax = r.r() - m - (h - 2 * m) / 2, ay = r.y + h / 2, a = std::max(3.0 * S, std::floor(h / 8));
         ui.polyline({{ax - a, ay - a / 2}, {ax, ay + a / 2}, {ax + a, ay - a / 2}}, fg, 2 * S);
         double room = w - (h - 2 * m) - 10 * S - m;
@@ -356,11 +375,12 @@ void begin_group(Ui &ui, const std::string &title) {
     Font &f = *k.fb;
     Rect r = ui.place(0, std::max(st.h, f.line));
     // the box first (its height is from last time), the contents over it
-    double padx = k.modern ? 12 * S : 8 * S, pady = k.modern ? 8 * S : 6 * S;
-    if (k.modern) {
-        ui.fill(r, k["card"]);
-        ui.box(r, k["shadow"], S);
-        ui.text(f, r.x + S + padx, std::round(r.y + S + pady + f.ascent), title, k["text"]);
+    double padx = k.soft ? 18 * S : 8 * S, pady = k.soft ? 14 * S : 6 * S;
+    if (k.soft) {
+        // a card: rounded, a hairline edge, a soft shadow; its heading inside
+        ui.shadow(r, 12 * S, 6 * S, k.dark ? 0.35 : 0.07);
+        ui.rrect(r, 12 * S, k["card"], k["line"], S);
+        ui.text(*k.fhead, r.x + S + padx, std::round(r.y + S + pady + k.fhead->ascent), title, k["text"]);
     } else {
         double bd = k.bevel ? 2 * S : S;
         double ty = r.y + f.line / 2;
@@ -377,8 +397,8 @@ void begin_group(Ui &ui, const std::string &title) {
         ui.fill({r.x + 7 * S, r.y, tw, f.line}, k["window"]);
         ui.text(f, r.x + 7 * S, std::round(r.y + f.ascent), t, k["text"]);
     }
-    double top = k.modern ? r.y + S + pady + f.line + 6 * S : r.y + f.line + pady;
-    ui.begin({r.x + (k.modern ? S : 2 * S) + padx, top, r.w - 2 * ((k.modern ? S : 2 * S) + padx), 1e9}, -1);
+    double top = k.soft ? r.y + S + pady + k.fhead->line + 8 * S : r.y + f.line + pady;
+    ui.begin({r.x + (k.soft ? S : 2 * S) + padx, top, r.w - 2 * ((k.soft ? S : 2 * S) + padx), 1e9}, -1);
     g_groups.push_back({id, r, top});
 }
 
@@ -389,8 +409,8 @@ void end_group(Ui &ui) {
     Rect used = ui.end();
     Skin &k = ui.sk();
     int S = ui.S();
-    double pady = k.modern ? 8 * S : 6 * S;
-    double h = (g.top - g.r.y) + used.h + pady + (k.modern ? S : 2 * S);
+    double pady = k.soft ? 16 * S : 6 * S;
+    double h = (g.top - g.r.y) + used.h + pady + (k.soft ? S : 2 * S);
     GroupState &st = ui.state<GroupState>(g.id);
     if (std::fabs(st.h - h) > 0.5) {
         // a different height than last time: what's below moves, so lay out again
@@ -404,12 +424,21 @@ void end_group(Ui &ui) {
 void separator(Ui &ui) {
     Skin &k = ui.sk();
     Rect r = ui.place(0, ui.S());
-    ui.fill(r, k["dark"]);
+    ui.fill(r, k.soft ? k["line"] : k["dark"]);
 }
 
 void progress(Ui &ui, const Rect &r, double frac) {
     Skin &k = ui.sk();
     Color fill = fit(k["sel"], {k["trough"]}, 3.0);   // 3:1 from its track (WCAG 1.4.11), in every look
+    if (k.soft) {
+        ui.rrect(r, r.h / 2, k["trough"], k["edge"], ui.S());
+        double w = std::round(r.w * std::max(0.0, std::min(1.0, frac)));
+        if (w >= r.h) {
+            if (k.glossy) ui.gradient({r.x, r.y, w, r.h}, r.h / 2, k["gel_top"], k["gel_bot"]);
+            else ui.rrect({r.x, r.y, w, r.h}, r.h / 2, fill, fill, 0, true, false);
+        }
+        return;
+    }
     ui.fill(r, k["trough"]);
     ui.fill({r.x, r.y, std::round(r.w * std::max(0.0, std::min(1.0, frac))), r.h}, fill);
     ui.box(r, k["edge"], ui.S());
@@ -417,34 +446,89 @@ void progress(Ui &ui, const Rect &r, double frac) {
 
 // ----------------------------------------------------------------------------- toolbars
 
+// One row of buttons. Buttons that don't fit go into a "More" menu at the end instead of wrapping
+// onto a second row; a pick from that menu comes back from tool() on the next pass.
+namespace {
+struct ToolbarState {
+    std::string picked;   // picked from More last time: tool() with this label returns true
+};
+struct ToolbarFrame {
+    Id id;
+    Rect r;
+    std::vector<std::pair<std::string, bool>> spill;   // (label, enabled) that didn't fit
+    double reserve = 0;                                // room kept for the More button
+};
+std::vector<ToolbarFrame> g_toolbars;
+}  // namespace
+
 void begin_toolbar(Ui &ui) {
     Skin &k = ui.sk();
     int S = ui.S();
     Id id = ui.id("toolbar");
-    GroupState &st = ui.state<GroupState>(id);
-    Rect r = ui.cut_top(std::max(st.h, ui.ctl_h()) + 12 * S);
-    ui.fill(r, k["window"]);
-    ui.begin({r.x + 8 * S, r.y + 6 * S, r.w - 16 * S, 1e9}, 6 * S);
+    double pad = k.soft ? 10 : 6;
+    Rect r = ui.cut_top(ui.ctl_h() + (k.soft ? 6 : 0) * S + 2 * pad * S);
+    if (!k.soft) ui.fill(r, k["window"]);
+    ui.begin({r.x + (k.soft ? 0 : 8) * S, r.y + pad * S, r.w - (k.soft ? 0 : 16) * S, 1e9}, 6 * S);
     ui.flow(true);
-    g_groups.push_back({id, r, r.y + 6 * S});
+    g_toolbars.push_back({id, r, {}, ui.btn_w("More") + 34 * S});
 }
 
-bool tool(Ui &ui, const std::string &text, bool enabled) { return button(ui, text, enabled); }
+bool tool(Ui &ui, const std::string &text, bool enabled, bool primary) {
+    if (g_toolbars.empty()) return button(ui, text, enabled, primary);
+    ToolbarFrame &tb = g_toolbars.back();
+    Ui::Layout &L = ui.lay();
+    Skin &k = ui.sk();
+    double w = ui.btn_w(text) + (k.soft ? 6 * ui.S() : 0);
+    if (!tb.spill.empty() || L.x + w > L.body.r() - tb.reserve) {
+        tb.spill.push_back({text, enabled});
+        ToolbarState &st = ui.state<ToolbarState>(tb.id);
+        if (enabled && st.picked == text) {
+            st.picked.clear();
+            return true;
+        }
+        return false;
+    }
+    return button(ui, text, enabled, primary);
+}
 
-void tool_gap(Ui &ui) { ui.place(4 * ui.S(), 1); }
+void tool_gap(Ui &ui) {
+    if (!g_toolbars.empty() && !g_toolbars.back().spill.empty()) return;
+    ui.place((ui.sk().soft ? 10 : 4) * ui.S(), 1);
+}
 
 void end_toolbar(Ui &ui) {
-    if (g_groups.empty()) return;
-    GroupFrame g = g_groups.back();
-    g_groups.pop_back();
-    Rect used = ui.end();
-    GroupState &st = ui.state<GroupState>(g.id);
-    if (std::fabs(st.h - used.h) > 0.5) {
-        double old = std::max(st.h, ui.ctl_h());
-        st.h = used.h;
-        ui.lay().y += std::max(st.h, ui.ctl_h()) - old;
-        ui.again();
+    if (g_toolbars.empty()) return;
+    ToolbarFrame tb = g_toolbars.back();
+    g_toolbars.pop_back();
+    if (!tb.spill.empty()) {
+        Skin &k = ui.sk();
+        int S = ui.S();
+        Id more = ui.id("toolbar-more");
+        ui.place(4 * S, 1);
+        // the same size as the toolbar's other buttons, with a drawn down-arrow
+        Font &f = k.soft ? *k.f : *k.fb;
+        double h = f.line + 12 * S + (k.soft ? 6 * S : 0);
+        Rect r = ui.place(ui.btn_w("More") + 14 * S + (k.soft ? 6 * S : 0), h);
+        if (button_at(ui, more, {r.x, r.y, r.w, h}, "More      ")) {
+            std::vector<MenuEntry> items;
+            for (const auto &it : tb.spill) {
+                MenuEntry e;
+                e.label = it.first;
+                e.enabled = it.second;
+                items.push_back(e);
+            }
+            int got = popup_menu(ui, r.x, r.y + h + 2 * S, items);
+            if (got >= 0) {
+                ui.state<ToolbarState>(tb.id).picked = tb.spill[(size_t)got].first;
+                ui.again();
+            }
+        }
+        if (ui.drawing) {
+            double tw = f.width("More      "), ax = r.x + r.w / 2 + tw / 2 - 6 * S, ay = r.y + h / 2, a = 3.5 * S;
+            ui.polyline({{ax - a, ay - a / 2}, {ax, ay + a / 2}, {ax + a, ay - a / 2}}, k["text"], 1.8 * S);
+        }
     }
+    ui.end();
 }
 
 // ----------------------------------------------------------------------------- menus
@@ -453,7 +537,7 @@ int popup_menu(Ui &ui, double x, double y, const std::vector<MenuEntry> &items, 
     Skin &k = ui.sk();
     int S = ui.S();
     Font &f = k.pinstripe ? *k.fb : *k.f;
-    double ih = f.line + 6 * S, sh = 7 * S, bd = S;
+    double ih = f.line + (k.soft ? 12 : 6) * S, sh = 7 * S, bd = k.soft ? 6 * S : S;
     double left = 22 * S, right = 14 * S, keys_w = 0, w = 0;
     for (const auto &it : items) {
         w = std::max(w, f.width(it.label));
@@ -562,20 +646,28 @@ int popup_menu(Ui &ui, double x, double y, const std::vector<MenuEntry> &items, 
         if (!ui.drawing) return;
         // drawing
         if (k.pinstripe) ui.fill({box.x + 2 * S, box.y + 2 * S, box.w, box.h}, k["dark"]);   // a drop shadow
-        ui.fill(box, k["menu"]);
-        ui.box(box, k["edge"], bd);
+        if (k.soft) {
+            ui.shadow(box, 10 * S, 10 * S, k.dark ? 0.5 : 0.14);
+            ui.rrect(box, 10 * S, k["menu"], k.dark ? k["edge"] : k["line"], S);
+        } else {
+            ui.fill(box, k["menu"]);
+            ui.box(box, k["edge"], bd);
+        }
         double yy = box.y + bd;
         for (size_t i = 0; i < items.size(); i++) {
             const auto &it = items[i];
             if (it.label.empty()) {
-                ui.fill({box.x + bd + 2 * S, yy + sh / 2, box.w - 2 * bd - 4 * S, (double)S}, k["shadow"]);
+                ui.fill({box.x + bd + 2 * S, yy + sh / 2, box.w - 2 * bd - 4 * S, (double)S}, k.soft ? k["line"] : k["shadow"]);
                 yy += sh;
                 continue;
             }
             Rect rr{box.x + bd, yy, box.w - 2 * bd, ih};
             bool on = (int)i == sel && it.enabled;
-            if (on) ui.fill(rr, k["sel"]);
             Color fg = !it.enabled ? k["off"] : on ? k["seltext"] : k["text"];
+            if (on && k.soft) {
+                ui.rrect(rr.in(5 * S, S), 6 * S, k["sel"], {}, 0, true, false);
+            } else if (on)
+                ui.fill(rr, k["sel"]);
             if (it.checked) {
                 double cx = rr.x + 11 * S, cy = rr.y + ih / 2;
                 if (it.radio) ui.oval({cx - 3 * S, cy - 3 * S, 6.0 * S, 6.0 * S}, fg, {}, 0, true, false);
@@ -608,10 +700,10 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
     int n = (int)rows.size();
     if (sel >= n) sel = n - 1;
     if (sel < 0 && n > 0) sel = 0;
-    double rh = k.line + (k.modern ? 10 : 6) * S;
-    double hh = headings ? k.fb->line + 2 * (k.modern ? 5 : 2) * S + (k.bevel ? 2 * S : S) : 0;
-    double sbw = (k.modern ? 14 : 16) * S;
-    Rect inner = r.in(S);
+    double rh = k.line + (k.soft ? 16 : 6) * S;
+    double hh = headings ? (k.soft ? k.fsmallb->line + 14 * S : k.fb->line + 2 * 2 * S + (k.bevel ? 2 * S : S)) : 0;
+    double sbw = (k.soft ? 12 : 16) * S;
+    Rect inner = k.soft ? r.in(6 * S, S) : r.in(S);
     Rect head{inner.x, inner.y, inner.w - sbw, hh};
     Rect body{inner.x, inner.y + hh, inner.w - sbw, inner.h - hh};
     double content = n * rh, maxs = std::max(0.0, content - body.h);
@@ -716,7 +808,7 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
     // the scroll bar
     Rect bar{inner.r() - sbw, inner.y, sbw, inner.h};
     Id bid = ui.id("list:" + key + ":bar");
-    double arrow = k.modern ? 0 : sbw;
+    double arrow = k.soft ? 0 : sbw;
     Rect track{bar.x, bar.y + arrow, bar.w, bar.h - 2 * arrow};
     double th = maxs > 0 ? std::max(20.0 * S, track.h * body.h / content) : track.h;
     double ty = track.y + (maxs > 0 ? (track.h - th) * st.scroll / maxs : 0);
@@ -729,8 +821,8 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
         if (ui.my >= ty && ui.my < ty + th) dr.grab = ui.my - ty;   // the thumb: drag it
         else {   // the arrows step a row, the track a page
             dr.grab = -1;
-            if (!k.modern && ui.my < track.y) st.scroll -= rh;
-            else if (!k.modern && ui.my >= track.b()) st.scroll += rh;
+            if (!k.soft && ui.my < track.y) st.scroll -= rh;
+            else if (!k.soft && ui.my >= track.b()) st.scroll += rh;
             else st.scroll += ui.my < ty ? -body.h : body.h;
             st.scroll = std::max(0.0, std::min(maxs, st.scroll));
         }
@@ -743,10 +835,23 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
     if (!ui.drawing) return out;
 
     // ---- drawing
-    ui.fill(r, k["edge"]);
-    ui.fill(inner, k["field"]);
-    double padx = 4 * S;
-    if (headings) {
+    double padx = (k.soft ? 8 : 4) * S;
+    if (k.soft) {
+        ui.rrect(r, 10 * S, k["field"], k["edge"], S);
+        if (headings) {
+            for (size_t i = 0; i < cols.size(); i++) {
+                Rect hr{xs[i], head.y, xs[i + 1] - xs[i], head.h};
+                ui.clip(hr);
+                ui.text_in(*k.fsmallb, {hr.x + padx, hr.y, hr.w - 2 * padx, hr.h}, ui.elide(*k.fsmallb, cols[i].head, hr.w - 2 * padx), k["dim"]);
+                ui.unclip();
+            }
+            ui.fill({head.x, head.b() - S, head.w, (double)S}, k["line"]);
+        }
+    } else {
+        ui.fill(r, k["edge"]);
+        ui.fill(inner, k["field"]);
+    }
+    if (headings && !k.soft) {
         ui.fill(head, k["head"]);
         for (size_t i = 0; i < cols.size(); i++) {
             Rect hr{xs[i], head.y, xs[i + 1] - xs[i], head.h};
@@ -767,11 +872,17 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
     int first = (int)(st.scroll / rh), last = std::min(n, (int)((st.scroll + body.h) / rh) + 1);
     // a list without the keyboard focus shows its selection more softly
     Color soft_text = hex(k["selsoft"]) == hex(k["sel"]) ? k["seltext"] : k["text"];
+    int hover = ui.over(body) && !ui.held(bid) ? (int)std::floor((ui.my - body.y + st.scroll) / rh) : -1;
     for (int i = std::max(0, first); i < last; i++) {
         double y = body.y + i * rh - st.scroll;
         bool on = i == sel;
         Color fg = k["text"];
-        if (on) {
+        if (k.soft) {
+            if (i + 1 < n && !on && i + 1 != sel) ui.fill({body.x + padx, y + rh - S, body.w - 2 * padx, (double)S}, k["line"]);
+            if (on) ui.rrect({body.x, y + S, body.w, rh - 2 * S}, 7 * S, focus ? k["sel"] : k["selsoft"], {}, 0, true, false);
+            else if (i == hover) ui.rrect({body.x, y + S, body.w, rh - 2 * S}, 7 * S, mix(k["field"], k["text"], 0.05), {}, 0, true, false);
+            if (on) fg = focus ? k["seltext"] : soft_text;
+        } else if (on) {
             ui.fill({body.x, y, body.w, rh}, focus ? k["sel"] : k["selsoft"]);
             fg = focus ? k["seltext"] : soft_text;
         }
@@ -814,8 +925,8 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
     }
     ui.unclip();
     // the scroll bar
-    ui.fill(bar, k["trough"]);
-    if (k.modern) {
+    if (!k.soft) ui.fill(bar, k["trough"]);
+    if (k.soft) {
         if (maxs > 0) {
             Rect t = Rect{bar.x, ty, bar.w, th}.in(3 * S);
             ui.rrect(t, t.w / 2, ui.held(bid) ? k["text"] : k["thumb"], {}, 0, true, false);
@@ -845,7 +956,7 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
 
 double title_h(Ui &ui) {
     Skin &k = ui.sk();
-    return k.line + (k.modern ? 14 : k.bevel ? 8 : 6) * ui.S();
+    return k.soft ? k.fhead->line + 26 * ui.S() : k.line + (k.bevel ? 8 : 6) * ui.S();
 }
 
 int title_bar(Ui &ui, const Rect &r, const std::string &title, bool close, bool zoom, bool minimize, bool active) {
@@ -859,14 +970,16 @@ int title_bar(Ui &ui, const Rect &r, const std::string &title, bool close, bool 
     };
     std::vector<Box> boxes;
     Font &f = *k.ftitle;
-    if (k.modern) {
-        ui.fill(r, k["title"]);
-        ui.text_in(f, {r.x + 14 * S, r.y, w - 28 * S, h}, title, k["title_text"]);
+    if (k.soft) {
+        // a heading at the top of the card, and a round close button
+        ui.text_in(*k.fhead, {r.x + 22 * S, r.y + 4 * S, w - 70 * S, h - 4 * S}, ui.elide(*k.fhead, title, w - 70 * S), k["title_text"]);
         if (close) {
-            double cx = r.r() - h / 2 - 4 * S, cy = r.y + h / 2, a = std::max(4.0 * S, std::floor(h / 7));
+            double d = 28 * S, cx = r.r() - 14 * S - d / 2, cy = r.y + 4 * S + (h - 4 * S) / 2, a = 5.0 * S;
+            Rect cb{cx - d / 2, cy - d / 2, d, d};
+            if (ui.over(cb)) ui.oval(cb, mix(k["title"], k["text"], 0.1), {}, 0, true, false);
             ui.line(cx - a, cy - a, cx + a, cy + a, k["dim"], 2 * S);
             ui.line(cx - a, cy + a, cx + a, cy - a, k["dim"], 2 * S);
-            boxes.push_back({w - h - 4 * S, w, 1});
+            boxes.push_back({cb.x - r.x, cb.r() - r.x, 1});
         }
     } else if (k.bevel) {
         ui.fill(r, active ? k["title"] : k["title_off"]);
@@ -946,20 +1059,27 @@ int dialog(Ui &ui, const DialogBox &box, const std::function<int(Ui &)> &body, c
         int S = ui.S();
         double tb = title_h(ui);
         double frame = k.bevel ? 5 * S : S;   // the border around: Bevel's thick sizing frame
-        double padx = 14 * S, pady = 12 * S;
+        double padx = (k.soft ? 22 : 14) * S, pady = (k.soft ? 4 : 12) * S;
         double W = ui.W(), H = ui.H();
         // the size: asked for, or what the contents needed last time
         double cw = box.fw > 0 ? W * box.fw - 2 * (frame + padx) : box.w > 0 ? box.w * S : (st.w > 0 ? st.w : std::min(W - 40 * S, 560.0 * S));
         double ch_fixed = box.fh > 0 ? H * box.fh - 2 * frame - tb - S - 2 * pady : box.h > 0 ? box.h * S : 0;
         double btn_h = 0;
-        if (!buttons.empty()) btn_h = ui.btn_w("OK") > 0 ? (k.modern ? k.f->line + 18 * S : k.fb->line + 12 * S + (k.bevel ? 0 : 6 * S)) + 14 * S : 0;
+        if (!buttons.empty()) btn_h = ui.btn_w("OK") > 0 ? (k.soft ? k.f->line + 18 * S : k.fb->line + 12 * S + (k.bevel ? 0 : 6 * S)) + 14 * S : 0;
         double ch = ch_fixed > 0 ? ch_fixed : (st.h > 0 ? st.h : 100 * S);
-        double dw = std::min(W - 20 * S, cw + 2 * (frame + padx)), dh = std::min(H - 20 * S, ch + btn_h + 2 * frame + tb + S + 2 * pady);
+        double dw = std::min(W - 20 * S, cw + 2 * (frame + padx)),
+               dh = std::min(H - 20 * S, ch + btn_h + 2 * frame + tb + S + 2 * pady + (k.soft ? 14 * S : 0));
         double x = std::max(0.0, std::floor((W - dw) / 2) + st.dx), y = std::max(0.0, std::floor((H - dh) / 3) + st.dy);
         Rect outer{x, y, dw, dh};
         // the frame
         if (k.pinstripe) ui.fill({x + 2 * S, y + 2 * S, dw, dh}, k["dark"]);
-        ui.fill(outer, k.modern ? k["edge"] : k["dark"]);
+        if (k.soft) {
+            // the window behind dims; the dialog is a card floating over it
+            if (ui.drawing) ui.img.rect(0, 0, W, H, {0, 0, 0}, k.dark ? 0.45 : 0.28);
+            ui.shadow(outer, 16 * S, 18 * S, k.dark ? 0.6 : 0.22);
+            ui.rrect(outer, 16 * S, k["card"], k.dark ? k["edge"] : k["line"], S);
+        } else
+            ui.fill(outer, k["dark"]);
         Rect in = outer.in(S);
         if (k.bevel) {
             ui.fill(in, k["title"]);
@@ -968,7 +1088,7 @@ int dialog(Ui &ui, const DialogBox &box, const std::function<int(Ui &)> &body, c
             in = in.in(S);
         }
         Rect bar{in.x, in.y, in.w, tb};
-        bool closable = k.bevel || k.modern;
+        bool closable = k.bevel || k.soft;
         int clicked = title_bar(ui, bar, box.title, closable, false, false);
         if (clicked == 1) {
             result = cancel;
@@ -990,9 +1110,10 @@ int dialog(Ui &ui, const DialogBox &box, const std::function<int(Ui &)> &body, c
         } else if (st.dragging && ui.has(plat::Event::UP)) {
             st.dragging = false;
         }
-        ui.fill({in.x, bar.b(), in.w, (double)S}, k.modern ? k["shadow"] : k["dark"]);
+        if (!k.soft) ui.fill({in.x, bar.b(), in.w, (double)S}, k["dark"]);
         Rect content{in.x, bar.b() + S, in.w, in.b() - bar.b() - S};
-        ui.fill(content, k["window"]);
+        if (k.soft) content.h -= 14 * S;   // room under the buttons, inside the rounded corners
+        else ui.fill(content, k["window"]);
         Rect inner{content.x + padx, content.y + pady, content.w - 2 * padx, content.h - 2 * pady};
         // the buttons, bottom right
         ui.begin(inner, 0);
@@ -1003,9 +1124,9 @@ int dialog(Ui &ui, const DialogBox &box, const std::function<int(Ui &)> &body, c
             std::vector<std::pair<Rect, size_t>> spots;
             for (size_t i = buttons.size(); i-- > 0;) {
                 bool def = (int)i == default_idx;
-                Font &f = k.modern ? *k.f : *k.fb;
+                Font &f = k.soft ? *k.f : *k.fb;
                 double bh = f.line + 12 * S, bw = std::max(76.0 * S, std::ceil(f.width(buttons[i].first)) + 26 * S);
-                if (k.modern || (def && !k.bevel)) {
+                if (k.soft || (def && !k.bevel)) {
                     bw += 6 * S;
                     bh += 6 * S;
                 }
@@ -1104,7 +1225,7 @@ bool ask(Ui &ui, const std::string &title, const std::string &msg, std::string &
         ui, {title},
         [&](Ui &u) {
             para(u, msg, false, 460 * u.S());
-            Rect er = u.place(std::max(u.width(), 44 * u.sk().f->width("0")), u.sk().line + (u.sk().modern ? 14 : 8) * u.S());
+            Rect er = u.place(std::max(u.width(), 44 * u.sk().f->width("0")), u.sk().line + (u.sk().soft ? 14 : 8) * u.S());
             if (first) {   // the box starts with the focus, its text selected
                 u.focus(u.id("ask-entry"));
                 first = false;
@@ -1131,7 +1252,7 @@ std::string choose(Ui &ui, const std::string &title, const std::string &msg, con
         [&](Ui &u) {
             if (!msg.empty()) para(u, msg, false, 520 * u.S());
             Skin &k = u.sk();
-            double rh = k.line + (k.modern ? 10 : 6) * u.S();
+            double rh = k.line + (k.soft ? 10 : 6) * u.S();
             int shown = std::min(12, std::max(4, (int)options.size()));
             Rect lr = u.place(520 * u.S(), shown * rh + 2 * u.S());
             if (first) {

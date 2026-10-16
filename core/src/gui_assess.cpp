@@ -427,7 +427,7 @@ public:
 protected:
     std::string type_;
     void tools(Ui &ui) override {
-        if (tool(ui, "New\xE2\x80\xA6")) cmd_new();
+        if (tool(ui, "New\xE2\x80\xA6", true, true)) cmd_new();
         if (tool_sel(ui, "Open")) cmd_open();
         if (tool_sel(ui, "Copy")) cmd_duplicate();
         if (tool_sel(ui, "Rename\xE2\x80\xA6")) cmd_rename();
@@ -625,7 +625,7 @@ private:
         ui.end();
         if (ui.drawing) {
             Font &f = *k.fb;
-            if (k.modern) {
+            if (k.soft) {
                 ui.fill(g, k["card"]);
                 ui.box(g, k["shadow"], S);
                 ui.text(f, g.x + 13 * S, g.y + 9 * S + f.ascent, "Questions", k["text"]);
@@ -642,9 +642,9 @@ private:
                 ui.text(f, g.x + 7 * S, g.y + f.ascent, " Questions ", k["text"]);
             }
         }
-        double padx = k.modern ? 13 * S : 10 * S;
-        Rect in{g.x + padx, g.y + (k.modern ? k.fb->line + 16 * S : k.fb->line + 6 * S), g.w - 2 * padx, 0};
-        in.h = g.b() - in.y - (k.modern ? 10 * S : 8 * S);
+        double padx = k.soft ? 13 * S : 10 * S;
+        Rect in{g.x + padx, g.y + (k.soft ? k.fb->line + 16 * S : k.fb->line + 6 * S), g.w - 2 * padx, 0};
+        in.h = g.b() - in.y - (k.soft ? 10 * S : 8 * S);
         ui.begin(in, 0);
         Value &qs = a()["questions"];
         int n = (int)qs.size();

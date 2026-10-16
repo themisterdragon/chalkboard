@@ -53,7 +53,7 @@ public:
 
 protected:
     void tools(Ui &ui) override {
-        if (tool(ui, "New Lesson")) cmd_new();
+        if (tool(ui, "New Lesson", true, true)) cmd_new();
         if (tool_sel(ui, "Open")) cmd_open();
         if (tool_sel(ui, "Copy")) cmd_duplicate();
         if (tool_sel(ui, "Rename\xE2\x80\xA6")) cmd_rename();
@@ -153,7 +153,7 @@ void attachments(App &app, Ui &ui, const std::string &lesson_id) {
     for (size_t i = 0; i < row_ids.size(); i++)
         if (row_ids[i] == sel_id) sel = (int)i;
     int nrows = std::max(3, std::min(8, (int)rows.size()));
-    double rh = k.line + (k.modern ? 10 : 6) * S, hh = k.fb->line + 2 * (k.modern ? 5 : 2) * S + (k.bevel ? 2 * S : S);
+    double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
     Rect r = ui.place(0, nrows * rh + hh + 2 * S);
     ListResult lr = list_view(ui, "attached", r, {{"Type", 140, false}, {"Title", 360, true}, {"Size", 140, false}}, rows, sel,
                               "Nothing linked yet. Click New\xE2\x80\xA6 to build a quiz or worksheet.");

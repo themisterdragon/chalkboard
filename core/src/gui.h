@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "dates.h"
 #include "json.h"
 #include "plat.h"
 #include "store.h"
@@ -20,6 +21,7 @@
 namespace gui {
 
 using json::Value;
+using ui::Color;
 using ui::Rect;
 using ui::Ui;
 
@@ -37,7 +39,8 @@ public:
     virtual void reloaded() {}                // the data file changed on disk
     // the menu and keyboard commands: "new", "open", "preview", "export", "find", "duplicate"
     virtual bool command(const std::string &name) { (void)name; return false; }
-    virtual bool home() const { return false; }   // no Back/Home bar (Home and Welcome)
+    virtual bool home() const { return false; }   // no page header (Today draws its own; Welcome)
+    virtual bool bare() const { return false; }   // the whole window, no sidebar (Welcome)
 };
 using Factory = std::function<std::unique_ptr<Screen>(App &)>;
 
@@ -76,7 +79,9 @@ public:
     // ---- screens. Changes happen between passes (a screen can't be replaced while it's running).
     void show(const Factory &f, bool push = true);
     void back();
-    void go_section(const std::string &key);   // "" = Home
+    void go_section(const std::string &key);   // "" = Today
+    const std::string &section() const { return section_; }
+    void plan_lesson(const Date &d);           // a new lesson on that day (asks its name), opened
     void later(std::function<void()> fn);       // after this pass (a command that needs the new screen)
     Screen *view() { return view_.get(); }
     std::string current_title;
@@ -116,11 +121,16 @@ private:
     bool maximized_ = false;
     long long mtime_ = 0;
     std::pair<int, std::string> seen_os_;   // dark (-1 = not followed), accent
+    std::string section_;                   // the sidebar's page ("" = Today)
     int menu_open_ = -1;                    // the menu bar's open menu (drawn menus)
     bool in_terminal_ = false;              // the terminal view is showing
 
     void frame();
     void desk(const Rect &r);
+    std::string accent();               // Modern's highlight color ("" = Chalkboard green)
+    double sidebar_w(double body_w);
+    void sidebar(const Rect &r);        // gui_shell.cpp
+    Rect page_header(const Rect &r);    // returns the page's area under it
     Rect window_frame(const Rect &r);   // draws the frame, title, and status; returns the body
     double menu_bar(const Rect &r);     // the drawn menu bar (not on a Mac); returns its height
     void open_menu(int i, double x, double y);
@@ -143,7 +153,9 @@ std::string commas(long long n);   // 12,345
 std::string plural(long long n, const std::string &word, const std::string &many = "");
 extern const std::vector<std::pair<std::string, std::string>> SECTIONS;   // (key, label)
 Factory section_factory(const std::string &key);
-Factory make_home();
+Factory make_home();      // Today (gui_shell.cpp)
+Factory calendar_page();  // the month of lessons (gui_shell.cpp)
+void line_icon(Ui &ui, const std::string &name, const Rect &box, Color c);   // "today", "lessons", ... (gui_shell.cpp)
 extern const std::vector<std::pair<std::string, std::string>> SORT_LABEL;
 
 // menu items from their labels ("" = a separator)

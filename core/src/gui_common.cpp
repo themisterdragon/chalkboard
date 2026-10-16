@@ -12,7 +12,7 @@ namespace gui {
 using namespace ui;
 
 const std::vector<std::pair<std::string, std::string>> SECTIONS = {
-    {"lessons", "Lesson Plans"}, {"assessments", "Assessments"}, {"standards", "Standards Library"}, {"settings", "Settings"}};
+    {"lessons", "Lesson Plans"}, {"assessments", "Assessments"}, {"standards", "Standards Library"}, {"settings", "Settings"}, {"calendar", "Calendar"}};
 
 const std::vector<std::pair<std::string, std::string>> SORT_LABEL = {
     {"updated", "Date modified"}, {"created", "Date created"}, {"title", "Title (A-Z)"}, {"unit", "Unit"}, {"class", "By class"}};
@@ -21,6 +21,8 @@ Factory section_factory(const std::string &key) {
     if (key == "lessons") return lesson_list();
     if (key == "assessments") return assessment_list();
     if (key == "standards") return standards_library();
+    if (key == "calendar") return calendar_page();
+    if (key.empty()) return make_home();
     return settings_view();
 }
 

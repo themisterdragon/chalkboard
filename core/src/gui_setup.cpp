@@ -315,7 +315,7 @@ void run_setup(App &app) {
                 if (button(u, "Skip Setup", !last, false, false, 90)) return 2;
                 u.end();
                 double nw = std::max(90.0 * S, u.btn_w(last ? "Finish" : "Next \xE2\x96\xBA") + 6 * S), bw = std::max(90.0 * S, u.btn_w("\xE2\x97\x84 Back"));
-                double bh = u.ctl_h() + (k.modern || !k.bevel ? 6 * S : 0);
+                double bh = u.ctl_h() + (k.soft || !k.bevel ? 6 * S : 0);
                 if (button_at(u, u.id("btn:next"), {bar.r() - nw, bar.y, nw, bh}, last ? "Finish" : "Next \xE2\x96\xBA", true, true)) return 3;
                 if (button_at(u, u.id("btn:back"), {bar.r() - nw - 8 * S - bw, bar.y, bw, bh}, "\xE2\x97\x84 Back", i > 0)) return 4;
                 if (u.key(plat::K_RETURN)) return 3;   // Return: Next

@@ -97,6 +97,8 @@ public:
     void picture(const uint8_t *rgb, const uint8_t *alpha, int sw, int sh, int channels, double x, double y, double w, double h);
     // a coverage mask in one color, its box moved by (dx, dy)
     void mask(const Mask &m, int dx, int dy, Color c, double alpha = 1);
+    // the same, shaded from top (at y = y0) to bottom (at y = y1), straight down
+    void mask_gradient(const Mask &m, int dx, int dy, Color top, Color bottom, double y0, double y1, double alpha = 1);
     // another image (or part of one: sx, sy, sw, sh) copied in at (x, y), no scaling
     void blit(const Image &src, int x, int y, int sx = 0, int sy = 0, int sw = -1, int sh = -1);
     void clip(double x, double y, double w, double h);   // only inside this box until unclip()

@@ -117,7 +117,7 @@ bool Calendar::frame(Ui &ui, const std::string &key) {
             if (has && lo <= day && day <= hi) {
                 bool end_ = day == lo || day == hi;
                 Color fill = end_ ? k["sel"] : k["selsoft"];
-                if (k.modern) ui.rrect(c.in(m), 7 * S, fill, {}, 0, true, false);
+                if (k.soft) ui.rrect(c.in(m), 7 * S, fill, {}, 0, true, false);
                 else ui.fill(c.in(m), fill);
                 fg = end_ ? k["seltext"] : soft_text;
             }

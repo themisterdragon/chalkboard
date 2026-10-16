@@ -81,7 +81,7 @@ bool section_order(App &app, Value &draft) {
                 rows.push_back({secs[i].label, on ? "Yes" : "No", side_text(secs[i].col)});
                 if (secs[i].key == sel_key) sel = (int)i;
             }
-            double rh = k.line + (k.modern ? 10 : 6) * S, hh = k.fb->line + 2 * (k.modern ? 5 : 2) * S + (k.bevel ? 2 * S : S);
+            double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
             Rect lr = u.place(0, 10 * rh + hh + 2 * S);
             if (first) {
                 u.focus(u.id("list:sections"));
@@ -166,7 +166,7 @@ bool font_picker(App &app, const std::string &current, bool heading, std::string
                     vals.push_back(x[0]);
                     if (x[0] == sel_v) sel = (int)vals.size() - 1;
                 }
-            double rh = k.line + (k.modern ? 10 : 6) * S, hh = k.fb->line + 2 * (k.modern ? 5 : 2) * S + (k.bevel ? 2 * S : S);
+            double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
             Rect lr = u.place(0, 12 * rh + hh + 2 * S);
             ListResult res = list_view(u, "fonts", lr, {{"Font", 260, true}, {"Kind", 140, false}}, rows, sel, "No font has that in its name.");
             if (sel >= 0 && sel < (int)vals.size()) sel_v = vals[(size_t)sel];

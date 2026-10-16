@@ -630,7 +630,7 @@ bool entry_at(Ui &ui, Id id, const Rect &r, std::string &value, bool enabled) {
     }
     e.focused_before = focus;
     if (ui.over(r)) ui.cursor(plat::IBEAM);
-    double ring = k.modern ? 2 * S : S, bd = (k.modern ? 5 : 3) * S;
+    double ring = k.soft ? 2 * S : S, bd = (k.soft ? 7 : 3) * S;
     Rect in{r.x + ring + bd, r.y + ring + bd, r.w - 2 * (ring + bd), r.h - 2 * (ring + bd)};
     layout(e, k, 1e9);
     double ox = in.x - e.sx, oy = in.y;
@@ -653,8 +653,11 @@ bool entry_at(Ui &ui, Id id, const Rect &r, std::string &value, bool enabled) {
         changed = true;
     }
     if (!ui.drawing) return changed;
-    ui.fill(r, enabled ? k["field"] : k["window"]);
-    ui.box(r, focus ? k["focus"] : k["edge"], ring);
+    if (k.soft) ui.rrect(r, 8 * S, enabled ? k["field"] : k["window"], focus ? k["focus"] : k["edge"], focus ? ring : S);
+    else {
+        ui.fill(r, enabled ? k["field"] : k["window"]);
+        ui.box(r, focus ? k["focus"] : k["edge"], ring);
+    }
     ui.clip(in.in(-bd + S, 0));
     draw_text(ui, e, ox, oy, lh, focus, enabled, r);
     ui.unclip();
@@ -672,7 +675,7 @@ bool entry(Ui &ui, const std::string &key, std::string &value, double width, boo
     (void)select_all;
     Skin &k = ui.sk();
     int S = ui.S();
-    double h = k.line + 2 * ((k.modern ? 5 : 3) * S + (k.modern ? 2 : 1) * S);
+    double h = k.line + 2 * ((k.soft ? 7 : 3) * S + (k.soft ? 2 : 1) * S);
     Rect r = ui.place(width > 0 ? width : 0, h);
     return entry_at(ui, ui.id("entry:" + key), r, value, enabled);
 }
@@ -687,8 +690,8 @@ bool text_area(Ui &ui, const std::string &key, std::string &value, int min_lines
     e.single = false;
     e.rich = rich;
     if (!e.init || value != e.synced) load(e, value);
-    double ring = k.modern ? 2 * S : S;
-    double padx = (k.modern ? 6 : 4) * S, pady = (k.modern ? 4 : 3) * S;
+    double ring = k.soft ? 2 * S : S;
+    double padx = (k.soft ? 10 : 4) * S, pady = (k.soft ? 6 : 3) * S;
     double lh = k.line + 2 * S;   // Tk's spacing above and below each line
     double w = ui.width();
     double inner_w = w - 2 * (ring + padx) - 2 * S;
@@ -738,8 +741,11 @@ bool text_area(Ui &ui, const std::string &key, std::string &value, int min_lines
     int lines_now = std::max(min_lines, std::min(max_lines, (int)e.lines.size()));
     if (lines_now != shown) ui.again();   // it grew or shrank
     if (!ui.drawing) return changed;
-    ui.fill(r, enabled ? k["field"] : k["window"]);
-    ui.box(r, focus ? k["focus"] : k["edge"], ring);
+    if (k.soft) ui.rrect(r, 8 * S, enabled ? k["field"] : k["window"], focus ? k["focus"] : k["edge"], focus ? ring : S);
+    else {
+        ui.fill(r, enabled ? k["field"] : k["window"]);
+        ui.box(r, focus ? k["focus"] : k["edge"], ring);
+    }
     ui.clip(r.in(ring));
     draw_text(ui, e, in.x, in.y - e.sy, lh, focus, enabled, r);
     ui.unclip();
@@ -767,7 +773,7 @@ void format_bar(Ui &ui) {
     for (const B &b : {B{"B", 'b', markup::B, 1}, B{"I", 'i', markup::I, 2}, B{"U", 'u', markup::U, 0}}) {
         Font &f = b.style ? k.font(b.style) : *k.fsmall;
         double w = std::max(26.0 * S, f.width(b.label) + 16 * S), h = k.fsmall->line + 8 * S;
-        if (k.modern) {
+        if (k.soft) {
             w += 6 * S;
             h += 6 * S;
         }

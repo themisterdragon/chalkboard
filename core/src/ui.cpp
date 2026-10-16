@@ -202,6 +202,33 @@ void Ui::rrect(const Rect &r, double radius, Color fillc, Color edge, double edg
     }
 }
 
+void Ui::rrect_a(const Rect &r, double radius, Color c, double alpha) {
+    if (!drawing || r.w <= 0 || r.h <= 0 || alpha <= 0) return;
+    raster::Path p;
+    round_path(p, r, radius);
+    img.fill(p, c, alpha);
+}
+
+void Ui::gradient(const Rect &r, double radius, Color top, Color bottom, double alpha) {
+    if (!drawing || r.w <= 0 || r.h <= 0) return;
+    raster::Path p;
+    round_path(p, r, radius);
+    raster::Mask m = raster::coverage(p);
+    img.mask_gradient(m, 0, 0, top, bottom, r.y, r.b(), alpha);
+}
+
+void Ui::shadow(const Rect &r, double radius, double depth, double strength) {
+    if (!drawing || depth <= 0) return;
+    // rings of fading darkness, a little lower than the box (light from above)
+    int steps = std::max(2, (int)std::lround(depth / std::max(1, S())));
+    double each = strength / steps;
+    for (int i = steps; i >= 1; i--) {
+        double d = depth * i / steps;
+        Rect o{r.x - d * 0.6, r.y - d * 0.35 + depth * 0.35, r.w + d * 1.2, r.h + d * 1.0};
+        rrect_a(o, radius + d, {0, 0, 0}, each * (1.0 - (double)(i - 1) / steps) + each * 0.15);
+    }
+}
+
 void Ui::oval(const Rect &r, Color fillc, Color edge, double edge_w, bool has_fill, bool has_edge) {
     if (!drawing || r.w <= 0 || r.h <= 0) return;
     raster::Path p;
@@ -482,7 +509,7 @@ Rect Ui::cut_right(double w) {
 
 double Ui::width() const { return layouts_.empty() ? img.w : layouts_.back().body.w; }
 
-double Ui::ctl_h() const { return skin->line + (skin->modern ? 18 : 8) * S(); }
+double Ui::ctl_h() const { return skin->line + (skin->soft ? 18 : 8) * S(); }
 
 // ----------------------------------------------------------------------------- scrolling
 
@@ -490,7 +517,7 @@ void Ui::begin_scroll(Id id, const Rect &r, double max_width) {
     Scroll &s = scrolls_[id];
     s.r = r;
     s.view = r.h;
-    double sbw = (skin->modern ? 14 : 16) * S();
+    double sbw = (skin->soft ? 14 : 16) * S();
     bool bar = s.content > s.view + 0.5;
     double inner_w = r.w - (bar ? sbw : 0);
     s.y = std::max(0.0, std::min(s.y, std::max(0.0, s.content - s.view)));
@@ -545,7 +572,7 @@ void Ui::end_scroll() {
     Rect bar = s.bar;
     if (bar.w <= 0) return;
     Id bid = id(fr.id + 77);
-    double arrow = k.modern ? 0 : bar.w;
+    double arrow = k.soft ? 0 : bar.w;
     Rect track{bar.x, bar.y + arrow, bar.w, bar.h - 2 * arrow};
     double th = std::max(20.0 * S(), track.h * s.view / std::max(1.0, s.content));
     double ty = track.y + (track.h - th) * (s.y / maxy);
@@ -555,8 +582,8 @@ void Ui::end_scroll() {
         active_ = bid;
         consume();
         if (thumb.has(mx, my)) s.grab = my - ty;
-        else if (!k.modern && my < track.y) s.y = std::max(0.0, s.y - k.line * 3), s.grab = -1;
-        else if (!k.modern && my >= track.b()) s.y = std::min(maxy, s.y + k.line * 3), s.grab = -1;
+        else if (!k.soft && my < track.y) s.y = std::max(0.0, s.y - k.line * 3), s.grab = -1;
+        else if (!k.soft && my >= track.b()) s.y = std::min(maxy, s.y + k.line * 3), s.grab = -1;
         else {   // a page at a time toward the click
             s.y = my < ty ? std::max(0.0, s.y - s.view * 0.9) : std::min(maxy, s.y + s.view * 0.9);
             s.grab = -1;
@@ -572,7 +599,7 @@ void Ui::end_scroll() {
     }
     if (!drawing) return;
     fill(bar, k["trough"]);
-    if (k.modern) {
+    if (k.soft) {
         Rect t = thumb.in(3 * S());
         bool hot = (active_ == bid) || thumb.has(mx, my);
         rrect(t, t.w / 2, hot ? k["text"] : k["thumb"], k["thumb"], 0, true, false);

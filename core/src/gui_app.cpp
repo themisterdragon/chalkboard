@@ -95,14 +95,14 @@ static std::vector<plat::MenuItem> menus(App &app) {
     out.push_back(e);
     MenuItem g;
     g.label = "Go";
-    g.sub = {item("Chalkboard (Home)", M_HOME, '0', P)};
+    g.sub = {item("Today", M_HOME, '0', P)};
     for (size_t i = 0; i < SECTIONS.size(); i++) g.sub.push_back(item(SECTIONS[i].second, M_SECTION + (int)i, '1' + (int)i, P));
     out.push_back(g);
     MenuItem v;
     v.label = "View";
     v.sub = {item("Switch to Terminal View", M_TERMINAL, 'w', P | SH), sep};
     std::string kind = app.settings().s("gui_skin");
-    if (kind.empty()) kind = "bevel";
+    if (kind.empty()) kind = "modern";
     for (size_t i = 0; i < skins().size(); i++) {
         MenuItem m = item(skins()[i][1] + " Look", M_SKIN + (int)i);
         m.checked = skins()[i][0] == kind;
@@ -165,14 +165,33 @@ void App::apply_skin() {
     std::string kind = settings().s("gui_skin");
     bool known = false;
     for (const auto &s : skins()) known |= s[0] == kind;
-    if (!known) kind = "bevel";
+    if (!known) kind = "modern";
     bool follow = theme() == "system";
-    std::string accent = kind == "modern" ? plat::system_accent() : "";
-    seen_os_ = {follow ? (int)plat::system_dark() : -1, accent};
+    std::string acc = kind == "modern" ? accent() : "";
+    seen_os_ = {follow ? (int)plat::system_dark() : -1, settings().s("gui_accent") == "system" ? acc : ""};
     bool dark = follow ? plat::system_dark() : theme() == "dark";
-    ui.skin = make_skin(kind, scale(), text_px(), dark, accent);
+    ui.skin = make_skin(kind, scale(), text_px(), dark, acc);
     win.dark_title(dark);
     build_os_menu();
+}
+
+// Modern's highlight color: Chalkboard green, the school's colors, or the computer's accent
+std::string App::accent() {
+    std::string pick = settings().s("gui_accent");
+    if (pick == "system") return plat::system_accent();
+    if (pick != "school") return "";
+    // the more colorful of the two school colors (a gray or a near-white doesn't make a highlight)
+    std::string best;
+    double most = 0.22;
+    for (const char *key : {"primary_color", "secondary_color"}) {
+        std::string h = settings().s(key);
+        if (h.size() != 7 || h[0] != '#') continue;
+        Color c = hex(h);
+        double hi = std::max({c.r, c.g, c.b}), lo = std::min({c.r, c.g, c.b});
+        double sat = hi <= 0 ? 0 : (hi - lo) / hi;
+        if (sat > most) most = sat, best = h;
+    }
+    return best;
 }
 
 void App::set_look(const std::string &key, const Value &v) {
@@ -192,7 +211,7 @@ void App::zoom(int d) {
 }
 
 void App::toggle_zoom() {
-    if (ui.sk().modern) {   // the real OS window
+    if (ui.sk().soft) {   // the real OS window
         win.maximize(!win.maximized());
         return;
     }
@@ -248,8 +267,9 @@ void App::watch_file() {
 }
 
 void App::watch_os_look() {
-    if (theme() == "system" || ui.sk().modern) {
-        std::pair<int, std::string> now = {theme() == "system" ? (int)plat::system_dark() : -1, ui.sk().modern ? plat::system_accent() : ""};
+    bool os_accent = ui.sk().modern && settings().s("gui_accent") == "system";
+    if (theme() == "system" || os_accent) {
+        std::pair<int, std::string> now = {theme() == "system" ? (int)plat::system_dark() : -1, os_accent ? plat::system_accent() : ""};
         if (now != seen_os_ && !modal() && !save_timer_) set_look();
     }
     ui.after(3000, [this] { watch_os_look(); });
@@ -318,15 +338,16 @@ void App::go_section(const std::string &key) {
         stack_.clear();
         trail_.clear();
         view_.reset();
-        do_show(make_home(), false);
-        if (!key.empty()) do_show(section_factory(key), true);
+        current_ = nullptr;
+        section_ = key;
+        do_show(section_factory(key), false);
     });
 }
 
 void App::set_title(const std::string &t) {
     current_title = t;
     // the OS title bar names the window in Modern (and screen magnifiers and task switchers show it)
-    win.title(ui.sk().modern && t != art::APP ? t + " \xE2\x80\x93 " + art::APP : art::APP);
+    win.title(ui.sk().soft && t != art::APP ? t + " \xE2\x80\x93 " + art::APP : art::APP);
 }
 
 Value *App::lesson(const std::string &id) {
@@ -393,7 +414,7 @@ void App::shortcuts() {
         {"Ctrl+O / Return", "Open the selected item"}, {"Ctrl+D", "Duplicate the selected item"},
         {"Delete", "Delete the selected item"}, {"Ctrl+P", "Preview"}, {"Ctrl+E", "Export…"},
         {"Ctrl+F", "Search"}, {"Ctrl+W / Esc", "Close this window (go back)"},
-        {"Ctrl+0 … 4", "Home, Lessons, Assessments, Standards, Settings"},
+        {"Ctrl+0 … 5", "Today, Lessons, Assessments, Standards, Settings, Calendar"},
         {"Ctrl+= / Ctrl+-", "Bigger / smaller text"}, {"Tab", "Next field"},
         {"Ctrl+B / Ctrl+I / Ctrl+U", "Bold, italic, or underline the word (or what's selected)"},
         {"Ctrl+Shift+W", "Switch between the window view and the terminal view"},
@@ -439,6 +460,7 @@ public:
     ~Welcome() override { app.ui.cancel(timer_); }
     std::string title() override { return art::APP; }
     bool home() const override { return true; }
+    bool bare() const override { return true; }
     bool escape() override {
         go();
         return true;
@@ -476,98 +498,9 @@ private:
     }
 };
 
-struct HomeItem {
-    const char *key, *text, *icon;
-};
-const HomeItem HOME_ITEMS[] = {{"lessons", "Lesson Plans", "lessons"}, {"assessments", "Assessments", "assessments"},
-                               {"standards", "Standards", "standards"}, {"settings", "Settings", "settings"},
-                               {"exports", "My Exports", "folder"}};
-
-class Home : public Screen {
-public:
-    explicit Home(App &a) : Screen(a) { reloaded(); }
-    std::string title() override { return art::APP; }
-    bool home() const override { return true; }
-    void reloaded() override {
-        const Value &d = app.store.data;
-        app.status(plural((long long)d.get("lessons").size(), "lesson plan") + "   \xC2\xB7   " + plural((long long)d.get("assessments").size(), "assessment"),
-                   commas(app.store.kas_count) + " standards");
-    }
-    bool command(const std::string &name) override {
-        if (name != "open") return false;
-        open(HOME_ITEMS[sel_].key);
-        return true;
-    }
-    void frame(Ui &ui, const Rect &r) override {
-        Skin &k = ui.sk();
-        int S = ui.S();
-        Color bg = k.bevel ? k["field"] : k["window"];
-        ui.fill(r, bg);
-        const int n = 5;
-        double icon_px = 64 * S, cell_w = std::max(icon_px, 0.0), pad = 18 * S;
-        std::vector<double> ws;
-        for (const auto &it : HOME_ITEMS) ws.push_back(std::max(cell_w, k.f->width(it.text) + 6 * S));
-        double total = 0;
-        for (double w : ws) total += w + 2 * pad;
-        double h = 4 * S + icon_px + 6 * S + k.f->line + 26 * S + k.f->line;
-        double x = std::round(r.x + (r.w - total) / 2), y = std::round(r.y + r.h * 0.42 - h / 2);
-        Id grid = ui.id("home-icons");
-        // the icons take the keyboard focus as one control: arrows move between them
-        bool focus = ui.focused(grid);
-        Rect all{x, y, total, 4 * S + icon_px + 6 * S + k.f->line};
-        ui.hit(grid, {0, 0, 0, 0});
-        double cx = x;
-        for (int i = 0; i < n; i++) {
-            double cw = ws[(size_t)i] + 2 * pad;
-            Rect cell{cx, y + 4 * S, cw, icon_px + 6 * S + k.f->line};
-            if (ui.has(plat::Event::DOWN) && ui.ev.button == 1 && ui.over(cell)) {
-                sel_ = i;
-                ui.focus(grid);
-                if (ui.ev.clicks >= 2) open(HOME_ITEMS[i].key);
-                ui.consume();
-                ui.again();
-            }
-            if (ui.drawing) {
-                ui.pixel_art(*icon(HOME_ITEMS[i].icon), icon_color, std::round(cell.x + (cw - icon_px) / 2), cell.y, 4 * S);
-                double tw = k.f->width(HOME_ITEMS[i].text) + 6 * S;
-                Rect lab{std::round(cell.x + (cw - tw) / 2), cell.y + icon_px + 6 * S, tw, k.f->line};
-                bool on = i == sel_;
-                if (on) ui.fill(lab, k["sel"]);
-                ui.text_in(*k.f, lab, HOME_ITEMS[i].text, on ? k["seltext"] : k["text"], CENTER);
-                if (on && focus) ui.dotted(lab.in(-S), k["text"]);
-            }
-            cx += cw;
-        }
-        (void)all;
-        if (focus || !ui.focus_id()) {
-            if (ui.key(plat::K_LEFT)) sel_ = std::max(0, sel_ - 1), ui.again();
-            else if (ui.key(plat::K_RIGHT)) sel_ = std::min(n - 1, sel_ + 1), ui.again();
-            else if (ui.key(plat::K_RETURN) || ui.key(' ')) open(HOME_ITEMS[sel_].key);
-        }
-        if (!ui.focus_id()) ui.focus(grid);
-        double ty = y + 4 * S + icon_px + 6 * S + k.f->line + 26 * S;
-        if (ui.drawing)
-            ui.text_in(*k.f, {r.x, ty, r.w, k.f->line}, "Double-click an icon (or use the arrow keys and Return) to open it.", k["dim"], CENTER);
-        // the school mascot, if one is picked: click it for a cheer
-        buddy_.draw(app, ui, r.r() - 16 * S, r.b() - 10 * S, 4 * S);
-    }
-
-private:
-    int sel_ = 0;
-    Buddy buddy_;
-    void open(const std::string &key) {
-        if (key == "exports") {
-            app.open_export_folder();
-            app.status("Opened " + app.store.export_dir());
-            return;
-        }
-        app.show(section_factory(key));
-    }
-};
 
 }  // namespace
 
-Factory make_home() { return make<Home>(); }
 static Factory make_welcome() { return make<Welcome>(); }
 
 // ----------------------------------------------------------------------------- the window
@@ -587,7 +520,7 @@ void App::desk(const Rect &r) {
 Rect App::window_frame(const Rect &area) {
     Skin &k = ui.sk();
     int S = k.S;
-    bool modern = k.modern;
+    bool modern = k.soft;
     double m = maximized_ || modern ? 0 : 14 * S;
     double shadow = k.pinstripe ? 2 * S : 0;
     Rect w{area.x + m, area.y + m, area.w - 2 * m - shadow, area.h - 2 * m - shadow};
@@ -630,11 +563,9 @@ Rect App::window_frame(const Rect &area) {
     double sh = sf.line + 2 * S + (k.bevel ? 2 * S : 0);
     Rect bar;
     if (modern) {
-        bar = {in.x, in.b() - sh - 6 * S, in.w, sh + 6 * S};
-        ui.fill(bar, k["window"]);
-        ui.fill({in.x, bar.y - S, in.w, (double)S}, k["shadow"]);
-        in.h -= bar.h + S;
-        bar = bar.in(8 * S, 3 * S);
+        // Modern and Glossy show the status at the foot of the sidebar
+        ui.fill(in, k["window"]);
+        return in;
     } else if (k.status_top) {
         bar = {in.x, in.y, in.w, sh};
         ui.fill(bar, k["window"]);
@@ -680,8 +611,8 @@ double App::menu_bar(const Rect &r) {
     Font &f = k.pinstripe ? *k.fb : *k.f;
     double h = f.line + 8 * S;
     Rect bar{r.x, r.y, r.w, h};
-    ui.fill(bar, k.bevel ? k["face"] : k["window"]);
-    ui.fill({r.x, r.y + h - S, r.w, (double)S}, k.modern ? k["shadow"] : k["dark"]);
+    ui.fill(bar, k.bevel ? k["face"] : k.soft ? k["sidebar"] : k["window"]);
+    ui.fill({r.x, r.y + h - S, r.w, (double)S}, k.soft ? k["line"] : k["dark"]);
     auto ms = menus(*this);
     double x = r.x + 4 * S;
     for (size_t i = 0; i < ms.size(); i++) {
@@ -869,7 +800,6 @@ bool App::keys(const plat::Event &e) {
 
 void App::frame() {
     Skin &k = ui.sk();
-    int S = k.S;
     Rect all{0, 0, (double)ui.W(), (double)ui.H()};
     double top = 0;
 #ifndef __APPLE__
@@ -879,28 +809,23 @@ void App::frame() {
     desk(area);
     if (!view_) return;
     Rect body = window_frame(area);
-    if (!view_->home()) {
-        // Back, Home, and where you are
-        double h = ui.ctl_h() + 10 * S;
-        Rect nav{body.x, body.y, body.w, h};
-        ui.begin(nav.in(8 * S, 5 * S), 0);
-        ui.flow();
-        if (button(ui, "\xE2\x97\x84 Back", true, false, false)) back();
-        ui.place(6 * S, 1);
-        if (button(ui, "Home", true, false, false)) go_section("");
-        ui.place(14 * S, 1);
-        Rect rest = ui.place(-1, ui.ctl_h());
-        ui.end();
-        std::string crumb;
-        for (const auto &t : trail_) crumb += t + "  \xE2\x80\xBA  ";
-        crumb += current_title;
-        if (ui.drawing) ui.text_in(*k.f, {rest.x, nav.y + 5 * S, nav.r() - rest.x - 8 * S, h - 10 * S}, ui.elide(*k.f, crumb, nav.r() - rest.x - 8 * S), k["dim"]);
-        ui.fill({body.x, nav.b(), body.w, (double)S}, k["dark"]);
-        body.y = nav.b() + S;
-        body.h -= h + S;
+    if (view_->bare()) {
+        ui.push_id("view");
+        view_->frame(ui, body);
+        ui.pop_id();
+        return;
     }
+    // the sidebar on the left, the page on the right
+    double sw = sidebar_w(body.w);
+    Rect side{body.x, body.y, sw, body.h}, page{body.x + sw, body.y, body.w - sw, body.h};
+    // the page first, so it gets the keyboard first (Tab goes through the page, then the sidebar)
+    if (ui.drawing) ui.fill(page, k["window"]);
+    if (!view_->home()) page = page_header(page);
     ui.push_id("view");
-    view_->frame(ui, body);
+    view_->frame(ui, page);
+    ui.pop_id();
+    ui.push_id("sidebar");
+    sidebar(side);
     ui.pop_id();
 }
 
@@ -911,7 +836,7 @@ void App::run() {
         if (!modal()) menu_command(id);   // (like the drawn menus: not while a dialog is open)
     };
     bool first_time = store.warning.empty() && setup_needed(*this);
-    bool welcome = (settings().has("boot") ? settings().get("boot").truthy() : true) && !no_boot_ && !first_time && !ui.sk().modern;
+    bool welcome = (settings().has("boot") ? settings().get("boot").truthy() : true) && !no_boot_ && !first_time && !ui.sk().soft;
     current_ = welcome ? make_welcome() : make_home();
     view_ = current_(*this);
     set_title(view_->title());

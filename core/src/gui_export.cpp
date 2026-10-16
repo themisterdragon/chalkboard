@@ -158,7 +158,7 @@ void export_done(App &app, const std::vector<std::string> &paths) {
                }
                pal.draw(app, u, top.r(), top.b(), 2 * S);
                u.space(10 * S);
-               double rh = k.line + (k.modern ? 10 : 6) * S;
+               double rh = k.line + (k.soft ? 10 : 6) * S;
                Rect lr = u.place(0, std::min(8, std::max(3, (int)n)) * rh + 2 * S);
                if (first) {
                    u.focus(u.id("list:files"));
@@ -577,7 +577,7 @@ void class_periods(App &app) {
                     if (!text::strip(x).empty()) cs.push_back(text::strip(x));
                 rows.push_back({p.s("name"), p.s("course").empty() ? "Any" : p.s("course"), text::join(cs, " \xC2\xB7 ")});
             }
-            double rh = k.line + (k.modern ? 10 : 6) * S, hh = k.fb->line + 2 * (k.modern ? 5 : 2) * S + (k.bevel ? 2 * S : S);
+            double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
             Rect lr = u.place(0, 6 * rh + hh + 2 * S);
             if (first) {
                 u.focus(u.id("list:periods"));
