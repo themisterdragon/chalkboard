@@ -1,0 +1,127 @@
+# Every screen of the window app, at 1180x800: open a lesson and use each of its buttons, the
+# other sections, the terminal view, zoom, the menus, and resizing. (Coordinates are for the
+# Bevel look; "shot" saves a picture to look over.) Run: sh core/tests/run_gui.sh
+key 1 ctrl
+wait 100
+click 135 249
+wait 150
+key down
+key return
+wait 300
+click 900 188
+key end
+type  (checked)
+key b ctrl
+shot 20-edited
+click 66 123
+wait 300
+shot 21-preview
+key escape
+wait 150
+click 153 123
+wait 300
+shot 22-export
+key escape
+wait 150
+click 255 123
+wait 400
+shot 23-board
+wait 15000
+shot 23b-board-done
+key return
+wait 300
+wait 150
+click 376 123
+wait 600
+shot 24-makeup
+wait 15000
+shot 24b-makeup-done
+key return
+wait 300
+wait 150
+click 505 123
+wait 300
+shot 25-sections
+key escape
+wait 150
+click 518 248
+wait 300
+shot 26-calendar
+key escape
+wait 150
+click 122 326
+wait 300
+shot 27-standards-picker
+key escape
+wait 150
+wheel 600 500 10
+wait 150
+shot 28-scrolled
+wheel 600 500 40
+wait 150
+shot 29-bottom
+key escape
+wait 200
+key escape
+wait 200
+click 960 123
+wait 300
+shot 30-dayslides
+key escape
+wait 150
+click 100 157
+wait 300
+shot 31-map
+key escape
+wait 150
+key 2 ctrl
+wait 200
+shot 40-assessments
+key n ctrl shift
+wait 300
+shot 41-new-assessment
+key escape
+wait 150
+key 3 ctrl
+wait 200
+type wri
+wait 200
+shot 42-standards-search
+key 4 ctrl
+wait 200
+shot 43-settings
+key w ctrl shift
+wait 400
+shot 50-terminal
+type 1
+wait 300
+shot 51-terminal-lessons
+key escape
+wait 200
+key w ctrl shift
+wait 400
+shot 52-back-window
+key = ctrl
+key = ctrl
+wait 200
+shot 53-bigger
+key - ctrl
+key - ctrl
+click 22 12
+wait 200
+shot 60-file-menu
+key escape
+click 140 12
+wait 200
+shot 61-view-menu
+key escape
+click 186 12
+wait 200
+shot 62-help-menu
+key escape
+size 820 600
+wait 300
+shot 70-small
+size 1500 950
+wait 300
+shot 71-large

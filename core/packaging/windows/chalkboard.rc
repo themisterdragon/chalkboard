@@ -1,0 +1,31 @@
+// The Windows program's icon, version, and manifest (core/cross.sh makes chalkboard.ico next to it).
+#include <windows.h>
+
+1 ICON "chalkboard.ico"
+1 RT_MANIFEST "chalkboard.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION CB_V1, CB_V2, CB_V3, 0
+PRODUCTVERSION CB_V1, CB_V2, CB_V3, 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Chalkboard"
+      VALUE "FileDescription", "Chalkboard lesson planner"
+      VALUE "FileVersion", CB_VERSION
+      VALUE "InternalName", "Chalkboard"
+      VALUE "LegalCopyright", "Free software under the GNU GPL v3"
+      VALUE "OriginalFilename", "Chalkboard.exe"
+      VALUE "ProductName", "Chalkboard"
+      VALUE "ProductVersion", CB_VERSION
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

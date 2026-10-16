@@ -1,0 +1,9 @@
+CHALKBOARD FOR macOS (11 Big Sur or later; Apple silicon and Intel)
+
+1. Drag Chalkboard into Applications (the folder in this window).
+2. Open it from Applications. The first time, macOS may say it can't check Chalkboard for
+   malicious software, because it isn't from the App Store. Right-click (or Control-click)
+   Chalkboard, choose Open, then Open again. On macOS 15 and later: System Settings >
+   Privacy & Security > Open Anyway.
+
+Chalkboard works fully offline. Your lessons and assessments stay on this Mac.
