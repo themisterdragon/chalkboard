@@ -4,8 +4,10 @@
 # right-click > Open instead of being called "damaged") and wrap it in a DMG.
 #   sh core/package-mac.sh [program]      -> core/dist/macos/Chalkboard.app (+ Chalkboard-<v>-macOS.dmg on a Mac)
 set -e
+# the program's path as given (from wherever this was run), before moving into core/
+[ -n "$1" ] && BIN=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 cd "$(dirname "$0")"
-BIN=${1:-dist/macos/chalkboard}
+BIN=${BIN:-dist/macos/chalkboard}
 [ -f "$BIN" ] || { echo "No $BIN: build it first (sh core/cross.sh macos)."; exit 1; }
 VERSION=$(sed -n 's/^#define CHALKBOARD_VERSION "\(.*\)"/\1/p' src/version.h)
 [ -x chalkboard-core ] || sh build.sh >/dev/null
