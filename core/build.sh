@@ -26,10 +26,10 @@ for f in src/*.cpp build/resources.cpp; do
     o="$OBJ/$(basename "$f" .cpp).o"
     if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$newest_h" -nt "$o" ]; then TODO="$TODO $f"; fi
 done
-[ -z "$TODO" ] || printf '%s\n' $TODO | xargs -P "$JOBS" -I{} sh -c '
-    f={}; o="'"$OBJ"'/$(basename "$f" .cpp).o"
+[ -z "$TODO" ] || printf '%s\n' $TODO | xargs -P "$JOBS" -n 1 sh -c '
+    f=$1; o="'"$OBJ"'/$(basename "$f" .cpp).o"
     echo "  $f"
-    '"$CXX"' -std=c++17 '"$FLAGS"' -Wall -Wextra -Isrc -c -o "$o" "$f" || { rm -f "$o"; exit 255; }'
+    '"$CXX"' -std=c++17 '"$FLAGS"' -Wall -Wextra -Isrc -c -o "$o" "$f" || { rm -f "$o"; exit 255; }' sh
 # only the objects of files that are still here
 OBJS=""
 for f in src/*.cpp build/resources.cpp; do OBJS="$OBJS $OBJ/$(basename "$f" .cpp).o"; done

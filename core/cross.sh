@@ -34,9 +34,9 @@ build_one() {   # name zig-target out-file extra-link-flags...
         if [ ! -f "$o" ] || [ "$f" -nt "$o" ] || [ "$newest_h" -nt "$o" ]; then todo="$todo $f"; fi
     done
     echo "$name: compiling$( [ -z "$todo" ] && echo ' (nothing changed)')"
-    [ -z "$todo" ] || printf '%s\n' $todo | xargs -P "$JOBS" -I{} sh -c '
-        f={}; o="'"$obj"'/$(basename "$f" .cpp).o"
-        "'"$ZIG"'" c++ -target '"$target"' -std=c++17 '"$FLAGS"' -Isrc -c -o "$o" "$f" || { rm -f "$o"; exit 255; }'
+    [ -z "$todo" ] || printf '%s\n' $todo | xargs -P "$JOBS" -n 1 sh -c '
+        f=$1; o="'"$obj"'/$(basename "$f" .cpp).o"
+        "'"$ZIG"'" c++ -target '"$target"' -std=c++17 '"$FLAGS"' -Isrc -c -o "$o" "$f" || { rm -f "$o"; exit 255; }' sh
     objs=""
     for f in src/*.cpp build/resources.cpp; do objs="$objs $obj/$(basename "$f" .cpp).o"; done
     "$ZIG" c++ -target "$target" $FLAGS -s -o "$out" $objs "$@"
