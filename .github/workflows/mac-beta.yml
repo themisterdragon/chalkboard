@@ -13,14 +13,13 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - name: Build (Apple silicon + Intel in one program)
-        run: sh core/cross.sh macos
+      - name: Build with Apple's compiler (Apple silicon + Intel in one program)
+        run: |
+          CXX="clang++ -arch arm64 -arch x86_64 -mmacosx-version-min=11.0" sh core/build.sh
+          lipo -info core/chalkboard-core
       - name: Chalkboard.app, signed, and the DMG
         run: |
-          sh core/package-mac.sh
+          sh core/package-mac.sh core/chalkboard-core
           lipo -info core/dist/macos/Chalkboard.app/Contents/MacOS/Chalkboard
           codesign --verify --deep --strict --verbose=2 core/dist/macos/Chalkboard.app
           plutil -lint core/dist/macos/Chalkboard.app/Contents/Info.plist
