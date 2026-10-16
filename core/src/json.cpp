@@ -364,8 +364,18 @@ std::string py_float(double d) {
     if (d == 0) return std::signbit(d) ? "-0.0" : "0.0";
     // shortest round-trip digits, then Python's choice of fixed or exponent notation
     char buf[64];
+#ifdef __APPLE__
+    // Apple's library has no floating-point to_chars before macOS 13.3: the fewest digits that read
+    // back as the same number (checked identical to to_chars on 12 million values)
+    for (int prec = 1; prec <= 17; prec++) {
+        std::snprintf(buf, sizeof buf, "%.*e", prec - 1, d);
+        if (std::strtod(buf, nullptr) == d) break;
+    }
+    std::string sci = buf;
+#else
     auto r = std::to_chars(buf, buf + sizeof buf, d, std::chars_format::scientific);
     std::string sci(buf, r.ptr);
+#endif
     bool neg = sci[0] == '-';
     if (neg) sci.erase(0, 1);
     size_t e = sci.find('e');
