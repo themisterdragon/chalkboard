@@ -1,0 +1,115 @@
+# Chalkboard 3 beta releases. Push a tag like beta-3.0.0b1 (on the cpp-beta branch) to build every
+# download, test each on its own system, and publish them as a pre-release (never "Latest").
+# Beta tags start with "beta-" so the 2.x release workflow (tags v*) never runs for them.
+# "Run workflow" on the Actions tab builds and tests without releasing.
+name: Beta release
+
+on:
+  push:
+    tags: ["beta-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build with Apple's compiler (Apple silicon + Intel in one program)
+        run: CXX="clang++ -arch arm64 -arch x86_64 -mmacosx-version-min=11.0" sh core/build.sh
+      - name: Chalkboard.app, signed (ad hoc), and the DMG
+        run: |
+          sh core/package-mac.sh core/chalkboard-core
+          codesign --verify --deep --strict core/dist/macos/Chalkboard.app
+      - name: Install from the DMG and run it
+        run: |
+          mnt=$(hdiutil attach -nobrowse -readonly core/dist/Chalkboard-*-macOS.dmg | awk -F'\t' '/Volumes/ {print $NF}')
+          ditto "$mnt/Chalkboard.app" /Applications/Chalkboard.app
+          hdiutil detach "$mnt"
+          /Applications/Chalkboard.app/Contents/MacOS/Chalkboard --version
+          mkdir -p shots
+          CHALKBOARD_DATA="$RUNNER_TEMP/data" /Applications/Chalkboard.app/Contents/MacOS/Chalkboard --no-boot --script core/tests/walkthrough.txt shots
+          test "$(ls shots | wc -l)" -gt 10
+      - uses: actions/upload-artifact@v5
+        with:
+          name: mac
+          path: core/dist/Chalkboard-*-macOS.dmg
+
+  windows-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build Windows and Linux (Intel/AMD and ARM) with Zig
+        run: sh core/cross.sh windows linux linux-arm
+      - name: Package
+        run: |
+          v=$(sed -n 's/^#define CHALKBOARD_VERSION "\(.*\)"/\1/p' core/src/version.h)
+          mkdir -p out
+          cp core/dist/windows/Chalkboard.exe "out/Chalkboard-$v-windows.exe"
+          for a in x86_64 arm64; do
+            d="Chalkboard-$v-linux-$a"
+            mkdir -p "pkg/$d"
+            cp "core/dist/linux-$a/chalkboard" "pkg/$d/chalkboard"
+            chmod 755 "pkg/$d/chalkboard"
+            cp core/packaging/README-Linux.txt "pkg/$d/"
+            tar -czf "out/$d.tar.gz" -C pkg "$d"
+          done
+          ls -la out
+      - name: Try the Linux program
+        run: |
+          ./core/dist/linux-x86_64/chalkboard --version
+          mkdir -p shots
+          CHALKBOARD_DATA="$RUNNER_TEMP/data" ./core/dist/linux-x86_64/chalkboard --no-boot --script core/tests/walkthrough.txt shots
+          test "$(ls shots | wc -l)" -gt 10
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows-linux
+          path: out/*
+
+  windows-check:
+    needs: windows-linux
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v6
+        with:
+          name: windows-linux
+          path: out
+      - name: Run the Windows program through the walk-through (no screen needed)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem out\Chalkboard-*-windows.exe | Select-Object -First 1
+          $env:CHALKBOARD_DATA = "$env:RUNNER_TEMP\data"
+          New-Item -ItemType Directory -Force shots | Out-Null
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--no-boot","--script","core\tests\walkthrough.txt","shots" -Wait -PassThru
+          $n = (Get-ChildItem shots\*.png).Count
+          "exit $($p.ExitCode), $n pictures"
+          if ($n -lt 10) { exit 1 }
+
+  release:
+    needs: [mac, windows-linux, windows-check]
+    if: startsWith(github.ref, 'refs/tags/beta-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v6
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Check the tag matches the version
+        run: |
+          v=$(sed -n 's/^#define CHALKBOARD_VERSION "\(.*\)"/\1/p' core/src/version.h)
+          [ "beta-$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME but the version is $v"; exit 1; }
+      - name: Publish the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(sed -n 's/^#define CHALKBOARD_VERSION "\(.*\)"/\1/p' core/src/version.h)
+          sed "s/@VERSION@/$v/g" core/packaging/beta-notes.md > notes.md
+          ls -la dist
+          gh release create "$GITHUB_REF_NAME" --prerelease --latest=false --title "Chalkboard $v (beta)" --notes-file notes.md dist/*
