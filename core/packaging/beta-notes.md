@@ -1,6 +1,6 @@
 **A test version of Chalkboard 3**, rebuilt from the ground up in C++: one small program for each computer, no Python needed, fully offline. It's the same Chalkboard (lessons, assessments, standards, board slides, exports, the terminal view) in a window of its own.
 
-**New in beta 2: a fresh new look.** A sidebar that takes you anywhere, a Today page with your week at a glance (+ Plan any day), a Calendar of your lessons color-coded by class, and a clean Modern look in light or dark (Chalkboard green, your school's colors, or your computer's accent). Prefer something fun? Pick Glossy (shiny 2000s glass), Bevel, or Pinstripe from the View menu. Also fixed: the lesson and assessment editors now scroll.
+**New in beta 2 and 3: a fresh new look.** A sidebar that takes you anywhere, a Today page with your week at a glance (+ Plan any day), a Calendar of your lessons color-coded by class, and a clean Modern look in light or dark (Chalkboard green, your school's colors, or your computer's accent). Prefer something fun? Pick Glossy (shiny 2000s glass), Bevel, or Pinstripe from the View menu. Also fixed: the lesson and assessment editors now scroll, and changing the look from the View menu no longer closes Chalkboard (beta 3). With a menu open, slide across the menu bar to see the others.
 
 **It doesn't touch your current Chalkboard.** The beta keeps its own copy of your lessons and assessments (copied from Chalkboard 2.x the first time it opens) and exports to its own folder, so you can try it side by side.
 
