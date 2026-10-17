@@ -1071,6 +1071,7 @@ int dialog(Ui &ui, const DialogBox &box, const std::function<int(Ui &)> &body, c
            int default_idx, int cancel) {
     int result = cancel;
     DialogState st;
+    if (ui.sk().soft) ui.dim_behind(ui.sk().dark ? 0.45 : 0.28);   // the dialog floats over the dimmed window
     ui.modal([&](bool &done) {
         Skin &k = ui.sk();
         int S = ui.S();
@@ -1092,7 +1093,6 @@ int dialog(Ui &ui, const DialogBox &box, const std::function<int(Ui &)> &body, c
         if (k.pinstripe) ui.fill({x + 2 * S, y + 2 * S, dw, dh}, k["dark"]);
         if (k.soft) {
             // the window behind dims; the dialog is a card floating over it
-            if (ui.drawing) ui.img.rect(0, 0, W, H, {0, 0, 0}, k.dark ? 0.45 : 0.28);
             ui.shadow(outer, 16 * S, 18 * S, k.dark ? 0.6 : 0.22);
             ui.rrect(outer, 16 * S, k["card"], k.dark ? k["edge"] : k["line"], S);
         } else

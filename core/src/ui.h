@@ -102,6 +102,7 @@ public:
     // A dialog: runs body (which lays out its own box) over a picture of the window until it sets done.
     void modal(const std::function<void(bool &done)> &body);
     int modal_depth() const { return modal_depth_; }
+    void dim_behind(double alpha) { dim_next_ = alpha; }   // the next modal() dims the window behind it
     // a function to run in ms milliseconds (returns an id for cancel())
     int after(int ms, std::function<void()> fn);
     void cancel(int id);
@@ -255,6 +256,7 @@ private:
     };
 
     bool quitting_ = false, again_ = false, see_focus_ = false;
+    double dim_next_ = 0;
     int modal_depth_ = 0;
     uint64_t pass_ = 0;
     std::vector<Id> ids_;

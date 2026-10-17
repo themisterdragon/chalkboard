@@ -219,13 +219,23 @@ void Ui::gradient(const Rect &r, double radius, Color top, Color bottom, double 
 
 void Ui::shadow(const Rect &r, double radius, double depth, double strength) {
     if (!drawing || depth <= 0) return;
-    // rings of fading darkness, a little lower than the box (light from above)
-    int steps = std::max(2, (int)std::lround(depth / std::max(1, S())));
-    double each = strength / steps;
+    // a few rings of fading darkness around the box (not under it: the box covers that), a little
+    // lower than the box, as if lit from above
+    const int steps = 5;
+    double y_off = depth * 0.3;
+    Rect inner{r.x, r.y + y_off, r.w, r.h};
+    raster::Path hole;
+    round_path(hole, inner, radius);
+    auto ct = hole.contours_[0];
+    std::reverse(ct.begin(), ct.end());
     for (int i = steps; i >= 1; i--) {
         double d = depth * i / steps;
-        Rect o{r.x - d * 0.6, r.y - d * 0.35 + depth * 0.35, r.w + d * 1.2, r.h + d * 1.0};
-        rrect_a(o, radius + d, {0, 0, 0}, each * (1.0 - (double)(i - 1) / steps) + each * 0.15);
+        Rect o{inner.x - d * 0.7, inner.y - d * 0.5, inner.w + d * 1.4, inner.h + d * 1.2};
+        raster::Path p;
+        round_path(p, o, radius + d);
+        p.contours_.push_back(ct);
+        double t = 1.0 - (double)(i - 1) / steps;   // stronger nearer the box
+        img.fill(p, {0, 0, 0}, strength / steps * (0.4 + t));
     }
 }
 
@@ -798,6 +808,10 @@ void Ui::modal(const std::function<void(bool &done)> &body) {
     // over the window as last drawn: not a dialog that just closed (one dialog right after
     // another would otherwise darken the window behind twice)
     raster::Image under = modal_depth_ == 0 && base_.w == img.w && base_.h == img.h ? base_ : img;
+    if (dim_next_ > 0) {   // the window behind, dimmed once (not on every frame)
+        under.rect(0, 0, under.w, under.h, {0, 0, 0}, dim_next_);
+        dim_next_ = 0;
+    }
     // everything the pass that opened the dialog is in the middle of, to carry on with afterward
     auto ids = ids_;
     auto layouts = layouts_;
