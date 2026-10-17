@@ -1216,7 +1216,17 @@ static int message(Ui &ui, const std::string &title, const std::string &msg, con
             double tw = 0;
             for (const auto &l : lines) tw = std::max(tw, k.f->width(l));
             Rect r = u.place(is + 14 * S + std::ceil(tw) + 2, std::max(is, lines.size() * k.line));
-            if (const auto *rows = icon(icon_name)) u.pixel_art(*rows, icon_color, r.x, r.y, (int)iz);
+            if (k.soft) {
+                // a round badge: i, ?, or ! (a warning in amber, the others in the highlight color)
+                Rect b{r.x, r.y, is, is};
+                bool warn = icon_name == "warn";
+                Color bg = warn ? fit(hex("#D98A00"), {k["card"]}, 3.0) : k["sel"];
+                Color fg = warn ? (luminance(bg) > 0.4 ? Color{0, 0, 0} : Color{1, 1, 1}) : k["seltext"];
+                u.oval(b, bg, {}, 0, true, false);
+                std::string mark = warn ? "!" : icon_name == "ask" ? "?" : "i";
+                u.text_in(*k.fhead, b, mark, fg, CENTER);
+            } else if (const auto *rows = icon(icon_name))
+                u.pixel_art(*rows, icon_color, r.x, r.y, (int)iz);
             double y = r.y;
             for (const auto &l : lines) {
                 u.text(*k.f, r.x + is + 14 * S, std::round(y + k.f->ascent), l, k["text"]);

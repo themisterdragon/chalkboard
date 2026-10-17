@@ -439,6 +439,7 @@ void App::enter_terminal(bool boot) {
     stack_.clear();
     trail_.clear();
     view_.reset();
+    section_.clear();
     do_show(make_home(), false);
     if (text_px() != text_before) set_look();   // the text size changed in the terminal view
     else ui.again();

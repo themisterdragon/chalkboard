@@ -1,127 +1,192 @@
-# Every screen of the window app, at 1180x800: open a lesson and use each of its buttons, the
-# other sections, the terminal view, zoom, the menus, and resizing. (Coordinates are for the
-# Bevel look; "shot" saves a picture to look over.) Run: sh core/tests/run_gui.sh
-key 1 ctrl
-wait 100
-click 135 249
-wait 150
-key down
-key return
-wait 300
-click 900 188
-key end
-type  (checked)
-key b ctrl
-shot 20-edited
-click 66 123
-wait 300
-shot 21-preview
-key escape
-wait 150
-click 153 123
-wait 300
-shot 22-export
-key escape
-wait 150
-click 255 123
+# Every screen of the window app, at 1180x800 in the Modern look (run_gui.sh sets the copy's look
+# to Modern, light): Today and its week, the sidebar's pages, a lesson and each of its buttons, the
+# dialogs, an assessment, the standards, settings, the calendar, the terminal view, the other
+# looks, dark mode, zoom, the menus, and resizing. "shot" saves a picture to look over.
+# Run: sh core/tests/run_gui.sh core/tests/walkthrough.txt path/to/data.json
 wait 400
-shot 23-board
-wait 15000
-shot 23b-board-done
-key return
+shot 00-today
+click 1117 212
+wait 200
+shot 01-next-week
+click 1050 212
+wait 200
+# ---- Lesson Plans: a class, then a lesson
+click 100 212
 wait 300
-wait 150
-click 376 123
+shot 10-classes
+click 350 245
+wait 300
+shot 11-class-list
+dbl 420 290
+wait 400
+shot 12-lesson
+wheel 700 500 8
+wait 200
+shot 13-lesson-scrolled
+wheel 700 500 -8
+wait 200
+click 286 132
+wait 400
+shot 14-preview
+key escape
+wait 200
+click 379 132
+wait 400
+shot 15-export
+key escape
+wait 200
+click 648 322
+wait 400
+shot 16-date-picker
+key escape
+wait 200
+click 357 440
 wait 600
-shot 24-makeup
+shot 17-standards-picker
+key escape
+wait 200
+click 752 132
+wait 300
+shot 18-sections
+key escape
+wait 200
+click 1008 132
+wait 300
+shot 19-more-menu
+key escape
+wait 200
+click 483 132
+wait 400
+shot 20-board-slide
 wait 15000
-shot 24b-makeup-done
-key return
-wait 300
-wait 150
-click 505 123
-wait 300
-shot 25-sections
+shot 20b-board-done
 key escape
-wait 150
-click 518 248
 wait 300
-shot 26-calendar
+click 611 132
+wait 600
+shot 21-makeup
+wait 15000
+shot 21b-makeup-done
 key escape
-wait 150
-click 122 326
 wait 300
-shot 27-standards-picker
-key escape
-wait 150
-wheel 600 500 10
-wait 150
-shot 28-scrolled
-wheel 600 500 40
-wait 150
-shot 29-bottom
+# ---- Today's buttons
+click 75 170
+wait 300
+click 495 138
+wait 400
+shot 22-day-slideshow
 key escape
 wait 200
+click 650 138
+wait 400
+shot 23-curriculum-map
 key escape
 wait 200
-click 960 123
+# ---- Calendar
+click 84 296
 wait 300
-shot 30-dayslides
-key escape
-wait 150
-click 100 157
-wait 300
-shot 31-map
-key escape
-wait 150
-key 2 ctrl
+shot 30-calendar
+key pgdn
 wait 200
+shot 31-next-month
+key home
+wait 200
+# ---- Assessments
+click 98 254
+wait 300
 shot 40-assessments
-key n ctrl shift
+dbl 400 244
+wait 400
+shot 41-assessment
+key n ctrl+shift
 wait 300
-shot 41-new-assessment
+shot 42-new-assessment
 key escape
-wait 150
-key 3 ctrl
 wait 200
+# ---- Standards, Settings
+click 88 338
+wait 300
 type wri
 wait 200
-shot 42-standards-search
-key 4 ctrl
-wait 200
-shot 43-settings
-key w ctrl shift
-wait 400
-shot 50-terminal
-type 1
+shot 43-standards-search
+click 80 684
 wait 300
-shot 51-terminal-lessons
-key escape
+shot 44-settings
+wheel 700 500 20
 wait 200
-key w ctrl shift
+shot 45-settings-more
+wheel 700 500 60
+wait 200
+shot 46-settings-bottom
+# ---- the terminal view and back (the boot animation eats short waits, so many of them)
+key w ctrl+shift
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+wait 100
+shot 50-terminal
+key w ctrl+shift
 wait 400
-shot 52-back-window
+shot 51-back-window
+# ---- the other looks (View menu, by first letter), dark mode, zoom
+key v alt
+key g
+key return
+wait 400
+shot 60-glossy
+key v alt
+key p
+key return
+wait 400
+shot 61-pinstripe
+key v alt
+key m
+key return
+wait 400
+key v alt
+key d
+key return
+wait 400
+shot 62-modern-dark
 key = ctrl
 key = ctrl
 wait 200
-shot 53-bigger
+shot 63-bigger
 key - ctrl
 key - ctrl
+# ---- the menus
 click 22 12
 wait 200
-shot 60-file-menu
+shot 70-file-menu
 key escape
-click 140 12
+click 102 12
 wait 200
-shot 61-view-menu
+shot 71-go-menu
 key escape
 click 186 12
 wait 200
-shot 62-help-menu
+shot 72-help-menu
 key escape
+# ---- small and large windows
 size 820 600
 wait 300
-shot 70-small
+shot 80-small
 size 1500 950
 wait 300
-shot 71-large
+shot 81-large

@@ -441,6 +441,7 @@ void run_setup(App &app) {
     }
     if (changed_look) {
         st["gui_skin"] = look;
+        st["gui_v3_look"] = true;   // picked here: no "new look" note later
         st["gui_theme"] = theme;
         app.set_look();
     }

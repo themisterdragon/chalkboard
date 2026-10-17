@@ -847,6 +847,23 @@ void App::run() {
         ui.after(300, [this, w] { alert(ui, "Chalkboard", w, "warn"); });
     } else if (first_time)
         ui.after(300, [this] { run_setup(*this); });
+    else if (!settings().has("gui_v3_look")) {
+        // Chalkboard 3 has a new main look: someone on Bevel (the old default) gets Modern once,
+        // and can go straight back
+        settings()["gui_v3_look"] = true;
+        if (settings().s("gui_skin") == "bevel") {
+            settings()["gui_skin"] = "modern";
+            set_look();
+            ui.after(400, [this] {
+                if (!confirm(ui, "A New Look",
+                             "Chalkboard has a fresh new look, with a sidebar and a Today page that shows your week.\n\nYou can switch looks any "
+                             "time from the View menu or Settings.",
+                             "Keep the New Look", "Go Back to Bevel", "info"))
+                    set_look("gui_skin", "bevel");
+            });
+        } else
+            save();
+    }
     if (settings().s("gui_mode") == "terminal" && !first_time) ui.after(50, [this] { enter_terminal(!no_boot_); });
     ui.after(2000, [this] { watch_file(); });
     ui.after(3000, [this] { watch_os_look(); });
