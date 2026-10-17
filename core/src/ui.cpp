@@ -400,6 +400,9 @@ Rect Ui::end() {
     finish_row(L);
     layouts_.pop_back();
     double used = std::max(0.0, L.y - L.gap - L.body.y);
+    // inside a scrolling area: its content reaches at least as far down as this did (so a form
+    // laid out in a column of its own inside a scroll still scrolls)
+    if (!scroll_stack_.empty()) scroll_stack_.back().bottom = std::max(scroll_stack_.back().bottom, L.body.y + used);
     return {L.body.x, L.body.y, std::max(0.0, L.max_x - L.body.x), used};
 }
 
@@ -525,7 +528,7 @@ void Ui::begin_scroll(Id id, const Rect &r, double max_width) {
     double w = max_width > 0 ? std::min(inner_w, max_width) : inner_w;
     begin({r.x, r.y - s.y, w, 1e9}, -1);
     lay().gap = 0;
-    scroll_stack_.push_back({id, r, r.y - s.y});
+    scroll_stack_.push_back({id, r, r.y - s.y, r.y - s.y});
     s.bar = bar ? Rect{r.r() - sbw, r.y, sbw, r.h} : Rect{};
 }
 
@@ -538,7 +541,7 @@ void Ui::end_scroll() {
     layouts_.pop_back();
     unclip();
     Scroll &s = scrolls_[fr.id];
-    double content = std::max(0.0, L.y - fr.start);
+    double content = std::max(0.0, std::max(L.y, fr.bottom) - fr.start);
     bool had_bar = s.content > s.view + 0.5;
     if (std::fabs(content - s.content) > 0.5) {
         s.content = content;
@@ -761,6 +764,7 @@ void Ui::run(const std::function<void()> &frame) {
             if (!again_) break;
         }
         win.present(img);
+        base_ = img;   // the window with no dialog over it (what a dialog opens over)
     };
     draw();
     while (!quitting_) {
@@ -791,7 +795,9 @@ void Ui::run(const std::function<void()> &frame) {
 }
 
 void Ui::modal(const std::function<void(bool &done)> &body) {
-    raster::Image under = img;
+    // over the window as last drawn: not a dialog that just closed (one dialog right after
+    // another would otherwise darken the window behind twice)
+    raster::Image under = modal_depth_ == 0 && base_.w == img.w && base_.h == img.h ? base_ : img;
     // everything the pass that opened the dialog is in the middle of, to carry on with afterward
     auto ids = ids_;
     auto layouts = layouts_;

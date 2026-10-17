@@ -282,9 +282,9 @@ public:
         tool_gap(ui);
         format_bar(ui);
         tool_gap(ui);
-        label_mid(ui, "Changes save by themselves.", false, true);
+        if (toolbar_room(ui, k.f->width("Changes save by themselves.") + 4 * S)) label_mid(ui, "Changes save by themselves.", false, true);
         end_toolbar(ui);
-        ui.fill(ui.cut_top(S), k["dark"]);
+        ui.fill(ui.cut_top(S), k.soft ? k["line"] : k["dark"]);
         Rect rest = ui.remaining();
         ui.end();
         if (first_) {

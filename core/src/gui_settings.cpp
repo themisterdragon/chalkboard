@@ -239,6 +239,19 @@ private:
             ui.place(0, used.h);
             ui.pop_id();
         }
+        if (k.modern) {
+            ui.space(8 * S);
+            ui.flow();
+            label_mid(ui, "Highlight color:");
+            std::vector<std::pair<std::string, std::string>> aopts = {
+                {"chalkboard", "Chalkboard green"}, {"school", "My school's colors"}, {"system", "My computer's accent color"}};
+            std::string acc = st().s("gui_accent");
+            if (acc != "school" && acc != "system") acc = "chalkboard";
+            if (dropdown(ui, "accent", aopts, acc, 24)) look("gui_accent", acc);
+            ui.flow(false);
+            if (acc == "school" && app.accent().empty())
+                para(ui, "Your school colors are gray or not picked yet, so Chalkboard green is used. Pick them under Sections & School Colors.", true);
+        }
         ui.space(8 * S);
         label(ui, "Light or dark (every look has both):");
         ui.flow();

@@ -93,12 +93,87 @@ bool setup_needed(App &app) {
     return true;
 }
 
+// The Look step: a little picture of each look (its sidebar, a card, its main button), to click.
+static void look_cards(Ui &u, std::string &look, bool dark) {
+    Skin &k = u.sk();
+    int S = u.S();
+    static std::map<std::string, std::unique_ptr<Skin>> cache;   // (no fonts are drawn with these)
+    const auto &all = skins();
+    double gap = 12 * S;
+    int cols = std::max(1, std::min((int)all.size(), (int)((u.width() + gap) / (118 * S + gap))));
+    double cw = (u.width() - (cols - 1) * gap) / cols, ph = cw * 0.56, ch = ph + k.f->line + 16 * S;
+    Rect row;
+    for (size_t i = 0; i < all.size(); i++) {
+        if (i % (size_t)cols == 0) {
+            if (i) u.space(gap);
+            row = u.place(0, ch);
+        }
+        const std::string kind = all[i][0];
+        std::string key = kind + (dark ? ":d" : ":l");
+        if (!cache.count(key)) cache[key] = make_skin(kind, 1, 11, dark, "");
+        Skin &p = *cache[key];
+        Rect c{row.x + (double)(i % (size_t)cols) * (cw + gap), row.y, cw, ch};
+        Id id = u.id("look:" + kind);
+        bool go = u.hit(id, c, true, true);
+        bool focus = u.focused(id);
+        if (focus && (u.key(plat::K_RETURN) || u.key(' '))) go = true;
+        if (go) look = kind;
+        if (u.over(c)) u.cursor(plat::HAND);
+        if (!u.drawing) continue;
+        bool on = look == kind;
+        Rect pic{c.x, c.y, c.w, ph};
+        // the picture: desk, sidebar, a card, the main button
+        u.clip(pic);
+        if (p.glossy) u.gradient(pic, 0, p["side_top"], p["window"]);
+        else u.fill(pic, p.soft ? p["window"] : p["desk"]);
+        Rect win = p.soft ? pic : pic.in(6 * S);
+        if (!p.soft) {
+            u.fill(win, p["dark"]);
+            u.fill(win.in(S), p["window"]);
+            u.fill({win.x + S, win.y + S, win.w - 2 * S, 9.0 * S}, p["title"]);
+            if (p.pinstripe)
+                for (double y = win.y + 3 * S; y < win.y + 9 * S; y += 2 * S) u.fill({win.x + 2 * S, y, win.w - 4 * S, (double)S}, p["dark"]);
+            win = {win.x + S, win.y + 10 * S, win.w - 2 * S, win.h - 11 * S};
+        }
+        Rect side{win.x, win.y, win.w * 0.3, win.h};
+        if (p.glossy) u.gradient(side, 0, p["side_top"], p["side_bot"]);
+        else u.fill(side, p["sidebar"]);
+        Rect nav{side.x + 4 * S, side.y + 8 * S, side.w - 8 * S, 7.0 * S};
+        if (p.soft) u.rrect(nav, p.glossy ? 3.5 * S : 2 * S, p["navsel"], {}, 0, true, false);
+        else u.fill(nav, p["navsel"]);
+        for (int j = 1; j < 4; j++) u.fill({side.x + 6 * S, nav.b() + j * 8 * S, side.w * 0.55, 2.0 * S}, p["sidebar_text"]);
+        Rect card{side.r() + 8 * S, win.y + 10 * S, win.r() - side.r() - 16 * S, win.h - 20 * S};
+        if (p.soft) u.rrect(card, 5 * S, p["card"], p["line"], S);
+        else {
+            u.fill(card, p["card"]);
+            u.box(card, p["dark"], S);
+        }
+        for (int j = 0; j < 2; j++) u.fill({card.x + 7 * S, card.y + 8 * S + j * 7 * S, card.w * (j ? 0.4 : 0.6), 2.0 * S}, p["text"]);
+        Rect btn{card.x + 7 * S, card.b() - 16 * S, card.w * 0.42, 10.0 * S};
+        if (p.glossy) u.gradient(btn, btn.h / 2, p["gel_top"], p["gel_bot"]);
+        else if (p.soft) u.rrect(btn, 3 * S, p["sel"], {}, 0, true, false);
+        else if (p.bevel) {
+            u.fill(btn, p["dark"]);
+            u.fill(btn.in(S), p["light"]);
+            u.fill({btn.x + 2 * S, btn.y + 2 * S, btn.w - 3 * S, btn.h - 3 * S}, p["face"]);
+        } else
+            u.rrect(btn, 3 * S, p["face"], p["dark"], S);
+        u.unclip();
+        // the frame around it: thick in the highlight color when it's the one picked
+        if (on) u.rrect(pic.in(-3 * S), 9 * S, {}, k["sel"], 3 * S, false, true);
+        else u.rrect(pic, 6 * S, {}, k.soft ? k["line"] : k["edge"], S, false, true);
+        if (focus) u.rrect(pic.in(-6 * S), 11 * S, {}, k["focus"], 2 * S, false, true);
+        std::string name = all[i][1];
+        u.text_in(on ? *k.fb : *k.f, {c.x, pic.b() + 6 * S, c.w, k.f->line + 4 * S}, u.elide(*k.f, name, c.w), k["text"], CENTER);
+    }
+}
+
 void run_setup(App &app) {
     Value &st = app.settings();
     std::map<std::string, std::string> v;
     for (const char *k : {"teacher", "school", "course", "subject", "grades", "primary_color", "secondary_color", "text_color"}) v[k] = store::text_of(st.get(k));
     if (v["grades"].empty()) v["grades"] = "9-10";
-    std::string look = st.s("gui_skin").empty() ? "bevel" : st.s("gui_skin"), theme = app.theme(), mode = st.s("gui_mode").empty() ? "window" : st.s("gui_mode");
+    std::string look = st.s("gui_skin").empty() ? "modern" : st.s("gui_skin"), theme = app.theme(), mode = st.s("gui_mode").empty() ? "window" : st.s("gui_mode");
     std::string materials = st.s("default_materials");
     if (materials.empty()) materials = "- Notebook\n- Pencil or pen\n- Chromebook";
     install::Plan plan = install::plan();
@@ -257,9 +332,8 @@ void run_setup(App &app) {
                     }
                     text_area(u, "materials", materials, 8, 8, false);
                 } else if (pg == "look") {
-                    head("Look", "Pick the look you like. You can switch any time from the View menu.");
-                    for (const auto &s : skins())
-                        if (radio(u, s[1] + ": " + s[2], look == s[0])) look = s[0];
+                    head("Look", "Modern is Chalkboard's own look; the others are for fun. You can switch any time from the View menu.");
+                    look_cards(u, look, theme == "dark" || (theme == "system" && plat::system_dark()));
                     u.space(12 * S);
                     label(u, "Light or dark:", true);
                     u.space(2 * S);
@@ -274,9 +348,10 @@ void run_setup(App &app) {
                     head("Window or Terminal", std::string("Chalkboard works two ways, on the same lessons and assessments. You can switch any time from the View "
                                                            "menu or with ") + mod + "+Shift+W.");
                     for (auto m : std::vector<std::vector<std::string>>{
-                             {"window", "Window view (recommended)", "Buttons, menus, and forms you click through."},
-                             {"terminal", "Terminal view",
-                              "A retro green screen you run from the keyboard: press a number or letter for each choice. Pick a school mascot in its Settings."}}) {
+                             {"window", "Window view (recommended)", "Click through your lessons, your week, and your calendar. This is Chalkboard's main view."},
+                             {"terminal", "Terminal view (for keyboard fans)",
+                              "A retro green screen run entirely from the keyboard: press a number or letter for each choice. Handy if you'd rather "
+                              "never touch the mouse."}}) {
                         u.space(8 * S);
                         if (radio(u, m[1], mode == m[0])) mode = m[0];
                         u.begin({u.remaining().x + 24 * S, u.remaining().y, u.width() - 24 * S, 1e9}, 0);
@@ -296,7 +371,7 @@ void run_setup(App &app) {
                     std::string name = st.s("teacher").empty() ? "you" : st.s("teacher");
                     head("All Set!", "Chalkboard is ready for " + name + ". Click Finish to start planning.");
                     for (const char *t : {"Lesson Plans: plan a lesson, then export it or make a board slide.", "Assessments: build quizzes, tests, and worksheets.",
-                                          "Back and Home are at the top of every window."}) {
+                                          "The sidebar on the left takes you anywhere, and Today shows your week."}) {
                         para(u, std::string("\xE2\x80\xA2  ") + t, false, 500 * S);
                         u.space(2 * S);
                     }

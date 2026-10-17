@@ -539,9 +539,9 @@ public:
         tool_gap(ui);
         format_bar(ui);
         tool_gap(ui);
-        label_mid(ui, "Changes save by themselves.", false, true);
+        if (toolbar_room(ui, k.f->width("Changes save by themselves.") + 4 * S)) label_mid(ui, "Changes save by themselves.", false, true);
         end_toolbar(ui);
-        ui.fill(ui.cut_top(S), k["dark"]);
+        ui.fill(ui.cut_top(S), k.soft ? k["line"] : k["dark"]);
         Rect rest = ui.remaining();
         ui.end();
         double lw = std::max(320.0 * S, std::min(440.0 * S, rest.w * 0.4));
@@ -626,9 +626,9 @@ private:
         if (ui.drawing) {
             Font &f = *k.fb;
             if (k.soft) {
-                ui.fill(g, k["card"]);
-                ui.box(g, k["shadow"], S);
-                ui.text(f, g.x + 13 * S, g.y + 9 * S + f.ascent, "Questions", k["text"]);
+                ui.shadow(g, 12 * S, 6 * S, k.dark ? 0.35 : 0.07);
+                ui.rrect(g, 12 * S, k["card"], k["line"], S);
+                ui.text(*k.fhead, g.x + 18 * S, g.y + 14 * S + k.fhead->ascent, "Questions", k["text"]);
             } else {
                 double ty = std::round(g.y + f.line / 2);
                 Rect fr{g.x, ty, g.w, g.b() - ty};
@@ -642,9 +642,9 @@ private:
                 ui.text(f, g.x + 7 * S, g.y + f.ascent, " Questions ", k["text"]);
             }
         }
-        double padx = k.soft ? 13 * S : 10 * S;
-        Rect in{g.x + padx, g.y + (k.soft ? k.fb->line + 16 * S : k.fb->line + 6 * S), g.w - 2 * padx, 0};
-        in.h = g.b() - in.y - (k.soft ? 10 * S : 8 * S);
+        double padx = k.soft ? 18 * S : 10 * S;
+        Rect in{g.x + padx, g.y + (k.soft ? k.fhead->line + 24 * S : k.fb->line + 6 * S), g.w - 2 * padx, 0};
+        in.h = g.b() - in.y - (k.soft ? 16 * S : 8 * S);
         ui.begin(in, 0);
         Value &qs = a()["questions"];
         int n = (int)qs.size();
@@ -847,7 +847,7 @@ public:
         tool_gap(ui);
         label_mid(ui, kind_help(a().s("kind")), false, true);
         end_toolbar(ui);
-        ui.fill(ui.cut_top(S), k["dark"]);
+        ui.fill(ui.cut_top(S), k.soft ? k["line"] : k["dark"]);
         Rect rest = ui.remaining();
         ui.end();
         if (first_) {

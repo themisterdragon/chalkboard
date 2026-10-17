@@ -175,9 +175,28 @@ void standards_field(App &app, Ui &ui, const std::string &key, const std::functi
     for (size_t i = 0; i < cs.size(); i++) {
         ui.push_id((Id)i + 1);
         double rm = ui.btn_w("Remove", true);
-        double tw = std::max(200.0 * S, ui.width() - cw - 10 * S - rm - 10 * S);
         std::string t = app.store.std_text(cs[i]);
         if (t.empty()) t = "(not in the standards library)";
+        auto remove = [&](const Rect &c) {
+            if (button_at(ui, ui.id("remove"), {c.r() - rm, c.y + S, rm, ui.ctl_h() - 6 * S}, "Remove", true, false, true)) {
+                auto now = codes();
+                now.erase(std::remove(now.begin(), now.end(), cs[i]), now.end());
+                set_codes(now);
+            }
+        };
+        if (ui.width() - cw - rm - 20 * S < 220 * S) {
+            // a narrow column: the code and Remove on one line, the standard's words under them
+            ui.row({-1, rm}, ui.ctl_h());
+            Rect a = ui.place(0, ui.ctl_h());
+            if (ui.drawing) ui.text_in(*k.fb, a, cs[i], k["text"]);
+            remove(ui.place(0, ui.ctl_h()));
+            ui.row({});
+            para(ui, t);
+            ui.space(8 * S);
+            ui.pop_id();
+            continue;
+        }
+        double tw = ui.width() - cw - 10 * S - rm - 10 * S;
         auto lines = ui.wrap(*k.f, t, tw);
         double h = std::max(ui.ctl_h(), lines.size() * k.f->line) + 2 * S;
         ui.row({cw + 10 * S, tw, -1}, h);
@@ -186,12 +205,7 @@ void standards_field(App &app, Ui &ui, const std::string &key, const std::functi
         Rect b = ui.place(0, h);
         if (ui.drawing)
             for (size_t j = 0; j < lines.size(); j++) ui.text(*k.f, b.x, b.y + S + j * k.f->line + k.f->ascent, lines[j], k["text"]);
-        Rect c = ui.place(0, h);
-        if (button_at(ui, ui.id("remove"), {c.r() - rm, c.y + S, rm, ui.ctl_h() - 6 * S}, "Remove", true, false, true)) {
-            auto now = codes();
-            now.erase(std::remove(now.begin(), now.end(), cs[i]), now.end());
-            set_codes(now);
-        }
+        remove(ui.place(0, h));
         ui.pop_id();
     }
     ui.row({});
@@ -318,21 +332,53 @@ void ItemList::picker(Ui &ui, const Rect &r) {
     ui.space(4 * S);
     para(ui, found.empty() ? "No " + noun_ + "s yet. Click New to make your first one." : "Pick a class to see its " + noun_ + "s and add new ones.", false,
          600 * S);
-    ui.space(8 * S);
-    ui.flow();
+    ui.space(10 * S);
+    // a card for each class: its color, its name, how many it has
+    double gap = 14 * S, ch = k.fhead->line + k.f->line + 34 * S;
+    int cols = std::max(1, (int)((ui.width() + gap) / (240 * S + gap)));
+    double cw = std::min(340.0 * S, (ui.width() - (cols - 1) * gap) / cols);
+    Rect row;
     for (size_t i = 0; i < found.size(); i++) {
         const auto &f = found[i];
-        std::string t = (f.first.empty() ? "No class yet" : f.first) + "   (" + std::to_string(f.second) + " " + noun_ + (f.second == 1 ? "" : "s") + ")";
-        ui.push_id((Id)i + 1);
+        if (i % (size_t)cols == 0) {
+            if (i) ui.space(gap);
+            row = ui.place(0, ch);
+        }
+        Rect c{row.x + (double)(i % (size_t)cols) * (cw + gap), row.y, cw, ch};
+        std::string name = f.first.empty() ? "No class yet" : f.first;
+        Id id = ui.id("class:" + name);
         if (focus_list_ && i == 0) {   // the keyboard starts on the first class
-            ui.focus(ui.id("btn:" + t));
+            ui.focus(id);
             focus_list_ = false;
         }
-        if (button(ui, t, true, false, false, 220)) open_class(true, f.first);
-        ui.pop_id();
-        ui.place(8 * S, 1);
+        bool go = ui.hit(id, c, true, true);
+        bool focus = ui.focused(id);
+        if (focus && (ui.key(plat::K_RETURN) || ui.key(' '))) go = true;
+        bool hot = ui.over(c);
+        if (hot) ui.cursor(plat::HAND);
+        if (ui.drawing) {
+            Color stripe = class_color(k, f.first);
+            if (k.soft) {
+                ui.shadow(c, 12 * S, hot ? 10 * S : 6 * S, k.dark ? 0.35 : (hot ? 0.12 : 0.07));
+                ui.rrect(c, 12 * S, hot ? mix(k["card"], k["text"], 0.03) : k["card"], k["line"], S);
+                ui.rrect({c.x + 14 * S, c.y + 16 * S, 5.0 * S, c.h - 32 * S}, 2.5 * S, stripe, {}, 0, true, false);
+            } else {
+                ui.fill(c, hot ? k["selsoft"] : k["card"]);
+                ui.box(c, k["dark"], S);
+                ui.fill({c.x + 8 * S, c.y + 12 * S, 5.0 * S, c.h - 24 * S}, stripe);
+            }
+            Color fg = !k.soft && hot && hex(k["selsoft"]) == hex(k["sel"]) ? k["seltext"] : k["text"];
+            Color dim = !k.soft && hot && hex(k["selsoft"]) == hex(k["sel"]) ? k["seltext"] : k["dim"];
+            double tx = c.x + 32 * S, tw = c.w - 44 * S, ty = c.y + (c.h - k.fhead->line - k.f->line - 2 * S) / 2;
+            ui.text(*k.fhead, tx, std::round(ty + k.fhead->ascent), ui.elide(*k.fhead, name, tw), fg);
+            ui.text(*k.f, tx, std::round(ty + k.fhead->line + 2 * S + k.f->ascent), plural(f.second, noun_), dim);
+            if (focus) {
+                if (k.soft) ui.rrect(c.in(-3 * S), 14 * S, {}, k["focus"], 2 * S, false, true);
+                else ui.dotted(c.in(3 * S), k["focus"]);
+            }
+        }
+        if (go) open_class(true, f.first);
     }
-    ui.flow(false);
     ui.end_scroll();
     (void)k;
     app.status(std::to_string(found.size()) + " class" + (found.size() != 1 ? "es" : ""));

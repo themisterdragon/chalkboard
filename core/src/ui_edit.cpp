@@ -770,6 +770,11 @@ void format_bar(Ui &ui) {
         int bit;
         int style;
     };
+    {   // all three or none (in a toolbar that's run out of room)
+        double all = 0;
+        for (const char *l : {"B", "I", "U"}) all += std::max(26.0 * S, k.fb->width(l) + 16 * S) + (k.soft ? 6 * S : 0) + 6 * S;
+        if (!toolbar_room(ui, all)) return;
+    }
     for (const B &b : {B{"B", 'b', markup::B, 1}, B{"I", 'i', markup::I, 2}, B{"U", 'u', markup::U, 0}}) {
         Font &f = b.style ? k.font(b.style) : *k.fsmall;
         double w = std::max(26.0 * S, f.width(b.label) + 16 * S), h = k.fsmall->line + 8 * S;

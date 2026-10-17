@@ -89,6 +89,7 @@ public:
     explicit Ui(plat::Window &w);
     plat::Window &win;
     raster::Image img;           // the window's pixels
+    raster::Image base_;         // the window as last drawn with no dialog open
     std::unique_ptr<Skin> skin;
     Skin &sk() { return *skin; }
     int S() const { return skin->S; }
@@ -245,6 +246,7 @@ private:
         Id id;
         Rect r;
         double start;
+        double bottom;  // the lowest any layout inside it reached
     };
     struct Timer {
         int id;
@@ -305,6 +307,8 @@ void begin_toolbar(Ui &ui);
 // a toolbar button (primary: the screen's main action, in the accent color); buttons that don't fit go in "More"
 bool tool(Ui &ui, const std::string &text, bool enabled = true, bool primary = false);
 void tool_gap(Ui &ui);
+// something else in a toolbar, w wide: true when it fits on the row (false: leave it out)
+bool toolbar_room(Ui &ui, double w);
 void end_toolbar(Ui &ui);
 
 // a pop-up menu at (x, y): (label, enabled) ("" = a separator); returns the index picked or -1

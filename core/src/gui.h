@@ -61,6 +61,7 @@ public:
 
     // ---- the look
     void apply_skin();
+    std::string accent();   // Modern's highlight color ("" = Chalkboard green)
     void set_look(const std::string &key = "", const Value &v = Value());   // change a setting, then rebuild
     void zoom(int d);
     int text_px();
@@ -127,7 +128,6 @@ private:
 
     void frame();
     void desk(const Rect &r);
-    std::string accent();               // Modern's highlight color ("" = Chalkboard green)
     double sidebar_w(double body_w);
     void sidebar(const Rect &r);        // gui_shell.cpp
     Rect page_header(const Rect &r);    // returns the page's area under it
@@ -155,6 +155,7 @@ extern const std::vector<std::pair<std::string, std::string>> SECTIONS;   // (ke
 Factory section_factory(const std::string &key);
 Factory make_home();      // Today (gui_shell.cpp)
 Factory calendar_page();  // the month of lessons (gui_shell.cpp)
+ui::Color class_color(ui::Skin &k, const std::string &course);   // each class's own color (gui_shell.cpp)
 void line_icon(Ui &ui, const std::string &name, const Rect &box, Color c);   // "today", "lessons", ... (gui_shell.cpp)
 extern const std::vector<std::pair<std::string, std::string>> SORT_LABEL;
 

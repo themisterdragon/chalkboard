@@ -270,6 +270,10 @@ bool dropdown(Ui &ui, const std::string &key, const std::vector<std::pair<std::s
         h += 10 * S;
     }
     Rect r = ui.place(std::ceil(w), h);
+    // no wider than the room it has (a long option in a narrow column)
+    double room_r = ui.lay().body.r();
+    if (r.r() > room_r && room_r - r.x > 80 * S) r.w = room_r - r.x;
+    w = r.w;
     Id id = ui.id("dd:" + key);
     bool open = ui.hit(id, r, true, enabled && !options.empty());
     bool focus = enabled && ui.focused(id);
@@ -491,6 +495,17 @@ bool tool(Ui &ui, const std::string &text, bool enabled, bool primary) {
     return button(ui, text, enabled, primary);
 }
 
+bool toolbar_room(Ui &ui, double w) {
+    if (g_toolbars.empty()) return true;
+    ToolbarFrame &tb = g_toolbars.back();
+    Ui::Layout &L = ui.lay();
+    if (!tb.spill.empty() || L.x + w > L.body.r() - tb.reserve) {
+        tb.spill.push_back({"", false});   // what comes after goes in More too (a line in the menu)
+        return false;
+    }
+    return true;
+}
+
 void tool_gap(Ui &ui) {
     if (!g_toolbars.empty() && !g_toolbars.back().spill.empty()) return;
     ui.place((ui.sk().soft ? 10 : 4) * ui.S(), 1);
@@ -512,14 +527,16 @@ void end_toolbar(Ui &ui) {
         if (button_at(ui, more, {r.x, r.y, r.w, h}, "More      ")) {
             std::vector<MenuEntry> items;
             for (const auto &it : tb.spill) {
+                if (it.first.empty() && (items.empty() || items.back().label.empty())) continue;
                 MenuEntry e;
                 e.label = it.first;
                 e.enabled = it.second;
                 items.push_back(e);
             }
+            while (!items.empty() && items.back().label.empty()) items.pop_back();
             int got = popup_menu(ui, r.x, r.y + h + 2 * S, items);
             if (got >= 0) {
-                ui.state<ToolbarState>(tb.id).picked = tb.spill[(size_t)got].first;
+                ui.state<ToolbarState>(tb.id).picked = items[(size_t)got].label;
                 ui.again();
             }
         }

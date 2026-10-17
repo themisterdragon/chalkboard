@@ -254,6 +254,8 @@ Rect App::page_header(const Rect &r) {
 
 namespace {
 
+}  // namespace
+
 // each class gets its own color (a stripe beside its lessons), the same everywhere
 Color class_color(Skin &k, const std::string &course) {
     static const char *HUES[] = {"#2F8F5B", "#2C6FD1", "#C2410C", "#8B4CC9", "#B8860B", "#C2185B", "#0E8A8A", "#5B6B7A"};
@@ -262,6 +264,8 @@ Color class_color(Skin &k, const std::string &course) {
     Color c = hex(HUES[course.empty() ? 7 : h % 8]);
     return fit(c, {k["card"], k["window"]}, 3.0);
 }
+
+namespace {
 
 struct DayLesson {
     std::string id, title, course;
@@ -438,8 +442,7 @@ public:
         ui.space(22 * S);
         recent(ui, W);
         ui.space(28 * S);
-        Rect used = ui.end();
-        ui.place(0, used.h + 22 * S);
+        ui.end();
         ui.end_scroll();
     }
 
