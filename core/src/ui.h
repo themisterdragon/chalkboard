@@ -321,7 +321,14 @@ struct MenuEntry {
     std::string keys;   // "Ctrl+N", shown at the right
     bool radio = false;
 };
-int popup_menu(Ui &ui, double x, double y, const std::vector<MenuEntry> &items, double min_w = 0);
+// A menu opened from a menu bar: the bar's titles, so moving onto another title opens that menu
+// instead (popup_menu returns -(10 + its index)), and drawing the open title highlighted.
+struct MenuBarHook {
+    std::vector<Rect> cells;
+    int current = -1;
+    std::function<void(int)> draw;   // draws the bar with title i highlighted
+};
+int popup_menu(Ui &ui, double x, double y, const std::vector<MenuEntry> &items, double min_w = 0, const MenuBarHook *bar = nullptr);
 
 // A list with columns (a table). The caller keeps the rows; this keeps the selection and scroll.
 struct Column {

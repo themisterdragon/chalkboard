@@ -198,10 +198,14 @@ void App::set_look(const std::string &key, const Value &v) {
     save();
     if (!key.empty()) settings()[key] = v;
     save();
-    apply_skin();
-    if (current_) view_ = current_(*this);   // rebuilt in the new look
-    set_title(view_ ? view_->title() : art::APP);
-    ui.again();
+    // the new look (and the screen rebuilt in it) after this pass: whatever asked for it (a menu,
+    // a key, a screen) may still be drawing with the old look's fonts
+    later([this] {
+        apply_skin();
+        if (current_) view_ = current_(*this);
+        set_title(view_ ? view_->title() : art::APP);
+        ui.again();
+    });
 }
 
 void App::zoom(int d) {
@@ -635,28 +639,48 @@ double App::menu_bar(const Rect &r) {
 void App::open_menu(int i, double x, double y) {
     auto ms = menus(*this);
     Skin &k = ui.sk();
+    int S = k.S;
     Font &f = k.pinstripe ? *k.fb : *k.f;
+    double bh = f.line + 8 * S;
+    // where each title sits in the bar (as menu_bar() lays them out)
+    MenuBarHook hook;
+    double cx = 4 * S;
+    for (const auto &m : ms) {
+        double w = f.width(m.label) + 16 * S;
+        hook.cells.push_back({cx, 0, w, bh - S});
+        cx += w;
+    }
+    hook.draw = [&](int cur) {
+        for (size_t j = 0; j < hook.cells.size(); j++) {
+            bool on = (int)j == cur;
+            Rect c = hook.cells[j];
+            ui.fill(c, on ? k["sel"] : (k.bevel ? k["face"] : k.soft ? k["sidebar"] : k["window"]));
+            ui.text_in(f, c, ms[j].label, on ? k["seltext"] : k["text"], CENTER);
+        }
+    };
+    (void)x;
     while (i >= 0 && i < (int)ms.size()) {
-        // where this menu's title sits in the bar
-        double mx = 4 * k.S;
-        for (int j = 0; j < i; j++) mx += f.width(ms[(size_t)j].label) + 16 * k.S;
-        if (x < 0) x = mx;
+        double mx = hook.cells[(size_t)i].x;
         menu_open_ = i;
+        hook.current = i;
         std::vector<MenuEntry> items;
         for (const auto &it : ms[(size_t)i].sub) {
             MenuEntry e;
-            e.label = it.sub.empty() || it.label.empty() ? it.label : it.label + "  \xE2\x96\xB8";
+            e.label = it.sub.empty() || it.label.empty() ? it.label : it.label + "  \xE2\x80\xBA";
             e.enabled = it.enabled;
             e.checked = it.checked;
             e.radio = it.checked || (it.id >= M_SKIN && it.id < M_SKIN + 10) || (it.id >= M_THEME && it.id < M_THEME + 10);
             e.keys = key_label(it.key, it.mods);
             items.push_back(e);
         }
-        int got = popup_menu(ui, mx, y, items, 0);
+        int got = popup_menu(ui, mx, y, items, 0, &hook);
         menu_open_ = -1;
+        if (got <= -10) {   // slid onto another title
+            i = -got - 10;
+            continue;
+        }
         if (got == -2 || got == -3) {   // Left/Right: the next menu over
             i = (i + (got == -2 ? -1 : 1) + (int)ms.size()) % (int)ms.size();
-            x = -1;
             continue;
         }
         if (got >= 0) {
@@ -669,7 +693,7 @@ void App::open_menu(int i, double x, double y) {
                     e.enabled = s.enabled;
                     sub.push_back(e);
                 }
-                int r = popup_menu(ui, mx + 24 * k.S, y + 24 * k.S, sub, 0);
+                int r = popup_menu(ui, mx + 24 * S, y + 24 * S, sub, 0);
                 if (r >= 0 && it.sub[(size_t)r].id) menu_command(it.sub[(size_t)r].id);
             } else
                 menu_command(it.id);

@@ -550,7 +550,7 @@ void end_toolbar(Ui &ui) {
 
 // ----------------------------------------------------------------------------- menus
 
-int popup_menu(Ui &ui, double x, double y, const std::vector<MenuEntry> &items, double min_w) {
+int popup_menu(Ui &ui, double x, double y, const std::vector<MenuEntry> &items, double min_w, const MenuBarHook *bar) {
     Skin &k = ui.sk();
     int S = ui.S();
     Font &f = k.pinstripe ? *k.fb : *k.f;
@@ -587,7 +587,25 @@ int popup_menu(Ui &ui, double x, double y, const std::vector<MenuEntry> &items, 
             if (!items[(size_t)sel].label.empty() && items[(size_t)sel].enabled) return;
         }
     };
+    auto bar_cell = [&](double px, double py) {
+        if (bar)
+            for (size_t j = 0; j < bar->cells.size(); j++)
+                if (bar->cells[j].has(px, py)) return (int)j;
+        return -1;
+    };
     ui.modal([&](bool &done) {
+        // the menu bar: sliding onto another title opens its menu; a click on this one closes
+        int cell = (ui.has(plat::Event::MOVE) || ui.has(plat::Event::DOWN)) ? bar_cell(ui.mx, ui.my) : -1;
+        if (cell >= 0 && cell != bar->current) {
+            result = -(10 + cell);
+            done = true;
+            return;
+        }
+        if (cell >= 0 && ui.has(plat::Event::DOWN)) {
+            result = -1;
+            done = true;
+            return;
+        }
         // input
         if (ui.has(plat::Event::MOVE)) {
             if (box.has(ui.mx, ui.my)) {
@@ -662,6 +680,7 @@ int popup_menu(Ui &ui, double x, double y, const std::vector<MenuEntry> &items, 
         }
         if (!ui.drawing) return;
         // drawing
+        if (bar && bar->draw) bar->draw(bar->current);
         if (k.pinstripe) ui.fill({box.x + 2 * S, box.y + 2 * S, box.w, box.h}, k["dark"]);   // a drop shadow
         if (k.soft) {
             ui.shadow(box, 10 * S, 10 * S, k.dark ? 0.5 : 0.14);
