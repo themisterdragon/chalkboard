@@ -69,7 +69,7 @@ std::unique_ptr<Skin> make_skin(const std::string &kind, int S, int text_px, boo
 // (key, name, about) for each look
 const std::vector<std::vector<std::string>> &skins();
 const std::vector<int> &text_sizes();   // 11 ... 24
-// the WCAG problems of one palette (empty = it passes); for scripts/check_contrast
+// the WCAG problems of one palette (empty = it passes); for --check-contrast
 std::vector<std::string> contrast_problems(const std::string &kind, bool dark, const std::string &accent);
 
 // 16x16 pixel art: icons by name ("lessons", "assessments", "standards", "settings", "folder",

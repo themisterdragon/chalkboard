@@ -1,5 +1,5 @@
 // Glyph widths (1/1000 em) for the standard PDF fonts, cp1252 codes 32-255.
-// Made from src/chalkboard/fontmetrics.py (measured from the metric-compatible URW base35 fonts).
+// Made from Chalkboard 2's fontmetrics.py (measured from the metric-compatible URW base35 fonts).
 #pragma once
 #include <cstring>
 

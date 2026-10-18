@@ -129,7 +129,7 @@ void App::boot() {
             pause(35);
         }
     }
-    std::string kas = "KAS, " + std::to_string(store_.subjects.size()) + " SUBJECTS ";
+    std::string kas = "STANDARDS, " + std::to_string(store_.subjects.size()) + " SUBJECTS ";
     std::vector<std::string> lines = {std::string(art::APP) + " LESSON PLANNING SYSTEM  V" + CHALKBOARD_VERSION,
                                       "",
                                       lpad(kas, 31, '.') + " " + std::to_string(store_.kas_count) + " STANDARDS",
@@ -160,7 +160,7 @@ void App::main_menu() {
     struct Item { std::string key, label; std::function<void()> fn; };
     std::vector<Item> items = {{"1", "LESSON PLANS", [this] { lessons_screen(); }},
                                {"2", "ASSESSMENTS & ASSIGNMENTS", [this] { assessments_screen(); }},
-                               {"3", "STANDARDS LIBRARY  (KAS)", [this] { standards_library(); }},
+                               {"3", "STANDARDS LIBRARY", [this] { standards_library(); }},
                                {"4", "SETTINGS", [this] { settings_screen(); }},
                                {"Q", "QUIT", nullptr}};
     if (leave) items.insert(items.begin() + 4, {"W", "WINDOW VIEW", [this] {

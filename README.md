@@ -6,10 +6,13 @@ A lesson planner and quiz builder for teachers. Plan a lesson, put it on the
 board, and print the handouts, all from one app. Chalkboard works completely
 offline: no accounts, no internet, no AI. Everything in it is written by you.
 
-**Chalkboard** opens in a window with buttons and menus. It can also switch to a
-retro green-screen **terminal view** in the same window (View menu, or
-Ctrl+Shift+W). **Chalkboard Terminal** is the same planner for people who'd
-rather work in a terminal.
+**Chalkboard** opens in a window with a sidebar, buttons, and menus. It can also
+switch to a retro green-screen **terminal view** in the same window (View menu,
+or Ctrl+Shift+W). Run `chalkboard` in a terminal and it's the same planner as a
+terminal app, for people who'd rather work there.
+
+It's one small program for Windows, macOS, and Linux with nothing else to
+install: no Python, no extra tools.
 
 ## How it works
 
@@ -123,57 +126,55 @@ LMS. A make-up sheet for absent students is one more click.
 Download from the
 [latest release](https://github.com/themisterdragon/chalkboard/releases/latest).
 
-Everything except the Windows `.exe` needs Python 3.8+ (Macs offer to install it
-the first time).
+**Mac** (macOS 11 or newer, Apple silicon or Intel): open `Chalkboard-<version>-macOS.dmg` and
+drag Chalkboard to Applications. The first time, right-click Chalkboard > Open, then Open (on
+macOS 15 and newer: System Settings > Privacy & Security > Open Anyway). `Read Me First.txt` in
+the disk image walks through it.
 
-**Mac:** open `Chalkboard-<version>.dmg` and drag Chalkboard to Applications.
-Python is built in, so there's nothing else to install. (`Chalkboard-Terminal-<version>.dmg`
-is the terminal-only app. It runs in a Terminal window, and its `Read Me First.txt` covers the
-first-launch prompts.)
+**Windows** 10 or 11: download `Chalkboard-<version>-windows.exe` and double-click it. If
+"Windows protected your PC" appears, click More info > Run anyway.
 
-**Windows:** download `Chalkboard-<version>-windows.exe`. Python is built in, so there's
-nothing else to install. (`Chalkboard-Terminal-<version>-windows.exe` is the terminal-only
-app; it looks best in Windows Terminal.) If "Windows protected your PC" appears, click
-More info > Run anyway.
+**Linux** (Intel/AMD, or ARM like a Raspberry Pi 4 or 5; any desktop): unpack
+`Chalkboard-<version>-linux-x86_64.tar.gz` (or `-linux-arm64`) and double-click `chalkboard`, or
+run `./chalkboard` in a terminal. The window uses GTK 3, which desktop Linux already has. With
+no desktop (over SSH, say) it runs as the terminal app.
 
-**Linux (or macOS from the terminal):** unpack `chalkboard-<version>-linux.tar.gz`
-(it holds `chalkboard.pyz`, `chalkboard-gui.pyz`, and `install.sh`) and run `sh install.sh`
-(installs `chalkboard` and `chalkboard-gui` to `~/.local/bin`, plus an app-menu entry for the
-window version), or run either directly with `python3 chalkboard.pyz`.
+The first time it opens, a setup wizard asks for your name, school, main
+class, school colors, and everyday materials, then offers to install it:
+Windows gets it in your Programs folder with Start-menu and desktop shortcuts,
+the Mac in Applications, and Linux as `~/.local/bin/chalkboard` with an
+app-menu entry. Nothing is installed for other users, and no admin password is
+needed. Settings > Run Setup Again brings it back.
 
-**Python package (any OS, including Windows):**
-
-    pipx install chalkboard_planner-2.1.0-py3-none-any.whl
-
-On Windows this pulls in `windows-curses` automatically.
+**Upgrading from Chalkboard 2.x:** install 3 the same way. Your lessons,
+assessments, standards, and settings are in your data file, not the app, so
+they're already there. Chalkboard 2.1.0 (the Python version) is still on the
+[releases page](https://github.com/themisterdragon/chalkboard/releases/tag/v2.1.0).
 
 ## Window version
 
-`chalkboard-gui` is the whole planner in a window, with a mouse, menus, and
-buttons, in one of three looks (View menu or Settings):
+The window version is the whole planner, with a mouse, menus, and buttons. A
+sidebar on the left goes anywhere: **Today** (your week at a glance, quick
+actions, and recent work), Lessons, Assessments, **Calendar** (a month of your
+lessons, color-coded by class), Standards, Exports, Settings, and the Terminal
+view. Pick a look from the View menu or Settings:
 
-- **Modern**: your computer's own title bar, font, and accent color, with
-  flat controls
-- **Bevel**: gray 3-D buttons, dark blue title bars, a teal desktop
-- **Pinstripe**: black-and-white, striped title bars, a dotted gray desktop
+- **Modern** (the default): clean and flat, in Chalkboard green, your school's
+  colors, or your computer's accent color
+- **Glossy**: shiny 2000s glass, with gel buttons and sky gradients
+- **Bevel**: gray 3-D buttons and dark blue title bars
+- **Pinstripe**: black-and-white, with striped title bars
 
 Every look has a light and a dark mode. "Match my computer" (the default)
-follows the Windows, macOS, GNOME, or KDE dark-mode setting and switches when
-you change it. On Windows and macOS the title bar turns dark too.
+follows the Windows, macOS, GNOME, or KDE dark-mode setting. On Windows and
+macOS the title bar turns dark too.
 
 Everything the terminal app does is here: lesson plans (with standards,
 SEL bell ringers, and linked worksheets), quizzes and tests with
 every question type, annotation and bell ringer sheets, the standards
 library with import, settings, preview, and every export. It reads and writes
-the same data file as the terminal app, and picks up changes the other one
-saves. Close a window with its close box (top left) or Esc to go back.
-
-The first time it opens, a setup wizard asks for your name, school, main
-class, school colors, and everyday materials, then offers to install it: the
-Windows `.exe` into your Programs folder with Start-menu and desktop shortcuts,
-the Mac app from its disk image into Applications, or the Linux `.pyz` with an
-app-menu entry. Settings > Run Setup Again brings it back.
-Text size and overall size are in Settings, and sharp screens get 2× on
+the same data file as the terminal app. Ctrl+W or Esc closes a window and goes
+back. Text size and overall size are in Settings, and sharp screens get 2× on
 their own.
 
 ### Window view and terminal view
@@ -182,14 +183,12 @@ The window version can also show the terminal app, green screen and all,
 inside the same window. Switch back and forth any time with View > Switch to
 Terminal View / Switch to Window View, Ctrl+Shift+W (Cmd+Shift+W on a Mac), or
 `W  WINDOW VIEW` on the terminal view's main menu. You never close anything,
-and both views work on the same open lessons and assessments. It opens in the
-view you used last. New copies start in the window view, and setup asks which
-one you want.
+and both views work on the same open lessons and assessments.
 
 The terminal view is the real terminal app (the same code), drawn by the window
-app itself, so it needs no curses package and works on Windows too. If you'd
-rather have just the terminal, `chalkboard` still runs on its own in any
-terminal.
+app itself, so it works the same on Windows. If you'd rather have just the
+terminal, run `chalkboard` in any terminal (`chalkboard --window` opens the
+window from one).
 
 ### Accessibility
 
@@ -200,30 +199,20 @@ reviews use:
   text (hints and status text too) and 3:1 for the edges of text boxes,
   lists, and drop-downs and for the keyboard focus ring. Modern uses your
   accent color, darkened or lightened until it passes.
-  `python3 scripts/check_contrast.py` checks every palette.
+  `chalkboard --check-contrast` checks every palette.
 - **Keyboard**: everything works without a mouse. Tab moves between
   controls, Space or Return presses them, arrow keys move through lists, and
   Esc goes back. The control with the keyboard focus always shows a ring.
   Help > Keyboard Shortcuts lists the rest.
 - **Size**: text goes up to 24 px (Ctrl+= / Ctrl+-), and "Size of everything"
-  in Settings doubles or triples the whole window without cutting anything
-  off.
+  in Settings makes the whole window bigger without cutting anything off.
 - **Nothing moves or times out**, except the retro welcome screen, which any
   key skips (and Settings turns off).
 
-**Known gap: screen readers.** Tk, the toolkit the window version is built
-with, doesn't work with screen readers (VoiceOver, Narrator, NVDA, JAWS,
-Orca). The terminal view inside the window is drawn as a picture, so a screen
-reader can't read it either. The standalone terminal app (`chalkboard`, run in
-a real terminal) may work better with one, but it hasn't been tested with a
-screen reader yet.
-
-    chalkboard-gui                    # or: python3 chalkboard-gui.pyz
-
-It needs Tk, which Python from python.org includes on Windows and macOS. On
-Linux install it first: `sudo pacman -S tk` (Arch) or
-`sudo apt install python3-tk` (Debian/Ubuntu). `install.sh` installs it next
-to `chalkboard` and, on Linux, adds a "Chalkboard" app-menu entry.
+**Known gap: screen readers.** Chalkboard draws its own window, so screen
+readers (VoiceOver, Narrator, NVDA, JAWS, Orca) can't read it yet. The terminal
+app (`chalkboard`, run in a real terminal) may work better with one, but it
+hasn't been tested with a screen reader yet.
 
 ## Use
 
@@ -261,7 +250,7 @@ a jersey in your school colors (Settings > School Colors). It waits in a corner
 of the home screen, hops and cheers ("GO DRAGONS!") when you click it, and
 cheers again when an export finishes. It only moves when something happens, so
 it costs nothing while it waits. Pick it under Settings > School Mascot in
-either view. The art is in `data/chibis.json`.
+either view. The art is in `core/data/chibis.json`.
 
 ### Lesson sections
 
@@ -302,21 +291,12 @@ dated folder with every lesson and assessment as PDF and Word, plus a backup fil
 class and unit folders. Keep it, or drag the whole folder into Google Drive or another cloud
 folder.
 
-## Offline, and plugins
+## Offline
 
-Chalkboard never goes online. While it runs, a guard (`chalkboard/offline.py`) refuses any
-network connection, any program except the few local tools it uses (for board PNGs, opening
-your files, and following your computer's dark mode), and any web address, for plugins too.
-`scripts/check_offline.py` tests this on every release.
-
-**Plugins** add to Chalkboard without changing it: a new export format, a mascot, or something
-that runs after each export. Put a plugin's `.py` file in a `plugins` folder inside the data
-folder and restart. `examples/plugins/markdown_export.py` adds a Markdown export. A broken
-plugin gets switched off with a note, and Chalkboard keeps working. Start with `--no-plugins` to
-skip them all. Plugins are code, so only add ones you trust. To get files into Google Drive or
-another cloud, a plugin saves them into the folder that app syncs.
-
-[PORTING.md](PORTING.md) maps the code for anyone building Chalkboard for another system.
+Chalkboard never goes online. There's no networking code in it at all, and
+[`core/tools/check_offline.sh`](core/tools/check_offline.sh) checks both the
+source and every finished download for networking functions and libraries
+before each release. It has no plugins, so it never runs add-on code either.
 
 ## Where things live
 
@@ -327,10 +307,9 @@ another cloud, a plugin saves them into the folder that app syncs.
 | Backups | wherever you pick (Settings > Back Up; first suggested: `~/Documents/Chalkboard/Backups`). Each is one dated `.json` file with your lessons, assessments, settings, and imported standards. |
 | Exports | `~/Documents/Chalkboard` (changeable in Settings). Every export is filed by class, then unit, then lesson, like `English 10/Unit 3/The Raven/`; assessments go in their unit folder. A blank course or unit is skipped. Export All also puts a lesson's linked worksheets in its folder. Inside each folder, the PDFs you print sit on top; answer keys, board slides (PNG + slideshow), Word files, and text files each get a subfolder (`Answer Keys/`, `Board Slides/`, `Word/`, `Text/`). Re-exporting a lesson from before 2.1 tidies its old files into those subfolders. |
 
-Board slides are drawn with the same engine as the PDF, then turned into a PNG
-by a tool the computer already has: `sips` on macOS (built in), or poppler's
-`pdftoppm`, `mutool`, or Ghostscript on Linux/Windows. Pick which sections
-appear under Settings > Board Slide (or from the export screen).
+Chalkboard draws board slides itself, so they look the same on every computer
+with nothing extra to install. Pick which sections appear under Settings >
+Board Slide (or from the export screen).
 
 **Board Designer:** Settings > Board Designer (in the window version, also from
 the export screen) changes how every board slide looks, with a live preview of
@@ -431,13 +410,16 @@ here belong to their owners.
 
 ## Build
 
-    python3 scripts/build_pyz.py       # -> dist/chalkboard.pyz, dist/chalkboard-gui.pyz, dist/install.sh
-    python3 scripts/build_mac.py       # -> dist/Chalkboard-Terminal-macOS.zip (also rebuilds the .pyz)
-    sh scripts/build_dmg.sh            # -> dist/Chalkboard-Terminal-<version>.dmg (macOS only, after build_mac.py)
-    sh scripts/build_mac_window.sh     # -> dist/Chalkboard-<version>.dmg (macOS, needs PyInstaller)
-    pip wheel --no-deps -w dist .      # -> dist/*.whl
-    python3 scripts/make_icon.py       # -> macos/Chalkboard.icns (only to change the icon)
+Chalkboard is C++17 with no libraries beyond what each system ships (it opens
+GTK 3 on Linux and Cocoa on macOS while it runs). The code is in `core/`.
 
-Pushing a version tag (`git tag v2.1.0 && git push --tags`) builds all of these on
-GitHub's Mac and Windows runners (the `.exe` with PyInstaller), tests them, and
-attaches them to a draft release.
+    sh core/build.sh                          # -> core/chalkboard-core, for this computer
+    sh core/cross.sh windows linux linux-arm  # -> core/dist/ (needs Zig 0.17)
+    sh core/package-mac.sh core/chalkboard-core   # -> Chalkboard.app + DMG (on a Mac)
+    sh core/tests/run_gui.sh                  # the window walk-through on a copy of your data
+    sh core/tools/check_offline.sh core/chalkboard-core
+
+Pushing a version tag (`git tag v3.0.0 && git push origin v3.0.0`) builds every
+download on GitHub (macOS, Windows, and Linux), runs each one through the
+walk-through and the offline check, and publishes the release. A tag like
+`beta-3.1.0b1` makes a pre-release instead.

@@ -12,7 +12,7 @@ CXX=${CXX:-$(command -v c++ || command -v g++ || command -v clang++)}
 mkdir -p build
 # the data folder (standards, prompts, mascots) goes inside the program
 [ build/embed -nt tools/embed.cpp ] || $CXX -std=c++17 -O1 -o build/embed tools/embed.cpp
-build/embed ../src/chalkboard/data build/resources.tmp
+build/embed data build/resources.tmp
 if cmp -s build/resources.tmp build/resources.cpp; then rm build/resources.tmp; else mv build/resources.tmp build/resources.cpp; fi
 FLAGS=${CXXFLAGS:--O2}
 # a folder of objects for each set of flags, so a sanitizer build doesn't undo a normal one

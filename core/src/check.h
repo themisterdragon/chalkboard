@@ -1,4 +1,4 @@
-// Self-checks for development: print what the core works out as JSON, so scripts/check_core.py can
+// Self-checks for development: print what the core works out as JSON, so a checking script can
 // compare it with the Python Chalkboard line by line. Not used by teachers.
 #pragma once
 #include <string>

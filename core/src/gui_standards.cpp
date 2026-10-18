@@ -304,7 +304,7 @@ struct Browser {
 class Library : public Screen {
 public:
     explicit Library(App &a) : Screen(a), b_(a, "", nullptr) {}
-    std::string title() override { return "Standards Library (KAS)"; }
+    std::string title() override { return "Standards Library"; }
     bool escape() override {
         if (!b_.typed.empty()) {
             b_.typed.clear();
@@ -367,7 +367,7 @@ private:
     void remove_subject() {
         auto opts = app.store.imported_subjects();
         if (opts.empty()) {
-            alert(app.ui, "Remove Subject", "You haven't imported any subjects. The Kentucky standards that come with Chalkboard can't be removed.");
+            alert(app.ui, "Remove Subject", "You haven't imported any subjects yet. Use Import File\xE2\x80\xA6 to bring in a CSV or JSON file of standards.");
             return;
         }
         std::vector<std::pair<std::string, std::string>> choices;

@@ -1,66 +1,62 @@
-**Chalkboard 2.1** adds the Board Designer, a Day Slideshow for passing time, a Curriculum Map, and
-word-processor formatting in the window app. Everything new stays out of the way until you want it.
+**Chalkboard 3** is the same Chalkboard, rebuilt from the ground up in C++: one small program for
+each computer, nothing else to install (no Python, no extra tools), and still completely offline.
+Your lessons, assessments, standards, and settings carry over on their own.
 
-### Board slides
+### A fresh new look
 
-- **Board Designer** (Settings > Advanced Mode): pick the fonts for the text and headings (the standard ones
-  or any font on your computer), balanced or fixed columns, card / outlined / plain-chalk sections, where the
-  title and class codes go, and extra-big text, with a live preview. Show, hide, and reorder each section,
-  and switch its side. Reset to Default puts it all back.
-- **Day Slideshow** (Lesson Plans): pick a day on the calendar, and every class period's board slide goes
-  into one slideshow (and a PDF), in period order. At passing time, just go to the next slide.
-- **School mascots in the window app:** your mascot, in your school colors, waits on the home screen and
-  cheers when an export finishes.
+- **A sidebar that takes you anywhere:** Today, Lessons, Assessments, Calendar, Standards, Exports,
+  Settings, and the Terminal view, always one click away.
+- **Today:** your week at a glance, quick actions, recent work, and your school mascot. Plan any day
+  from here.
+- **Calendar:** a month of your lessons, color-coded by class.
+- **Modern look** in light or dark, in Chalkboard green, your school's colors, or your computer's
+  accent color. Prefer something fun? Pick **Glossy** (shiny 2000s glass), **Bevel**, or **Pinstripe**
+  from the View menu. Every look passes the WCAG AA contrast check.
+- With a menu open, slide across the menu bar to see the others.
 
-### Planning
+### Faster and simpler
 
-- **Advanced Mode** (Settings) for the nitpicky options, off by default. **Page Layouts** set the name line,
-  titles, headings, and footers for lesson plans, make-up work, quizzes and tests, annotation sheets, and
-  bell ringer sheets, with a live preview and Reset to Default.
-- **Curriculum Map** (Lesson Plans): each class's units in order with dates, essential questions,
-  standards, lessons, and assessments, plus where each standard is taught. Save it as PDF, Word, or a
-  spreadsheet, for any school year.
-- **Calendars** for picking a lesson's date(s). Dates now carry their year, so next year's copy of a lesson
-  never mixes with this year's.
-- **Sort by class** (Lesson Plans and Assessments): pick a class, then see and add its lessons.
-- **Make-up sheets carry the classwork:** a lesson's linked worksheets, assignments, and exit tickets print
-  right after its make-up sheet (student copies). Quizzes and tests show up as a "See Me" step instead.
-
-### Formatting
-
-- **B / I / U buttons** in every editor, and text boxes show bold, italic, and underline as they'll print
-  instead of the `**` and `__` marks. Ctrl+B / Ctrl+I / Ctrl+U (Cmd on a Mac), and Undo takes back
-  formatting too. The terminal view still shows the marks; both read the same files.
-- Bold and italic on the same word now prints right everywhere.
+- **Board slides are drawn by Chalkboard itself.** No image tool to install on Linux or Windows, and
+  slides look the same on every computer.
+- Opens fast and stays small, on Windows, Mac (Apple silicon and Intel), and Linux (Intel/AMD and ARM,
+  like a Raspberry Pi 4 or 5).
+- The terminal app is in the same program: run `chalkboard` in a terminal, or use the Terminal view in
+  the window. Over SSH with no desktop, it starts as the terminal app.
 
 ### Fixes
 
-- Settings > **Sections & School Colors** opens again (the button did nothing in 2.0).
-- The window opens sized to the screen, so on a small laptop it no longer runs under the Windows taskbar
-  and hides a dialog's buttons.
-- Drop-down and right-click menus close when you click elsewhere (Linux).
-- **Tidier export folders:** the PDFs you print stay on top of each lesson's folder; answer keys, board
-  slides, Word files, and text files get folders of their own. Exporting an older lesson again tidies it.
+- The lesson and assessment editors now scroll when your work runs past the bottom of the window.
+- A dialog over another dialog no longer darkens the window twice.
 
-**Upgrading:** your lessons and settings carry over on their own. They live in your data file, not in the
-app. Tried a 2.1 beta? The beta kept its own copy of your lessons. To bring that work over: in the beta,
-File > Back Up Everything; then in Chalkboard 2.1, File > Import Backup and choose "Add what I don't have."
-After that you can delete the beta.
+### Changes
 
-**Which download?**
+- **Plugins are gone.** Chalkboard 3 runs no add-on code at all. Exports (PDF, Word, text, board slides,
+  slideshows, spreadsheets) are all built in.
+- Using the Bevel look? Chalkboard 3 opens in the new Modern look once, with a note to switch back
+  (View > Bevel, or the **Go Back to Bevel** button).
 
-| You have | Download |
-|----------|----------|
-| A Mac | `Chalkboard-2.1.0.dmg`. Open it and drag Chalkboard to Applications; nothing else to install. (`Chalkboard-Terminal-2.1.0.dmg` is the terminal-only app.) |
-| Windows | `Chalkboard-2.1.0-windows.exe`, nothing else to install. (`Chalkboard-Terminal-2.1.0-windows.exe` is the terminal-only app; run it from Windows Terminal for the best look.) |
-| Linux | `chalkboard-2.1.0-linux.tar.gz`: unpack it, then `sh install.sh`. It offers to install anything missing (Python, Tk, and the tool that makes board pictures) and adds Chalkboard to your app menu. |
-| Python, any OS | `chalkboard-gui.pyz` (`python3 chalkboard-gui.pyz`, needs Python with Tk), or the `.whl` with pipx: `pipx install chalkboard_planner-2.1.0-py3-none-any.whl` |
+**Upgrading from 2.x:** install Chalkboard 3 and your work is already there. It lives in your data file,
+not in the app. Back up first if you like (File > Back Up Everything in 2.x).
+Tried a 3.0 beta? The beta kept its own copy of your lessons. To bring that work over: in the beta,
+File > Back Up Everything; then in Chalkboard 3, File > Import Backup and choose "Add what I don't
+have." After that you can delete the beta.
 
-**First launch:** the apps aren't signed by Apple or Microsoft, so your computer asks before
-opening them the first time.
-- Mac: System Settings > Privacy & Security > **Open Anyway**. `Read Me First.txt` walks through it.
-- Windows: if "Windows protected your PC" appears, click **More info** > **Run anyway**.
+## Download
 
-**Standards:** Chalkboard doesn't include any standards. Import your state's or district's from a CSV or JSON file
-(Standards Library > Import File, or `I` in the terminal view). See
+| Your computer | Download | Then |
+|---|---|---|
+| Mac (macOS 11+, Apple silicon or Intel) | `Chalkboard-@VERSION@-macOS.dmg` | Open it, drag Chalkboard to Applications. First time: right-click Chalkboard > Open, then Open (on macOS 15+: System Settings > Privacy & Security > Open Anyway) |
+| Windows 10 / 11 | `Chalkboard-@VERSION@-windows.exe` | Double-click. If Windows says "Windows protected your PC": More info > Run anyway |
+| Linux (Intel/AMD) | `Chalkboard-@VERSION@-linux-x86_64.tar.gz` | Unpack, double-click `chalkboard` (or run it in a terminal) |
+| Linux (ARM, e.g. Raspberry Pi 4/5) | `Chalkboard-@VERSION@-linux-arm64.tar.gz` | The same |
+
+The first time, a short setup offers to install Chalkboard (Applications, the Start menu, or your app
+menu). The Mac and Windows programs aren't signed with a paid developer certificate, so each asks once
+as above.
+
+Need the old Python version? [Chalkboard 2.1.0](https://github.com/themisterdragon/chalkboard/releases/tag/v2.1.0)
+is still available.
+
+**Standards:** Chalkboard doesn't include any standards. Import your state's or district's from a CSV or
+JSON file (Standards Library > Import File, or `I` in the terminal view). See
 [Standards files](https://github.com/themisterdragon/chalkboard#standards-files).

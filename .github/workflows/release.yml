@@ -1,173 +1,125 @@
-# Push a tag like v1.7.0 to build every download, test them, and attach them to a draft release.
-# Check the draft on GitHub (try the DMG and the .exe), then press Publish.
-# "Run workflow" on the Actions tab builds and tests without making a release.
+# Push a tag like v3.0.0 to build every download, test each on its own system, and publish the
+# release (the new "Latest"). A tag like beta-3.1.0b1 makes a pre-release instead (never "Latest").
+# The tag must match CHALKBOARD_VERSION in core/src/version.h.
+# "Run workflow" on the Actions tab builds and tests without releasing.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*", "beta-*"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  windows:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
+  mac:
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Build Chalkboard-Terminal.exe (the terminal-only app; Python bundled in)
+      - name: Build with Apple's compiler (Apple silicon + Intel in one program)
+        run: CXX="clang++ -arch arm64 -arch x86_64 -mmacosx-version-min=11.0" sh core/build.sh
+      - name: Chalkboard.app, signed (ad hoc), and the DMG
         run: |
-          python -m pip install . pyinstaller pillow
-          mkdir -p build
-          python -c "from PIL import Image; Image.open('macos/Chalkboard.icns').save('build/chalkboard.ico', sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])"
-          printf 'from chalkboard.app import main\n\nmain()\n' > build/chalkboard_entry.py
-          pyinstaller --onefile --console --name Chalkboard-Terminal --icon build/chalkboard.ico \
-            --collect-data chalkboard --distpath dist --workpath build/pyi build/chalkboard_entry.py
-
-      - name: Build Chalkboard.exe (the main app; Python and Tk bundled in)
-        run: |
-          printf 'from chalkboard.gui import main\n\nmain()\n' > build/window_entry.py
-          pyinstaller --onefile --windowed --name Chalkboard --icon build/chalkboard.ico \
-            --hidden-import chalkboard.app --collect-data chalkboard --distpath dist --workpath build/pyi-window build/window_entry.py
-
+          sh core/package-mac.sh core/chalkboard-core
+          codesign --verify --deep --strict core/dist/macos/Chalkboard.app
       - name: Check the offline promise (SECURITY.md)
-        run: python scripts/check_offline.py
-
-      - name: Test Chalkboard-Terminal.exe
+        run: sh core/tools/check_offline.sh core/dist/macos/Chalkboard.app/Contents/MacOS/Chalkboard
+      - name: Install from the DMG and run it
         run: |
-          ./dist/Chalkboard-Terminal.exe --version | tee version.txt
-          grep -q "chalkboard $(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)" version.txt
-          pyi-archive_viewer --list --recursive dist/Chalkboard-Terminal.exe | tee contents.txt | grep -i -E 'sel_prompts|_curses'
-          grep -q 'sel_prompts.json' contents.txt
-          grep -q '_curses' contents.txt
-          grep -q 'mascots.json' contents.txt
-
-      - name: Test Chalkboard.exe
-        run: |
-          # a windowed .exe has no console to print --version to, so check what's inside it
-          pyi-archive_viewer --list --recursive dist/Chalkboard.exe > window.txt
-          grep -i -E 'tkinter|tcl|chalkboard.gui|icon.png' window.txt | head -20
-          grep -q '_tkinter' window.txt
-          grep -qi 'tcl' window.txt
-          grep -q 'icon.png' window.txt
-          grep -q 'chalkboard.gui.desktop' window.txt
-          grep -q 'chalkboard.gui.term' window.txt
-          grep -q 'chalkboard.app' window.txt
-          grep -q 'mascots.json' window.txt
-          grep -q 'chibis.json' window.txt
-
+          mnt=$(hdiutil attach -nobrowse -readonly core/dist/Chalkboard-*-macOS.dmg | awk -F'\t' '/Volumes/ {print $NF}')
+          ditto "$mnt/Chalkboard.app" /Applications/Chalkboard.app
+          hdiutil detach "$mnt"
+          /Applications/Chalkboard.app/Contents/MacOS/Chalkboard --version
+          mkdir -p shots
+          CHALKBOARD_DATA="$RUNNER_TEMP/data" /Applications/Chalkboard.app/Contents/MacOS/Chalkboard --no-boot --script core/tests/walkthrough.txt shots
+          test "$(ls shots | wc -l)" -gt 10
       - uses: actions/upload-artifact@v5
         with:
-          name: windows
-          path: |
-            dist/Chalkboard.exe
-            dist/Chalkboard-Terminal.exe
+          name: mac
+          path: core/dist/Chalkboard-*-macOS.dmg
 
-  release:
-    needs: windows
-    runs-on: macos-latest
+  windows-linux:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
+      - uses: mlugg/setup-zig@v2
         with:
-          python-version: "3.12"
-
-      - name: Check the tag matches the version
-        if: startsWith(github.ref, 'refs/tags/')
+          version: 0.17.0
+      - name: Build Windows and Linux (Intel/AMD and ARM) with Zig
+        run: sh core/cross.sh windows linux linux-arm
+      - name: Check the offline promise (SECURITY.md)
+        run: sh core/tools/check_offline.sh core/dist/windows/Chalkboard.exe core/dist/linux-x86_64/chalkboard core/dist/linux-arm64/chalkboard
+      - name: Package
         run: |
-          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)
-          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME but __version__ is $version"; exit 1; }
-
-      - name: Build
+          v=$(sed -n 's/^#define CHALKBOARD_VERSION "\(.*\)"/\1/p' core/src/version.h)
+          mkdir -p out
+          cp core/dist/windows/Chalkboard.exe "out/Chalkboard-$v-windows.exe"
+          for a in x86_64 arm64; do
+            d="Chalkboard-$v-linux-$a"
+            mkdir -p "pkg/$d"
+            cp "core/dist/linux-$a/chalkboard" "pkg/$d/chalkboard"
+            chmod 755 "pkg/$d/chalkboard"
+            cp core/packaging/README-Linux.txt "pkg/$d/"
+            tar -czf "out/$d.tar.gz" -C pkg "$d"
+          done
+          ls -la out
+      - name: Try the Linux program
         run: |
-          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)
-          python3 scripts/build_mac.py
-          python3 -m pip wheel --no-deps -w dist .
-          sh scripts/build_dmg.sh
-          tar -czf "dist/chalkboard-$version-linux.tar.gz" -C dist chalkboard.pyz chalkboard-gui.pyz install.sh
+          ./core/dist/linux-x86_64/chalkboard --version
+          mkdir -p shots
+          CHALKBOARD_DATA="$RUNNER_TEMP/data" ./core/dist/linux-x86_64/chalkboard --no-boot --script core/tests/walkthrough.txt shots
+          test "$(ls shots | wc -l)" -gt 10
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows-linux
+          path: out/*
 
-      - name: Build the standalone Mac window app (universal2 Python from python.org)
-        run: |
-          curl -fsSL -o python.pkg https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
-          sudo installer -pkg python.pkg -target /
-          py=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
-          "$py" -m pip install --quiet pyinstaller
-          PYTHON="$py" sh scripts/build_mac_window.sh
-
+  windows-check:
+    needs: windows-linux
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v6
         with:
-          name: windows
-          path: dist
-
-      - name: Check the offline promise (SECURITY.md)
-        run: python3 scripts/check_offline.py
-
-      - name: Check that formatting saves as shown
-        run: python3 scripts/check_markup.py
-
-      - name: Check for missing imports (a button that quietly does nothing)
-        run: python3 scripts/check_names.py
-
-      - name: Test the downloads
+          name: windows-linux
+          path: out
+      - name: Run the Windows program through the walk-through (no screen needed)
+        shell: pwsh
         run: |
-          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/chalkboard/__init__.py)
-          python3 dist/chalkboard.pyz --version
-          python3 dist/chalkboard-gui.pyz --version
-          mnt=$(hdiutil attach -nobrowse -readonly "dist/Chalkboard-Terminal-$version.dmg" | awk -F'\t' '/Volumes/ {print $NF}')
-          ls -la "$mnt"
-          test -L "$mnt/Applications"
-          test -x "$mnt/Chalkboard Terminal.app/Contents/MacOS/Chalkboard"
-          test -f "$mnt/Read Me First.txt"
-          python3 "$mnt/Chalkboard Terminal.app/Contents/Resources/chalkboard.pyz" --version
-          plutil -lint "$mnt/Chalkboard Terminal.app/Contents/Info.plist"
-          hdiutil detach "$mnt"
-          mnt=$(hdiutil attach -nobrowse -readonly "dist/Chalkboard-$version.dmg" | awk -F'\t' '/Volumes/ {print $NF}')
-          ls -la "$mnt"
-          test -L "$mnt/Applications"
-          test -f "$mnt/Read Me First.txt"
-          exe="$mnt/Chalkboard.app/Contents/MacOS/Chalkboard"
-          lipo -archs "$exe" | tee archs.txt
-          grep -q x86_64 archs.txt && grep -q arm64 archs.txt
-          "$exe" --version | grep -q "chalkboard-gui $version"
-          codesign --verify --deep "$mnt/Chalkboard.app"
-          find "$mnt/Chalkboard.app" -name sel_prompts.json | grep -q .
-          find "$mnt/Chalkboard.app" -name mascots.json | grep -q .
-          find "$mnt/Chalkboard.app" -name chibis.json | grep -q .
-          hdiutil detach "$mnt"
-          tar -tzf "dist/chalkboard-$version-linux.tar.gz" | sort | tr '\n' ' ' | grep -q '^chalkboard-gui.pyz chalkboard.pyz install.sh $'
-          python3 -m pip install dist/*.whl
-          chalkboard --version
-          ls -la dist
+          $exe = Get-ChildItem out\Chalkboard-*-windows.exe | Select-Object -First 1
+          $env:CHALKBOARD_DATA = "$env:RUNNER_TEMP\data"
+          New-Item -ItemType Directory -Force shots | Out-Null
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--no-boot","--script","core\tests\walkthrough.txt","shots" -Wait -PassThru
+          $n = (Get-ChildItem shots\*.png).Count
+          "exit $($p.ExitCode), $n pictures"
+          if ($n -lt 10) { exit 1 }
 
-      - name: Keep the Mac downloads (a "Run workflow" build, for testing)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v5
+  release:
+    needs: [mac, windows-linux, windows-check]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v6
         with:
-          name: mac
-          path: |
-            dist/*.dmg
-            dist/Chalkboard-Terminal-macOS.zip
-
-      - name: Draft the release
-        if: startsWith(github.ref, 'refs/tags/')
+          path: dist
+          merge-multiple: true
+      - name: Check the tag matches the version
+        run: |
+          v=$(sed -n 's/^#define CHALKBOARD_VERSION "\(.*\)"/\1/p' core/src/version.h)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || [ "beta-$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME but the version is $v"; exit 1; }
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version=${GITHUB_REF_NAME#v}
-          mv dist/Chalkboard.exe "dist/Chalkboard-$version-windows.exe"
-          mv dist/Chalkboard-Terminal.exe "dist/Chalkboard-Terminal-$version-windows.exe"
-          gh release create "$GITHUB_REF_NAME" --draft --title "Chalkboard $version" \
-            --notes-file .github/release-notes.md \
-            "dist/Chalkboard-$version.dmg" "dist/Chalkboard-$version-windows.exe" \
-            "dist/Chalkboard-Terminal-$version.dmg" "dist/Chalkboard-Terminal-$version-windows.exe" \
-            dist/chalkboard-*-linux.tar.gz dist/Chalkboard-Terminal-macOS.zip dist/chalkboard.pyz dist/chalkboard-gui.pyz dist/install.sh dist/*.whl
+          v=$(sed -n 's/^#define CHALKBOARD_VERSION "\(.*\)"/\1/p' core/src/version.h)
+          ls -la dist
+          case "$GITHUB_REF_NAME" in
+          beta-*)
+            sed "s/@VERSION@/$v/g" core/packaging/beta-notes.md > notes.md
+            gh release create "$GITHUB_REF_NAME" --prerelease --latest=false --title "Chalkboard $v (beta)" --notes-file notes.md dist/* ;;
+          *)
+            sed "s/@VERSION@/$v/g" .github/release-notes.md > notes.md
+            gh release create "$GITHUB_REF_NAME" --latest --title "Chalkboard $v" --notes-file notes.md dist/* ;;
+          esac

@@ -243,7 +243,7 @@ void App::standards_library() {
             return Result::none();
         },
         "1-0 VIEW  F SUBJECT  G GRADE  / SEARCH  I IMPORT  E EXPORT  X REMOVE  A ADD CUSTOM  D DELETE  ESC BACK",
-        [&] { return "KAS: " + std_filter_info(g, s, q); }, "NO STANDARDS YET. I IMPORTS A CSV OR JSON FILE OF STANDARDS; A ADDS ONE BY HAND.");
+        [&] { return std_filter_info(g, s, q); }, "NO STANDARDS YET. I IMPORTS A CSV OR JSON FILE OF STANDARDS; A ADDS ONE BY HAND.");
 }
 
 void App::import_standards() {

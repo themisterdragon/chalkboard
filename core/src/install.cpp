@@ -148,6 +148,19 @@ std::string install(const Plan &p, bool desktop_shortcut) {
     std::string desk = "[Desktop Entry]\nVersion=1.0\nName=Chalkboard\nComment=Lesson planner\nExec=\"" + p.target +
                        "\" --window\nTerminal=false\nType=Application\nIcon=" + icon + "\nStartupWMClass=Chalkboard\nCategories=Education;Office;\n";
     if (!files::write(entry, desk, &err)) throw Error{err};
+    // Chalkboard 2.x put its window app at chalkboard-gui with a menu entry of its own: retire the
+    // entry, and make chalkboard-gui open this one (only the files 2.x's install.sh made)
+    std::string old_entry = files::join(share, "applications/chalkboard-gui.desktop"), old_desk;
+    std::string old_bin = files::join(files::dirname(p.target), "chalkboard-gui");
+    if (files::read(old_entry, old_desk) && old_desk.find("Exec=" + old_bin) != std::string::npos) {
+        files::remove(old_entry);
+        files::remove(files::join(share, "icons/chalkboard-gui.png"));
+    }
+    std::string head;
+    if (files::read_range(old_bin, 0, 64, head) && text::starts_with(head, "#!") && head.find("python") != std::string::npos) {
+        files::remove(old_bin);
+        if (symlink("chalkboard", old_bin.c_str()) != 0) files::remove(old_bin);
+    }
     return "Chalkboard is in your app menu.";
 #endif
 }

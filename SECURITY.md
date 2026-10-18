@@ -2,7 +2,7 @@
 
 Chalkboard is a lesson planner made by a teacher, for teachers. Your lesson plans,
 your students' work, and your words belong to you. These promises hold for every
-version of Chalkboard: the window version, the terminal version, and every download
+version of Chalkboard: the window version, the terminal app, and every download
 on the [releases page](https://github.com/themisterdragon/chalkboard/releases).
 
 ## 1. It works completely offline
@@ -12,13 +12,10 @@ analytics or "telemetry," no ads, no automatic updates, and no cloud sync. There
 no code in it that can open a network connection.
 
 This gets checked, too. Every release is built by GitHub, and before it's published
-the build runs [`scripts/check_offline.py`](scripts/check_offline.py) on Windows and
-macOS. That script confirms no part of the code imports networking tools, then
-builds a lesson and a quiz with every question type and exports them in every
-format while a guard stops the program the instant it tries to reach the network
-or start any unexpected program. If anything slips, the release isn't built.
-Version 1.8.0 was also tested screen by screen on a computer with its network
-switched off.
+[`core/tools/check_offline.sh`](core/tools/check_offline.sh) confirms the source has no
+networking code and that none of the finished programs (Mac, Windows, and Linux)
+links to networking functions or libraries. If anything slips, the release isn't
+published. Chalkboard 3 has no plugins, so it never runs add-on code either.
 
 ## 2. Your work stays on your computer
 
@@ -46,15 +43,15 @@ an AI coding assistant, guided and reviewed by a teacher. That help went into th
 program's code, not into anything Chalkboard says to you or your students, and all
 of that code is public here for anyone to read.
 
-## 4. It only runs a few other programs, and only on your own files
+## 4. It only uses other programs to open your own files and install itself
 
-When you ask it to, Chalkboard runs a few programs your computer already has:
+Chalkboard draws board slides, PDFs, and Word files itself. When you ask it to,
+it uses only these parts of your computer:
 
-- **Board slides:** a built-in image tool turns the slide into a PNG (`sips` on
-  macOS, or `pdftoppm`, `mutool`, or Ghostscript on Linux and Windows).
 - **Opening an export:** your computer's usual "open this file" command.
 - **Setup's install step:** copying the app into your Programs or Applications
-  folder, and on Windows, making Start-menu and desktop shortcuts. Nothing is
+  folder (on a Mac, with the built-in `ditto` and `xattr`), and making Start-menu
+  and desktop shortcuts on Windows or an app-menu entry on Linux. Nothing is
   installed for other users, and no admin password is needed.
 
 ## About the downloads

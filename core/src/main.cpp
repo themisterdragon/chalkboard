@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
         else if (a == "--terminal") window = 0;
         else if (a.rfind("-psn_", 0) == 0) {   // macOS: older Finders add this when they open the app
         }
-        else if (a == "--no-plugins") {   // plugins belong to the window app; nothing to switch off here
+        else if (a == "--no-plugins") {   // Chalkboard 2.x had plugins; 3 has none, so there is nothing to switch off
         } else if (a == "-h" || a == "--help") {
             std::printf("chalkboard: lesson planner & assessment builder\n\n"
                         "  --window      open in a window (chalkboard-gui does too)\n"

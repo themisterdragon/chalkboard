@@ -16,7 +16,7 @@ TARGETS=${*:-windows linux linux-arm macos}
 # the data folder goes inside the program (a host build of the packer)
 mkdir -p build
 [ build/embed -nt tools/embed.cpp ] || ${CXX:-c++} -std=c++17 -O1 -o build/embed tools/embed.cpp
-build/embed ../src/chalkboard/data build/resources.tmp
+build/embed data build/resources.tmp
 if cmp -s build/resources.tmp build/resources.cpp; then rm build/resources.tmp; else mv build/resources.tmp build/resources.cpp; fi
 # a host copy of Chalkboard draws the icons
 [ -x chalkboard-core ] || sh build.sh >/dev/null
