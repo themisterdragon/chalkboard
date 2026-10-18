@@ -239,6 +239,7 @@ public:
     }
 
     bool start(const std::string &t, int w, int h, const raster::Image *icon);
+    std::vector<uint32_t> buf;   // the picture as shown (see present)
 
     double scale() override { return win ? msg_f(win, "backingScaleFactor") : 1.0; }
     void size(int &w, int &h) override {
@@ -256,10 +257,16 @@ public:
         if (iw <= 0 || ih <= 0) return;
         const uint8_t *last = img.px.data() + img.px.size() - 3;
         std::memcpy(edge, last, 3);
-        void *data = p_cfDataCreate(nullptr, img.px.data(), (long)img.px.size());
+        // 32 bits a pixel, the order Macs draw without converting (24-bit RGB gets converted on every
+        // draw, which is slow on a Retina screen): B, G, R, unused in memory
+        buf.resize((size_t)iw * (size_t)ih);
+        const uint8_t *s = img.px.data();
+        for (size_t i = 0, n = buf.size(); i < n; i++, s += 3) buf[i] = ((uint32_t)s[0] << 16) | ((uint32_t)s[1] << 8) | s[2];
+        void *data = p_cfDataCreate(nullptr, (const uint8_t *)buf.data(), (long)(buf.size() * 4));
         void *prov = p_providerFromData(data);
         void *space = p_colorSpaceRGB();
-        image = p_imageCreate((size_t)iw, (size_t)ih, 8, 24, (size_t)iw * 3, space, 0 /* no alpha */, prov, nullptr, false, 0);
+        const uint32_t skip_first = 6, little32 = 2 << 12;   // kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little
+        image = p_imageCreate((size_t)iw, (size_t)ih, 8, 32, (size_t)iw * 4, space, skip_first | little32, prov, nullptr, false, 0);
         p_colorSpaceRelease(space);
         p_providerRelease(prov);
         p_cfRelease(data);

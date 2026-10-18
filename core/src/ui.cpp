@@ -174,39 +174,67 @@ static void round_path(raster::Path &p, const Rect &r, double rad) {
     p.close();
 }
 
+// A rounded box, less an optional rounded hole, drawn quickly: the rows where every side is
+// straight are plain boxes, and only the curved bands at the top and bottom are traced as a shape
+// (tracing a whole big card, or a thin ring around one, costs its full area on every frame)
+static void fill_round(raster::Image &img, const Rect &o, double ro, const Rect *hole, double ri, Color c, double alpha = 1) {
+    if (o.w <= 0 || o.h <= 0) return;
+    ro = std::max(0.0, std::min(ro, std::min(o.w, o.h) / 2));   // as round_path does
+    raster::Path p;
+    round_path(p, o, ro);
+    double m0 = o.y + ro, m1 = o.b() - ro;
+    bool fast = true;
+    if (hole) {
+        if (hole->w <= 0 || hole->h <= 0) {
+            hole = nullptr;
+        } else {
+            ri = std::max(0.0, std::min(ri, std::min(hole->w, hole->h) / 2));
+            raster::Path q;
+            round_path(q, *hole, ri);
+            auto ct = q.contours_[0];
+            std::reverse(ct.begin(), ct.end());   // the other way round: it cuts the hole
+            p.contours_.push_back(ct);
+            m0 = std::max(m0, hole->y + ri);
+            m1 = std::min(m1, hole->b() - ri);
+            fast = hole->x >= o.x && hole->r() <= o.r() && hole->y >= o.y && hole->b() <= o.b();
+        }
+    }
+    int y0 = (int)std::ceil(m0), y1 = (int)std::floor(m1);
+    if (!fast || y1 - y0 < 4) {
+        img.fill(p, c, alpha);
+        return;
+    }
+    img.clip(o.x - 1, o.y - 1, o.w + 2, y0 - (o.y - 1));   // the top band
+    img.fill(p, c, alpha);
+    img.unclip();
+    img.clip(o.x - 1, y1, o.w + 2, o.b() + 1 - y1);   // the bottom band
+    img.fill(p, c, alpha);
+    img.unclip();
+    if (!hole) {
+        img.rect(o.x, y0, o.w, y1 - y0, c, alpha);
+    } else {
+        img.rect(o.x, y0, hole->x - o.x, y1 - y0, c, alpha);
+        img.rect(hole->r(), y0, o.r() - hole->r(), y1 - y0, c, alpha);
+    }
+}
+
 void Ui::rrect(const Rect &r, double radius, Color fillc, Color edge, double edge_w, bool has_fill, bool has_edge) {
     if (!drawing || r.w <= 0 || r.h <= 0) return;
     if (has_edge && edge_w > 0) {
         // the edge: the outer shape less the inner one, so it stays sharp
-        raster::Path p;
-        round_path(p, r, radius);
         Rect in = r.in(edge_w);
-        if (in.w > 0 && in.h > 0) {
-            raster::Path q;
-            round_path(q, in, std::max(0.0, radius - edge_w));
-            // the inner contour, the other way round, cuts the hole
-            auto ct = q.contours_[0];
-            std::reverse(ct.begin(), ct.end());
-            p.contours_.push_back(ct);
-            if (has_fill) {
-                raster::Path f;
-                round_path(f, in, std::max(0.0, radius - edge_w));
-                img.fill(f, fillc);
-            }
-        }
-        img.fill(p, edge);
+        double ri = std::max(0.0, radius - edge_w);
+        bool inside = in.w > 0 && in.h > 0;
+        if (inside && has_fill) fill_round(img, in, ri, nullptr, 0, fillc);
+        fill_round(img, r, radius, inside ? &in : nullptr, ri, edge);
     } else if (has_fill) {
-        raster::Path p;
-        round_path(p, r, radius);
-        img.fill(p, fillc);
+        fill_round(img, r, radius, nullptr, 0, fillc);
     }
 }
 
 void Ui::rrect_a(const Rect &r, double radius, Color c, double alpha) {
     if (!drawing || r.w <= 0 || r.h <= 0 || alpha <= 0) return;
-    raster::Path p;
-    round_path(p, r, radius);
-    img.fill(p, c, alpha);
+    fill_round(img, r, radius, nullptr, 0, c, alpha);
 }
 
 void Ui::gradient(const Rect &r, double radius, Color top, Color bottom, double alpha) {
@@ -224,18 +252,11 @@ void Ui::shadow(const Rect &r, double radius, double depth, double strength) {
     const int steps = 5;
     double y_off = depth * 0.3;
     Rect inner{r.x, r.y + y_off, r.w, r.h};
-    raster::Path hole;
-    round_path(hole, inner, radius);
-    auto ct = hole.contours_[0];
-    std::reverse(ct.begin(), ct.end());
     for (int i = steps; i >= 1; i--) {
         double d = depth * i / steps;
         Rect o{inner.x - d * 0.7, inner.y - d * 0.5, inner.w + d * 1.4, inner.h + d * 1.2};
-        raster::Path p;
-        round_path(p, o, radius + d);
-        p.contours_.push_back(ct);
         double t = 1.0 - (double)(i - 1) / steps;   // stronger nearer the box
-        img.fill(p, {0, 0, 0}, strength / steps * (0.4 + t));
+        fill_round(img, o, radius + d, &inner, radius, {0, 0, 0}, strength / steps * (0.4 + t));
     }
 }
 

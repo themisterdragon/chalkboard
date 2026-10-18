@@ -119,6 +119,62 @@ void Image::blend(int x, int y, Color c, double a) {
 
 namespace {
 
+// One color at one strength, worked out once for a whole shape: the same numbers blend() gives
+// each pixel (a table of every possible result, built the first time it's needed)
+struct Ink {
+    double cs[3], a;
+    uint8_t full[3], lut[3][256];
+    bool built = false;
+    Ink(Color c, double alpha) : cs{c.r, c.g, c.b}, a(alpha) {
+        for (int k = 0; k < 3; k++) full[k] = (uint8_t)(std::max(0.0, std::min(1.0, cs[k])) * 255 + 0.5);
+    }
+    void put(uint8_t *p) {
+        if (a <= 0) return;
+        if (a >= 1) {
+            p[0] = full[0];
+            p[1] = full[1];
+            p[2] = full[2];
+            return;
+        }
+        if (!built) {
+            for (int k = 0; k < 3; k++)
+                for (int v = 0; v < 256; v++) {
+                    double r = v / 255.0 * (1 - a) + cs[k] * a;
+                    lut[k][v] = (uint8_t)(std::max(0.0, std::min(1.0, r)) * 255 + 0.5);
+                }
+            built = true;
+        }
+        p[0] = lut[0][p[0]];
+        p[1] = lut[1][p[1]];
+        p[2] = lut[2][p[2]];
+    }
+    void run(uint8_t *p, int n) {   // n pixels in a row
+        if (a <= 0 || n <= 0) return;
+        if (a >= 1) {
+            for (int i = 0; i < n; i++, p += 3) {
+                p[0] = full[0];
+                p[1] = full[1];
+                p[2] = full[2];
+            }
+            return;
+        }
+        put(p);   // builds the table
+        for (int i = 1; i < n; i++) {
+            p += 3;
+            p[0] = lut[0][p[0]];
+            p[1] = lut[1][p[1]];
+            p[2] = lut[2][p[2]];
+        }
+    }
+};
+
+// a float that is exactly +0 (adding it changes nothing)
+inline bool zero_bits(float f) {
+    uint32_t u;
+    std::memcpy(&u, &f, 4);
+    return u == 0;
+}
+
 struct Box {
     int x0, y0, x1, y1;
 };
@@ -253,15 +309,37 @@ void Image::fill(const Path &p, Color c, double alpha, const double *m) {
         acc.line(ct.back().x, ct.back().y, ct.front().x, ct.front().y);   // every contour closes itself
     }
     size_t stride = (size_t)acc.w + 2;
+    Ink ink(c, alpha);
     for (int y = 0; y < acc.h; y++) {
         double sum = 0;
         const float *row = &acc.a[(size_t)y * stride];
-        for (int x = 0; x < acc.w; x++) {
-            sum += row[x];
-            int ix = x + ax0;
-            if (ix < b.x0) continue;
-            double cov = std::min(1.0, std::fabs(sum));
-            if (cov > 0.002) blend(ix, y + b.y0, c, cov * alpha);
+        uint8_t *line = &px[(size_t)(y + b.y0) * (size_t)w * 3];
+        int x = 0;
+        while (x < acc.w) {
+            if (!zero_bits(row[x])) {   // an edge passes here: this pixel on its own
+                sum += row[x];
+                int ix = x + ax0;
+                x++;
+                if (ix < b.x0) continue;
+                double cov = std::min(1.0, std::fabs(sum));
+                if (cov == 1.0) ink.put(line + (size_t)ix * 3);
+                else if (cov > 0.002) blend(ix, y + b.y0, c, cov * alpha);
+                continue;
+            }
+            // a run with no edges: the coverage stays the same all the way along
+            int e = x + 1;
+            while (e < acc.w && zero_bits(row[e])) e++;
+            int from = std::max(x + ax0, b.x0), to = e + ax0;
+            if (from < to) {
+                double cov = std::min(1.0, std::fabs(sum));
+                if (cov == 1.0) ink.run(line + (size_t)from * 3, to - from);
+                else if (cov > 0.002 && to - from >= 48) {
+                    Ink part(c, cov * alpha);   // a long stretch at one strength (often 0.99999994 inside a shape)
+                    part.run(line + (size_t)from * 3, to - from);
+                } else if (cov > 0.002)
+                    for (int ix = from; ix < to; ix++) blend(ix, y + b.y0, c, cov * alpha);
+            }
+            x = e;
         }
     }
 }
@@ -355,8 +433,19 @@ void Image::mask_gradient(const Mask &m, int dx, int dy, Color top, Color bottom
         double t = std::max(0.0, std::min(1.0, (y + 0.5 - gy0) / span));
         Color c{top.r + (bottom.r - top.r) * t, top.g + (bottom.g - top.g) * t, top.b + (bottom.b - top.b) * t};
         const uint8_t *a = &m.a[(size_t)(y - oy) * (size_t)m.w + (size_t)(x0 - ox)];
-        for (int x = x0; x < x1; x++, a++)
-            if (*a) blend(x, y, c, *a / 255.0 * alpha);
+        uint8_t *line = &px[(size_t)y * (size_t)w * 3];
+        for (int x = x0; x < x1;) {
+            int e = x + 1;   // a stretch of the same strength (the inside of the shape)
+            while (e < x1 && a[e - x0] == a[x - x0]) e++;
+            uint8_t v = a[x - x0];
+            if (v && e - x >= 16) {
+                Ink ink(c, v / 255.0 * alpha);
+                ink.run(line + (size_t)x * 3, e - x);
+            } else if (v) {
+                for (int i = x; i < e; i++) blend(i, y, c, v / 255.0 * alpha);
+            }
+            x = e;
+        }
     }
 }
 
@@ -421,11 +510,25 @@ void Image::rect(double x, double y, double rw, double rh, Color c, double alpha
     if (x0 >= x1 || y0 >= y1) return;
     std::vector<double> cx((size_t)(x1 - x0));
     for (int px_ = x0; px_ < x1; px_++) cx[(size_t)(px_ - x0)] = std::min((double)px_ + 1, x + rw) - std::max((double)px_, x);
+    // the columns fully inside (share across = 1), as one run
+    int in0 = x0, in1 = x1;
+    while (in0 < x1 && cx[(size_t)(in0 - x0)] != 1.0) in0++;
+    while (in1 > in0 && cx[(size_t)(in1 - 1 - x0)] != 1.0) in1--;
+    for (int i = in0; i < in1; i++)
+        if (cx[(size_t)(i - x0)] != 1.0) in0 = in1;   // not one solid stretch: go pixel by pixel
+    Ink ink(c, alpha);
     for (int py = y0; py < y1; py++) {
         double cy = std::min((double)py + 1, y + rh) - std::max((double)py, y);
+        uint8_t *row = &px[(size_t)py * (size_t)w * 3];
         for (int px_ = x0; px_ < x1; px_++) {
+            if (cy == 1.0 && px_ == in0 && in0 < in1) {
+                ink.run(row + (size_t)px_ * 3, in1 - in0);
+                px_ = in1 - 1;
+                continue;
+            }
             double cov = cx[(size_t)(px_ - x0)] * cy;
-            if (cov > 0.002) blend(px_, py, c, cov * alpha);
+            if (cov == 1.0) ink.put(row + (size_t)px_ * 3);
+            else if (cov > 0.002) blend(px_, py, c, cov * alpha);
         }
     }
 }
