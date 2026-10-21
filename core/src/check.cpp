@@ -59,7 +59,7 @@ static Value dump_store() {
     for (const auto &l : st.data.get("lessons").arr()) lessons.push_back(&l);
     for (const auto &a : st.data.get("assessments").arr()) assessments.push_back(&a);
     Value sorts = Value::object();
-    for (const char *how : {"updated", "created", "title", "unit", "class"}) {
+    for (const char *how : {"updated", "created", "scheduled", "title", "unit", "class"}) {
         sorts[std::string("lessons_") + how] = ids(store::sort_items(lessons, how));
         sorts[std::string("assess_") + how] = ids(store::sort_items(assessments, how));
     }

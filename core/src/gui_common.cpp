@@ -15,7 +15,16 @@ const std::vector<std::pair<std::string, std::string>> SECTIONS = {
     {"lessons", "Lesson Plans"}, {"assessments", "Assessments"}, {"standards", "Standards Library"}, {"settings", "Settings"}, {"calendar", "Calendar"}};
 
 const std::vector<std::pair<std::string, std::string>> SORT_LABEL = {
-    {"updated", "Date modified"}, {"created", "Date created"}, {"title", "Title (A-Z)"}, {"unit", "Unit"}, {"class", "By class"}};
+    {"updated", "Date modified"}, {"created", "Date created"}, {"scheduled", "Date scheduled"}, {"title", "Title (A-Z)"},
+    {"unit", "Unit"}, {"class", "By class"}};
+
+// the Sort by choices for a list: only lessons have days they're taught
+static std::vector<std::pair<std::string, std::string>> sorts_for(const std::string &kind) {
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const auto &s : SORT_LABEL)
+        if (kind == "lesson" || s.first != "scheduled") out.push_back(s);
+    return out;
+}
 
 Factory section_factory(const std::string &key) {
     if (key == "lessons") return lesson_list();
@@ -218,7 +227,7 @@ ItemList::ItemList(App &a, const std::string &kind, const std::string &pool_key,
     : Screen(a), kind_(kind), pool_key_(pool_key), sort_key_(sort_key), noun_(noun) {
     sort_ = a.settings().s(sort_key);
     bool ok = false;
-    for (const auto &s : SORT_LABEL) ok |= s.first == sort_;
+    for (const auto &s : sorts_for(kind)) ok |= s.first == sort_;
     if (!ok) sort_ = "updated";
     // By Class: come back to the same class
     if (kind == "lesson") {
@@ -419,7 +428,7 @@ void ItemList::frame(Ui &ui, const Rect &body) {
     filters(ui);
     label_mid(ui, "Sort by:");
     ui.place(6 * S, 1);
-    if (dropdown(ui, "sort", SORT_LABEL, sort_, 14)) {
+    if (dropdown(ui, "sort", sorts_for(kind_), sort_, 14)) {
         app.settings()[sort_key_] = sort_;
         app.save();
     }

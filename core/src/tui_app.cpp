@@ -288,8 +288,11 @@ bool App::filter_key(const std::string &c, Filter &f, const std::string &which) 
         std::string cur = st().has(f.sort) ? field(st(), f.sort) : "updated";
         size_t i = 0;
         bool found = false;
-        for (size_t k = 0; k < store::SORTS.size(); k++) if (store::SORTS[k].first == cur) { i = k; found = true; }
-        st()[f.sort] = store::SORTS[found ? (i + 1) % store::SORTS.size() : 0].first;
+        // only lessons have days they're taught
+        std::vector<std::string> keys;
+        for (const auto &s : store::SORTS) if (f.sort == "lesson_sort" || s.first != "scheduled") keys.push_back(s.first);
+        for (size_t k = 0; k < keys.size(); k++) if (keys[k] == cur) { i = k; found = true; }
+        st()[f.sort] = keys[found ? (i + 1) % keys.size() : 0];
         save();
         ui.msg = "SORTED BY " + sort_label(field(st(), f.sort));
     } else return false;

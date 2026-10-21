@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <climits>
 #include <map>
 #include <set>
 
@@ -172,7 +173,8 @@ const Value &default_settings() {
 }
 
 const std::vector<std::pair<std::string, std::string>> SORTS = {
-    {"updated", "DATE MODIFIED"}, {"created", "DATE CREATED"}, {"title", "TITLE (A-Z)"}, {"unit", "UNIT"}, {"class", "BY CLASS"}};
+    {"updated", "DATE MODIFIED"}, {"created", "DATE CREATED"}, {"scheduled", "DATE SCHEDULED"}, {"title", "TITLE (A-Z)"},
+    {"unit", "UNIT"}, {"class", "BY CLASS"}};
 
 const std::vector<BoardSection> BOARD_SECTIONS = {
     {"question", "Essential Question", "top"}, {"standards", "Standards", "left"}, {"targets", "I Can...", "left"},
@@ -1184,6 +1186,17 @@ std::vector<const Value *> sort_items(std::vector<const Value *> items, std::str
     if (how == "class") how = "unit";
     if (how == "title") {
         std::stable_sort(items.begin(), items.end(), [&](const Value *a, const Value *b) { return low_title(a) < low_title(b); });
+        return items;
+    }
+    if (how == "scheduled") {   // the order they're taught: earliest first day, then title; no date last
+        std::map<const Value *, long> first;
+        for (const Value *x : items) {
+            long best = LONG_MAX;
+            for (const auto &d : lesson_dates(*x)) best = std::min(best, d.ordinal());
+            first[x] = best;
+        }
+        std::stable_sort(items.begin(), items.end(), [&](const Value *a, const Value *b) { return low_title(a) < low_title(b); });
+        std::stable_sort(items.begin(), items.end(), [&](const Value *a, const Value *b) { return first[a] < first[b]; });
         return items;
     }
     if (how == "unit") {
