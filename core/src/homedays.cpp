@@ -48,7 +48,15 @@ const Value *pick(const Value &lessons, const std::string &course, const Date &d
     std::string unit = unit_on(lessons, course, d);
     for (const Value *l : bank(lessons, course, &unit))
         if (!used(*l)) return l;
+    static const std::string any;   // none left in the unit: one that fits any unit
+    for (const Value *l : bank(lessons, course, &any))
+        if (!used(*l)) return l;
     return nullptr;
+}
+
+std::string unit_label(const Value &l) {
+    std::string u = text::strip(store::field(l, "unit"));
+    return u.empty() ? "Any unit" : u;
 }
 
 const Value *find(const Value &data, int n) {

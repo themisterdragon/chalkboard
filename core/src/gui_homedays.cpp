@@ -150,7 +150,9 @@ bool home_version_dialog(App &app, const std::string &id) {
                 u.focus(u.id("text:explain"));
                 first = false;
             }
-            check(u, "Keep this in " + (unit.empty() ? std::string("its unit") : unit) + "'s " + day_name(app) + " lessons, ready for a day at home", ready);
+            check(u, unit.empty() ? "Keep this in the " + day_name(app) + " lessons for any unit, ready for a day at home"
+                                 : "Keep this in " + unit + "'s " + day_name(app) + " lessons, ready for a day at home",
+                  ready);
             u.space(10 * S);
             label(u, "Explain it in writing", true);
             para(u, "Students can't ask you that day, so teach it here: what we're learning and why, with one short example. A few sentences.", true, 0,
@@ -219,8 +221,9 @@ std::string new_home_lesson(App &app, const std::string &course0, const Value *f
                 if (x.is_object() && store::in_class(x, course)) mine.push_back(&x);
             std::vector<std::pair<std::string, std::string>> uopts;
             for (const auto &un : app.store.units(mine)) uopts.push_back({un, un});
-            if (unit.empty() && !uopts.empty()) unit = homedays::unit_on(app.store.data["lessons"], course, today());
-            if (unit.empty() && !uopts.empty()) unit = uopts.front().first;
+            if (first && unit.empty() && !uopts.empty()) unit = homedays::unit_on(app.store.data["lessons"], course, today());
+            if (first && unit.empty() && !uopts.empty()) unit = uopts.front().first;
+            if (!uopts.empty()) uopts.push_back({"", "Any unit"});
             if (!unit.empty() && std::find_if(uopts.begin(), uopts.end(), [&](const auto &o) { return o.first == unit; }) == uopts.end())
                 uopts.push_back({unit, unit});
             if (first) {
@@ -286,7 +289,7 @@ void home_lessons_dialog(App &app, const std::string &course0) {
                 if (course.empty() || c == course)
                     for (const Value *l : homedays::bank(app.store.data["lessons"], c)) ls.push_back(l);
             std::vector<std::vector<std::string>> rows;
-            for (const Value *l : ls) rows.push_back({store::class_of(*l), store::field(*l, "unit"), lesson_name(*l), readiness(app, *l)});
+            for (const Value *l : ls) rows.push_back({store::class_of(*l), homedays::unit_label(*l), lesson_name(*l), readiness(app, *l)});
             double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
             Rect lr = u.place(0, 9 * rh + hh + 2 * S);
             if (first) {
@@ -403,7 +406,7 @@ bool home_day_now(App &app, const Date &day0) {
             for (const auto &p : picks) {
                 const Value *l = app.lesson(p.lesson_id);
                 std::string from = !l ? "Nothing ready: no packet"
-                                       : (p.home ? store::field(*l, "unit") + ", " + day_name(app) + " lesson: " : "That day's lesson: ") + lesson_name(*l);
+                                       : (p.home ? homedays::unit_label(*l) + ", " + day_name(app) + " lesson: " : "That day's lesson: ") + lesson_name(*l);
                 missing += !l;
                 unexplained += l && !explained(*l);
                 rows.push_back({p.course, from, !l ? "" : readiness(app, *l)});
@@ -423,7 +426,7 @@ bool home_day_now(App &app, const Date &day0) {
             if (button(u, "Change Lesson\xE2\x80\xA6", p != nullptr, false, true)) {
                 std::vector<std::pair<std::string, std::string>> opts;
                 for (const Value *l : homedays::bank(app.store.data["lessons"], p->course))
-                    opts.push_back({l->s("id"), store::field(*l, "unit") + ": " + lesson_name(*l) + (homedays::used(*l) ? "  (" + readiness(app, *l) + ")" : "")});
+                    opts.push_back({l->s("id"), homedays::unit_label(*l) + ": " + lesson_name(*l) + (homedays::used(*l) ? "  (" + readiness(app, *l) + ")" : "")});
                 if (const Value *reg = app.lesson(p->regular)) opts.push_back({reg->s("id"), "That day's lesson: " + lesson_name(*reg)});
                 opts.push_back({"\x01none", "No packet for this class"});
                 std::string c = p->course;
@@ -697,13 +700,13 @@ public:
                 std::vector<std::string> order;
                 for (const Value *l : homedays::bank(app.store.data["lessons"], c))
                     if (!homedays::used(*l)) {
-                        std::string un = store::field(*l, "unit");
+                        std::string un = homedays::unit_label(*l);
                         if (!per.count(un)) order.push_back(un);
                         per[un]++;
                     }
                 if (order.empty()) continue;
                 std::vector<std::string> us;
-                for (const auto &un : order) us.push_back((un.empty() ? std::string("no unit") : un) + " (" + std::to_string(per[un]) + ")");
+                for (const auto &un : order) us.push_back(un + " (" + std::to_string(per[un]) + ")");
                 bits.push_back(c + ": " + text::join(us, ", "));
             }
             label(ui, "Lessons ready", true);
