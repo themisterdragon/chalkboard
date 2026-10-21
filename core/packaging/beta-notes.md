@@ -1,6 +1,12 @@
-**A test version of Chalkboard 3**, rebuilt from the ground up in C++: one small program for each computer, no Python needed, fully offline. It's the same Chalkboard (lessons, assessments, standards, board slides, exports, the terminal view) in a window of its own.
+**A test version of Chalkboard 3.1**: smoother, plus a school calendar, snow days, and at-home days.
 
-**New in beta 2 and 3: a fresh new look.** A sidebar that takes you anywhere, a Today page with your week at a glance (+ Plan any day), a Calendar of your lessons color-coded by class, and a clean Modern look in light or dark (Chalkboard green, your school's colors, or your computer's accent). Prefer something fun? Pick Glossy (shiny 2000s glass), Bevel, or Pinstripe from the View menu. Also fixed: the lesson and assessment editors now scroll, and changing the look from the View menu no longer closes Chalkboard (beta 3). With a menu open, slide across the menu bar to see the others.
+**What's new**
+
+- **Smooth scrolling everywhere.** Lessons, lists, and settings scroll all the way down again, follow a trackpad exactly, and glide with a mouse wheel. The whole window is quicker too.
+- **Lesson Plans: filter by class, sort by anything.** Pick a class, then sort by the date it's taught, date changed, date made, title, or unit.
+- **School calendar** (Settings): your first and last day, breaks, holidays, and teacher days, typed in or read from your district's calendar file (.ics). The Calendar and Today show them, and a lesson's date warns when it lands on one.
+- **Shift lesson dates and Snow Day.** Move lessons later or earlier by school days, skipping weekends and days off. A preview first, a backup, and Edit > Undo Shift puts them back.
+- **At-home days.** Set how many your district allows (and what it calls them), plan a lesson for each one ahead of time, and make a simple packet for each class on the day: the lesson explained in writing, what to do, the worksheets, and how to reach you. Then fill in the teacher log (how many took part, by technology or by paper, and who you talked to) and export it for the office.
 
 **It doesn't touch your current Chalkboard.** The beta keeps its own copy of your lessons and assessments (copied from your regular Chalkboard the first time it opens) and exports to its own folder, so you can try it side by side.
 

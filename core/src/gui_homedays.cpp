@@ -1,4 +1,4 @@
-// Days of school at home (NTI days, or whatever the district calls them): the page that lists the
+// Days of school at home (at-home days, or whatever the district calls them): the page that lists the
 // days a district allows, planning a lesson for each one ahead of time, writing a lesson's at-home
 // version (explained in writing, the work cut down), making each class's packet on the day, and
 // the teacher log the district asks for afterward.

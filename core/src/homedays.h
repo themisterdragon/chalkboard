@@ -1,8 +1,8 @@
-// Days of school at home (Kentucky's NTI days; "At-Home Days" unless the district names them):
+// Days of school at home (snow days taught from home; "At-Home Days" unless the district names them):
 // the number a district allows, a lesson planned ahead for each one in each class, and a teacher
 // log for each day used (how many took part, how, and who the teacher talked to).
 //
-// settings: home_day_name ("NTI Day"), home_day_contact (office hours, for packets),
+// settings: home_day_name ("Remote Learning Day"), home_day_contact (office hours, for packets),
 //           home_days_allotted (how many the district allows)
 // lessons:  "home_slot": n (1..allotted) marks a lesson planned for at-home day n in its class
 // data:     "home_days": [{"number": 3, "date": "2026-10-22",

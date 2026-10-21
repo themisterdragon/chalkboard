@@ -19,7 +19,7 @@ struct DayOff {
     std::string kind;   // a KINDS key
     bool school_day() const { return kind == "early" || kind == "athome"; }
 };
-// (key, label): "early" and "athome" (an NTI day) are still school days; the rest have no class
+// (key, label): "early" and "athome" (taught from home) are still school days; the rest have no class
 extern const std::vector<std::pair<std::string, std::string>> KINDS;
 std::string kind_label(const std::string &kind);
 std::string kind_short(const std::string &kind);   // "Teacher day" (for lists)

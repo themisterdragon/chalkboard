@@ -216,17 +216,17 @@ void App::undo_shift() {
     ui.msg = "PUT " + std::to_string(back) + " LESSONS BACK.";
 }
 
-// ----------------------------------------------------------------------------- at-home (NTI) days
+// ----------------------------------------------------------------------------- at-home days
 
 void App::home_days() {
     auto name = [&] { return up(store::home_day_name(st())); };
     if (homedays::allotted(st()) <= 0) {
         std::string v;
-        if (!ui.prompt("HOW MANY AT-HOME (NTI) DAYS DOES YOUR DISTRICT ALLOW?", v, "10")) return;
+        if (!ui.prompt("HOW MANY AT-HOME DAYS DOES YOUR DISTRICT ALLOW?", v, "10")) return;
         int n = std::max(0, std::min(60, std::atoi(text::strip(v).c_str())));
         if (n <= 0) return;
         st()["home_days_allotted"] = n;
-        if (ui.prompt("WHAT DOES YOUR DISTRICT CALL THEM? (E.G. NTI DAY)", v, store::home_day_name(st()))) st()["home_day_name"] = text::strip(v);
+        if (ui.prompt("WHAT DOES YOUR DISTRICT CALL THEM? (E.G. REMOTE LEARNING DAY)", v, store::home_day_name(st()))) st()["home_day_name"] = text::strip(v);
         save();
     }
     ui.list_screen(

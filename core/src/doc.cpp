@@ -312,7 +312,7 @@ Value makeup_doc(const Value &lesson, store::Store &st, const Value *settings) {
     return make_doc("Make-Up Work - " + title, pg.footer(footer), blocks);
 }
 
-// A packet for a day of school at home (an NTI day, a remote day): what we're learning, explained
+// A packet for a day of school at home (a snow day taught from home, a remote day): what we're learning, explained
 // in writing, then a short list of what to do, the worksheets, and how to reach the teacher. Kept
 // simple for students: no standards, no times, nothing technical.
 Value home_day_doc(const Value &lesson, store::Store &st, const Date &day, const Value *settings) {

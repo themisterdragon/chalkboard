@@ -38,8 +38,8 @@ std::vector<std::string> export_item(store::Store &st, const std::string &kind, 
 // A day's board slides, class period by class period: [(period, lesson or null)]
 std::vector<std::string> export_day(store::Store &st, const std::vector<std::pair<json::Value, const json::Value *>> &picks, const Date &day,
                                     const std::string &root = "");
-// A day of school at home (an NTI day): a packet (PDF + Word) for each lesson that day, in
-// "<export folder>/NTI Day Work/2026-10-22/"
+// A day of school at home: a packet (PDF + Word) for each lesson that day, in
+// "<export folder>/At-Home Day Work/2026-10-22/"
 std::vector<std::string> export_home_day(store::Store &st, const Date &day, const std::vector<const json::Value *> &lessons,
                                          const Progress &progress = nullptr, const std::string &root = "");
 // an at-home day's teacher log (PDF + Word), next to its packets

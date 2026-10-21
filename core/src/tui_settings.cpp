@@ -823,7 +823,7 @@ void App::settings_screen() {
         {"logo", "SCHOOL LOGO (BOARD SLIDES)", "logo"},
         {"class_periods", "CLASS PERIODS & CODES", "periods"},
         {"school_calendar", "SCHOOL CALENDAR & SHIFTS", "schoolcal"},
-        {"home_days", "AT-HOME (NTI) DAYS & TEACHER LOG", "homedays"},
+        {"home_days", "AT-HOME DAYS & TEACHER LOG", "homedays"},
         {"primary_color", "SCHOOL COLOR 1 (BACKGROUND)", "color"},
         {"secondary_color", "SCHOOL COLOR 2 (HEADINGS)", "color"},
         {"text_color", "SCHOOL COLOR 3 (TEXT)", "color"},

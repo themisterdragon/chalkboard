@@ -23,7 +23,7 @@ Value fields_block(const std::vector<std::string> &items);   // null when there 
 // settings: the store's, or a draft (the layout and board designers preview before saving)
 Value lesson_doc(const Value &lesson, store::Store &st, const Value *settings = nullptr);
 Value makeup_doc(const Value &lesson, store::Store &st, const Value *settings = nullptr);
-// a packet for a day of school at home (an NTI day): settings home_day_name, home_day_contact
+// a packet for a day of school at home: settings home_day_name, home_day_contact
 Value home_day_doc(const Value &lesson, store::Store &st, const Date &day, const Value *settings = nullptr);
 // the teacher log for an at-home day (a data.home_days record)
 Value home_log_doc(store::Store &st, const Value &rec, const Value *settings = nullptr);

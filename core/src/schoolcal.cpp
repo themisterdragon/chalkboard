@@ -14,7 +14,7 @@ using dates::Span;
 
 const std::vector<std::pair<std::string, std::string>> KINDS = {
     {"holiday", "Holiday"}, {"break", "Break"}, {"teacher", "Teacher day (no students)"}, {"early", "Early release (still a school day)"},
-    {"athome", "At-home day, like NTI (still a school day)"}};
+    {"athome", "At-home day (still a school day)"}};
 
 std::string kind_label(const std::string &kind) {
     for (const auto &k : KINDS)
