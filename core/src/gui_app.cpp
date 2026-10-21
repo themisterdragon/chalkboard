@@ -767,7 +767,7 @@ void App::menu_command(int id) {
     case M_PASTE: key('v', P); break;
     case M_SELECT_ALL: key('a', P); break;
     case M_SHIFT: shift_dates(*this, "", today()); break;
-    case M_SNOW: shift_dates(*this, "", today(), true); break;
+    case M_SNOW: snow_day(*this); break;
     case M_UNDO_SHIFT: undo_shift(*this); break;
     case M_HOME: go_section(""); break;
     case M_TERMINAL: enter_terminal(); break;

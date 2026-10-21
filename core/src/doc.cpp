@@ -1,5 +1,7 @@
 #include "doc.h"
 
+#include "homedays.h"
+
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -308,6 +310,177 @@ Value makeup_doc(const Value &lesson, store::Store &st, const Value *settings) {
         }
     std::string footer = join_truthy({field(s, "teacher"), field(lesson, "course"), field(s, "school")}, " - ");
     return make_doc("Make-Up Work - " + title, pg.footer(footer), blocks);
+}
+
+// A packet for a day of school at home (an NTI day, a remote day): what we're learning, explained
+// in writing, then a short list of what to do, the worksheets, and how to reach the teacher. Kept
+// simple for students: no standards, no times, nothing technical.
+Value home_day_doc(const Value &lesson, store::Store &st, const Date &day, const Value *settings) {
+    const Value &s = settings_of(st, settings);
+    Page pg(s, "makeup");
+    std::string name = store::home_day_name(s);
+    std::string title = field(lesson, "title");
+    if (title.empty()) title = "Today's Lesson";
+    Value head = Value::array();
+    head.push(obj({{"t", "title"}, {"text", name + " Work"}}));
+    std::string sub = join_truthy({field(lesson, "course"), day.valid() ? dates::fmt_date(day, true) : std::string()}, "   |   ");
+    if (!sub.empty()) head.push(obj({{"t", "subtitle"}, {"text", sub}}));
+    Value blocks = pg.top(head, Value::array(), Value::array(), false);
+    Value who_line = Value::array(), share = Value::array();   // just their name
+    who_line.push("Name");
+    share.push(0.6);
+    blocks.push(obj({{"t", "fields"}, {"items", who_line}, {"shares", share}}));
+    // what we're learning: the teacher's written explanation, or the lesson's goals
+    std::string explain = text::strip(field(lesson, "nti_explain"));
+    blocks.push(pg.h1(title));
+    if (!explain.empty()) extend(blocks, text_blocks(explain));
+    else if (!text::strip(field(lesson, "targets")).empty()) {
+        blocks.push(obj({{"t", "p"}, {"text", "Today we're learning to:"}}));
+        extend(blocks, text_blocks(field(lesson, "targets")));
+    }
+    // what to do: each line of the shortened work is a step to check off (no shortened work yet:
+    // the lesson's practice, as it is)
+    std::vector<std::pair<std::string, std::string>> steps;   // (step, more under it)
+    std::string work = field(lesson, "nti_work");
+    if (text::strip(work).empty()) {
+        if (!text::strip(field(lesson, "guided")).empty()) steps.push_back({"Practice", field(lesson, "guided")});
+        if (!text::strip(field(lesson, "independent")).empty()) steps.push_back({"On your own", field(lesson, "independent")});
+    }
+    for (const auto &line : text::split(work, "\n")) {
+        std::string t = text::strip(line);
+        if (t.empty()) continue;
+        if (t.rfind("- ", 0) == 0 || t.rfind("* ", 0) == 0) t = text::strip(t.substr(2));
+        size_t k = 0;   // "1." / "2)" numbering: the steps are numbered here
+        while (k < t.size() && std::isdigit((unsigned char)t[k])) k++;
+        if (k > 0 && k < t.size() && (t[k] == '.' || t[k] == ')')) t = text::strip(t.substr(k + 1));
+        steps.push_back({t, ""});
+    }
+    auto linked = st.attached(lesson);
+    std::vector<const Value *> held, classwork;
+    for (const Value *a : linked) {
+        std::string k = a->s("kind");
+        (std::find(store::MAKEUP_HELD.begin(), store::MAKEUP_HELD.end(), k) != store::MAKEUP_HELD.end() ? held : classwork).push_back(a);
+    }
+    if (!steps.empty() || !classwork.empty()) blocks.push(pg.h1("What to Do"));
+    int i = 0;
+    for (const auto &stp : steps) {
+        blocks.push(obj({{"t", "check"}, {"text", std::to_string(++i) + ". " + stp.first}}));
+        Value more = text_blocks(stp.second);
+        for (auto b : more.arr()) {
+            b["pad"] = 18;
+            blocks.push(b);
+        }
+        blocks.push(obj({{"t", "space"}, {"h", 4}}));
+    }
+    for (const Value *a : classwork) blocks.push(obj({{"t", "check"}, {"text", std::to_string(++i) + ". " + handout_name(*a) + " (attached)"}}));
+    if (!held.empty()) {
+        blocks.push(obj({{"t", "space"}, {"h", 6}}));
+        std::vector<std::string> names;
+        for (const Value *a : held) names.push_back(handout_name(*a));
+        blocks.push(obj({{"t", "p"}, {"text", "We'll do the " + text::join(names, " and the ") + " when we're back at school."}}));
+    }
+    // how to reach the teacher
+    std::string contact = text::strip(field(s, "home_day_contact"));
+    std::string who = field(s, "teacher");
+    blocks.push(pg.h1("Questions?"));
+    if (!contact.empty()) extend(blocks, text_blocks(contact));
+    else blocks.push(obj({{"t", "p"}, {"text", who.empty() ? "Ask your teacher when we're back." : "Ask " + who + " when we're back."}}));
+    Value signoff = fields_block(store::layout_fields(pg.lay.s("signoff")));
+    if (!signoff.is_null()) {
+        blocks.push(obj({{"t", "space"}, {"h", 14}}));
+        blocks.push(obj({{"t", "rule"}}));
+        blocks.push(signoff);
+    }
+    for (const Value *a : classwork) {   // the worksheets themselves, so nothing is missing at home
+        blocks.push(obj({{"t", "pagebreak"}}));
+        extend(blocks, assessment_doc(*a, st, 0, 1, false, settings).get("blocks"));
+    }
+    std::string footer = join_truthy({who, field(lesson, "course"), field(s, "school")}, " - ");
+    return make_doc(name + " Work - " + title, pg.footer(footer), blocks);
+}
+
+// The teacher log for an at-home day: who, when, where; each class's participation (A in class,
+// B taking part, C = B / A x 100, D by technology, E by book or paper packet); and who the
+// teacher talked to (name, time, how). Blank rows to write in when there's room.
+Value home_log_doc(store::Store &st, const Value &rec, const Value *settings) {
+    const Value &s = settings_of(st, settings);
+    std::string name = store::home_day_name(s);
+    Date day = homedays::date_of(rec);
+    std::string when = day.valid() ? dates::fmt_date(day, true) : "";
+    Value blocks = Value::array();
+    blocks.push(obj({{"t", "title"}, {"text", name + " Teacher Log"}}));
+    blocks.push(obj({{"t", "subtitle"}, {"text", join_truthy({name + " " + std::to_string(rec.get("number").as_int()), when}, "   |   ")}}));
+    for (const auto &kv : std::vector<std::pair<std::string, std::string>>{{"Teacher", field(s, "teacher")}, {"Date", when}, {"School", field(s, "school")}})
+        blocks.push(obj({{"t", "kv"}, {"label", kv.first + ":"}, {"text", kv.second.empty() ? "________________________" : kv.second}}));
+    blocks.push(obj({{"t", "space"}, {"h", 8}}));
+    blocks.push(obj({{"t", "h1"}, {"text", "Participation"}, {"rule", true}}));
+    Value rows = Value::array();
+    long ta = 0, tb = 0, td = 0, te = 0, pa = 0;   // pa: in classes with B filled in (for the total %)
+    for (const auto &c : rec.get("classes").arr()) {
+        long a = homedays::count(c, "enrolled"), b = homedays::count(c, "participating"), d = homedays::count(c, "technology"),
+             e = homedays::count(c, "paper");
+        bool has_b = !text::strip(field(c, "participating")).empty();
+        ta += a, tb += b, td += d, te += e, pa += has_b ? a : 0;
+        std::string cls = field(c, "period");
+        std::string course = field(c, "course");
+        if (!course.empty() && text::lower(course) != text::lower(cls)) cls += " (" + course + ")";
+        auto num = [&](const char *k, long v) { return text::strip(store::text_of(c.get(k))).empty() || c.get(k).is_null() ? std::string() : std::to_string(v); };
+        Value r = Value::array();
+        r.push(cls);
+        r.push(num("enrolled", a));
+        r.push(num("participating", b));
+        r.push(has_b ? homedays::percent(b, a) : std::string());
+        r.push(num("technology", d));
+        r.push(num("paper", e));
+        rows.push(r);
+    }
+    auto cols = [](std::initializer_list<std::pair<const char *, double>> cs) {
+        Value out = Value::array();
+        for (const auto &c : cs) {
+            Value x = Value::array();
+            x.push(c.first);
+            x.push(c.second);
+            out.push(x);
+        }
+        return out;
+    };
+    Value table = obj({{"t", "table"},
+                       {"cols", cols({{"Class", 0.30}, {"A. In Class", 0.14}, {"B. Took Part", 0.14}, {"C. % (B / A)", 0.14}, {"D. Technology", 0.14},
+                                      {"E. Paper", 0.14}})},
+                       {"rows", rows}});
+    if (rows.size() > 1) {
+        Value t = Value::array();
+        for (const auto &x : {std::string("All classes"), std::to_string(ta), std::to_string(tb), homedays::percent(tb, pa), std::to_string(td),
+                              std::to_string(te)})
+            t.push(x);
+        table["total"] = t;
+    }
+    if (rows.size() == 0) table["blank"] = 6;
+    blocks.push(table);
+    blocks.push(obj({{"t", "p"}, {"style", "small"},
+                     {"text", "C = B / A x 100.   D: students who used technology instruction.   E: students who used a textbook or paper packet."}}));
+    blocks.push(obj({{"t", "space"}, {"h", 6}}));
+    blocks.push(obj({{"t", "h1"}, {"text", "Communication Log"}, {"rule", true}}));
+    Value crow = Value::array();
+    for (const auto &c : rec.get("contacts").arr()) {
+        Value r = Value::array();
+        r.push(field(c, "name"));
+        r.push(field(c, "time"));
+        r.push(field(c, "mode"));
+        crow.push(r);
+    }
+    blocks.push(obj({{"t", "table"},
+                     {"cols", cols({{"Name", 0.45}, {"Time", 0.2}, {"Mode of Communication", 0.35}})},
+                     {"rows", crow},
+                     {"blank", crow.size() ? 3 : 10}}));
+    blocks.push(obj({{"t", "space"}, {"h", 10}}));
+    Value items = Value::array(), shares = Value::array();
+    items.push("Teacher Signature");
+    items.push("Date");
+    shares.push(0.62);
+    shares.push(0.30);
+    blocks.push(obj({{"t", "fields"}, {"items", items}, {"shares", shares}}));
+    return make_doc(name + " Teacher Log", join_truthy({field(s, "teacher"), field(s, "school")}, " - "), blocks);
 }
 
 Value code_blocks(const std::string &codes) {

@@ -239,6 +239,11 @@ std::vector<Value> periods_for(const Value &settings, const Value &lesson) {
     return out;
 }
 
+std::string home_day_name(const Value &settings) {
+    std::string n = text::strip(field(settings, "home_day_name"));
+    return n.empty() ? "At-Home Day" : n;
+}
+
 std::vector<Date> lesson_dates(const Value &x) {
     Date near;
     if (!dates::stamp_day(field(x, "created"), near) && !dates::stamp_day(field(x, "updated"), near)) near = today();

@@ -286,6 +286,7 @@ public:
         if (tool(ui, "Export\xE2\x80\xA6")) export_dialog(app, "lesson", id_);
         if (tool(ui, "Board Slide")) run_export(app, "lesson", id_, "PNG");
         if (tool(ui, "Make-Up Sheet")) run_export(app, "lesson", id_, "MAKEUP");
+        if (tool(ui, store::home_day_name(app.settings()) + " Version\xE2\x80\xA6")) home_version_dialog(app, id_);
         tool_gap(ui);
         if (tool(ui, "Sections\xE2\x80\xA6")) lesson_sections(app);
         tool_gap(ui);

@@ -124,6 +124,37 @@ std::vector<std::string> render_lines(const Value &doc, int width) {
                 }
         } else if (t == "rule") {
             out.push_back(rep("-", width));
+        } else if (t == "table") {   // a filled-in table (see pdf.cpp)
+            const Value &cols = b.get("cols");
+            std::vector<long> widths;
+            for (const auto &c : cols.arr())
+                widths.push_back(std::max(6L, (long)((double)(width - (long)cols.size() - 1) * c.at(1).as_double())));
+            auto cut = [](std::string v, long n) {
+                std::u32string u = text::to32(markup::plain(v));
+                if ((long)u.size() > n) u = u.substr(0, (size_t)std::max(0L, n - 3)) + U"...";
+                return text::to8(u);
+            };
+            std::string sep = "+";
+            for (long w : widths) sep += rep("-", w) + "+";
+            auto line = [&](const Value &cells) {
+                std::string l = "|";
+                for (size_t i = 0; i < widths.size(); i++) l += text::ljust(" " + cut(cells.at(i).is_null() ? "" : text_of(cells.at(i)), widths[i] - 2), widths[i]) + "|";
+                return l;
+            };
+            Value heads = Value::array();
+            for (const auto &c : cols.arr()) heads.push(c.at(0));
+            out.push_back("");
+            out.push_back(sep);
+            out.push_back(line(heads));
+            out.push_back(sep);
+            for (const auto &r : b.get("rows").arr()) out.push_back(line(r));
+            for (long i = 0; i < b.get("blank").as_int(); i++) out.push_back(line(Value::array()));
+            if (b.get("total").is_array()) {
+                out.push_back(sep);
+                out.push_back(line(b.get("total")));
+            }
+            out.push_back(sep);
+            out.push_back("");
         } else if (t == "grid") {
             const Value &cols = b.get("cols");
             std::vector<long> widths;

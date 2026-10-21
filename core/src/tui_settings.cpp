@@ -8,6 +8,7 @@
 #include "exporting.h"
 #include "files.h"
 #include "fontlib.h"
+#include "homedays.h"
 #include "proc.h"
 #include "text.h"
 #include "tui_app.h"
@@ -822,6 +823,7 @@ void App::settings_screen() {
         {"logo", "SCHOOL LOGO (BOARD SLIDES)", "logo"},
         {"class_periods", "CLASS PERIODS & CODES", "periods"},
         {"school_calendar", "SCHOOL CALENDAR & SHIFTS", "schoolcal"},
+        {"home_days", "AT-HOME (NTI) DAYS & TEACHER LOG", "homedays"},
         {"primary_color", "SCHOOL COLOR 1 (BACKGROUND)", "color"},
         {"secondary_color", "SCHOOL COLOR 2 (HEADINGS)", "color"},
         {"text_color", "SCHOOL COLOR 3 (TEXT)", "color"},
@@ -859,6 +861,9 @@ void App::settings_screen() {
             else if (f.kind == "schoolcal") {
                 auto cal = schoolcal::read(st());
                 v = cal.empty() ? "NOT SET UP: BREAKS, HOLIDAYS, SNOW DAYS ..." : std::to_string(cal.off.size()) + " DAYS OFF LISTED ...";
+            } else if (f.kind == "homedays") {
+                int n = homedays::allotted(st());
+                v = n ? std::to_string(n) + " " + text::upper(store::home_day_name(st())) + "S ..." : "NOT SET UP ...";
             } else if (f.kind == "periods") {
                 long n = 0;
                 for (const auto &p : st().get("class_periods").arr()) if (!text::strip(field(p, "codes")).empty()) n++;
@@ -946,6 +951,7 @@ void App::settings_screen() {
             else if (f.kind == "logo") logo_settings();
             else if (f.kind == "periods") class_periods();
             else if (f.kind == "schoolcal") school_calendar();
+            else if (f.kind == "homedays") home_days();
             else if (f.kind == "mascot") pick_mascot();
             else if (f.kind == "backup") {
                 backup_now();

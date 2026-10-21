@@ -616,6 +616,57 @@ std::vector<Row> build_rows(const Value &blocks, const Fonts &f, double x0, doub
                 }
             }
             space(8);
+        } else if (t == "table") {
+            // a filled-in table: a shaded heading row, then a row per line (each its own row, so a
+            // long table goes on to the next page), cells cut to fit; "blank": empty rows to write in
+            std::vector<std::pair<std::string, double>> cols;
+            for (const auto &c : b.get("cols").arr()) cols.push_back({text_of(c.at(0)), c.at(1).as_double()});
+            auto fit = [F](std::string s, int style, double size, double w) {
+                if (F->width(s, style, size) <= w) return s;
+                while (!s.empty() && F->width(s + "...", style, size) > w) {
+                    s.pop_back();
+                    while (!s.empty() && ((unsigned char)s.back() & 0xC0) == 0x80) s.pop_back();   // a whole character
+                    if (!s.empty() && (unsigned char)s.back() >= 0xC0) s.pop_back();
+                }
+                return s + "...";
+            };
+            auto line_row = [&](std::vector<std::string> cells, bool head, bool bold, double h, bool glue) {
+                rows.push_back(row(h,
+                                   [=](Canvas &c, double top, double) {
+                                       if (head) c.fill(x0, top - h, width, h, RGB{0.86, 0.86, 0.86});
+                                       double x = x0;
+                                       for (size_t i = 0; i < cols.size(); i++) {
+                                           double cw = width * cols[i].second;
+                                           std::string v = i < cells.size() ? cells[i] : "";
+                                           int st = head || bold ? B : R;
+                                           v = fit(v, st, 10, cw - 8);
+                                           double tx = i == 0 ? x + 4 : x + (cw - F->width(v, st, 10)) / 2;
+                                           c.text(tx, top - h + (h - 10) / 2 + 2.5, v, st, 10);
+                                           if (i) c.line(x, top, x, top - h, 0.6);
+                                           x += cw;
+                                       }
+                                       c.line(x0, top, x0 + width, top, head ? 1.1 : 0.6);
+                                       c.line(x0, top - h, x0 + width, top - h, 1.1);
+                                       c.line(x0, top, x0, top - h, 1.1);
+                                       c.line(x0 + width, top, x0 + width, top - h, 1.1);
+                                   },
+                                   glue));
+            };
+            std::vector<std::string> heads;
+            for (const auto &c : cols) heads.push_back(c.first);
+            line_row(heads, true, false, 20, true);
+            for (const auto &r : b.get("rows").arr()) {
+                std::vector<std::string> cells;
+                for (const auto &c : r.arr()) cells.push_back(markup::plain(text_of(c)));
+                line_row(cells, false, false, 20, false);
+            }
+            for (long i = 0; i < b.get("blank").as_int(); i++) line_row({}, false, false, 22, false);
+            if (b.get("total").is_array()) {
+                std::vector<std::string> cells;
+                for (const auto &c : b.get("total").arr()) cells.push_back(text_of(c));
+                line_row(cells, false, true, 20, false);
+            }
+            space(10);
         } else if (t == "grid") {
             std::vector<std::pair<std::string, double>> cols;
             for (const auto &c : b.get("cols").arr()) cols.push_back({text_of(c.at(0)), c.at(1).as_double()});

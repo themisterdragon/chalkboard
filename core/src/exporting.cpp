@@ -1,5 +1,7 @@
 #include "exporting.h"
 
+#include "homedays.h"
+
 #include <algorithm>
 #include <regex>
 
@@ -207,6 +209,44 @@ std::vector<std::string> export_day(store::Store &st, const std::vector<std::pai
     } catch (board::BoardError &e) {
         throw ExportError{e.message};
     }
+}
+
+std::vector<std::string> export_home_day(store::Store &st, const Date &day, const std::vector<const Value *> &lessons, const Progress &progress,
+                                         const std::string &root) {
+    if (lessons.empty()) throw ExportError{"NO LESSONS ARE PLANNED FOR THAT DAY"};
+    std::string name = store::home_day_name(st.settings()), err;
+    std::string folder = files::join(files::join(root.empty() ? st.export_dir() : root, safe_name(name + " Work")), day.iso());
+    if (!files::make_dirs(folder, &err)) throw ExportError{"EXPORT FAILED: " + err};
+    std::vector<std::string> written;
+    int total = (int)lessons.size() * 2, done = 0;
+    for (const Value *l : lessons) {
+        std::string course = field(*l, "course"), title = field(*l, "title");
+        std::string base = safe_name((course.empty() ? "" : course + " - ") + (title.empty() ? "Lesson" : title));
+        Value d = doc::home_day_doc(*l, st, day);
+        for (const char *f : {"PDF", "DOCX"}) {
+            if (progress) progress(done++, total, base + ext_of(f));
+            auto wrote = render(st, f, d, files::join(folder, base + ext_of(f)));
+            written.insert(written.end(), wrote.begin(), wrote.end());
+        }
+    }
+    if (progress) progress(total, total, "");
+    return written;
+}
+
+std::vector<std::string> export_home_log(store::Store &st, const Value &rec, const std::string &root) {
+    std::string name = store::home_day_name(st.settings()), err;
+    std::string n = std::to_string(rec.get("number").as_int());
+    Date day = homedays::date_of(rec);
+    std::string folder = files::join(root.empty() ? st.export_dir() : root, safe_name(name + " Work"));
+    if (day.valid()) folder = files::join(folder, day.iso());
+    if (!files::make_dirs(folder, &err)) throw ExportError{"EXPORT FAILED: " + err};
+    Value d = doc::home_log_doc(st, rec);
+    std::vector<std::string> written;
+    for (const char *f : {"PDF", "DOCX"}) {
+        auto wrote = render(st, f, d, files::join(folder, safe_name(name + " " + n + " - Teacher Log") + ext_of(f)));
+        written.insert(written.end(), wrote.begin(), wrote.end());
+    }
+    return written;
 }
 
 std::string csv_text(const std::vector<std::vector<std::string>> &rows) {

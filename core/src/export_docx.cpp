@@ -459,6 +459,38 @@ std::string body_xml(Ctx &ctx, const Value &blocks, long width, long body_h) {
                     q.first = 360;
                     out += para({rich(ctx, text::strip(p))}, q);
                 }
+        } else if (t == "table") {   // a filled-in table (see pdf.cpp)
+            std::vector<long> widths;
+            std::vector<std::string> heads;
+            for (const auto &c : b.get("cols").arr()) {
+                widths.push_back((long)((double)width * c.at(1).as_double()));
+                heads.push_back(text_of(c.at(0)));
+            }
+            auto line = [&](const std::vector<std::string> &cells, bool head, bool bold, long h) {
+                std::vector<std::string> cs;
+                for (size_t i = 0; i < widths.size(); i++) {
+                    ParaOpt cp = po(0);
+                    if (i) cp.align = "center";
+                    std::string v = i < cells.size() ? cells[i] : "";
+                    std::string content = para({run(markup::plain(v), opt(head || bold, false, 10))}, cp);
+                    cs.push_back(head ? shaded_cell(content, widths[i]) : cell(content, widths[i]));
+                }
+                return row(cs, h);
+            };
+            std::vector<std::string> rows = {line(heads, true, false, 400)};
+            for (const auto &r : b.get("rows").arr()) {
+                std::vector<std::string> cells;
+                for (const auto &c : r.arr()) cells.push_back(text_of(c));
+                rows.push_back(line(cells, false, false, 380));
+            }
+            for (long i = 0; i < b.get("blank").as_int(); i++) rows.push_back(line({}, false, false, 440));
+            if (b.get("total").is_array()) {
+                std::vector<std::string> cells;
+                for (const auto &c : b.get("total").arr()) cells.push_back(text_of(c));
+                rows.push_back(line(cells, false, true, 380));
+            }
+            out += table(rows, widths, 0, true);
+            out += para({run("")}, po(120));
         } else if (t == "grid") {
             std::vector<long> widths;
             std::vector<std::string> heads;

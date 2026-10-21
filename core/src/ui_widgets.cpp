@@ -1225,7 +1225,7 @@ int dialog(Ui &ui, const DialogBox &box, const std::function<int(Ui &)> &body, c
     return result;
 }
 
-static int message(Ui &ui, const std::string &title, const std::string &msg, const std::string &icon_name,
+int message(Ui &ui, const std::string &title, const std::string &msg, const std::string &icon_name,
                    const std::vector<std::pair<std::string, int>> &specs, int default_idx, int cancel) {
     return dialog(
         ui, {title},

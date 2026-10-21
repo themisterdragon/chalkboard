@@ -169,11 +169,13 @@ std::string school_calendar_text(App &app) {
                        : cal.last.valid()                    ? "Last day " + dates::fmt_date(cal.last)
                                                              : "No first or last day yet";
     // weekdays with no class, and early releases (a five-day break counts five)
-    long off = 0, early = 0;
+    long off = 0, early = 0, home = 0;
     for (const auto &o : cal.off)
         for (Date d = o.from; d <= o.to; d = d.plus(1))
-            if (d.weekday() < 5) (o.kind == "early" ? early : off)++;
-    return year + ": " + plural(off, "day off", "days off") + (early ? " and " + plural(early, "early release") : "") + ".";
+            if (d.weekday() < 5) (o.kind == "early" ? early : o.kind == "athome" ? home : off)++;
+    std::string hn = store::home_day_name(app.settings());
+    return year + ": " + plural(off, "day off", "days off") + (early ? ", " + plural(early, "early release") : "") +
+           (home ? ", " + plural(home, hn) : "") + ".";
 }
 
 void school_calendar_dialog(App &app) {

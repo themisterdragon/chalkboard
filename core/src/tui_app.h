@@ -121,6 +121,9 @@ private:
     void shift_lessons(const Date *from = nullptr);
     void undo_shift();
     std::vector<schoolcal::Move> undo_moves_;
+    // days of school at home (NTI days): packets and the teacher log (tui_schoolcal.cpp)
+    void home_days();
+    void home_log(int n);
     void backup_now();
     void export_everything();
     void import_backup();

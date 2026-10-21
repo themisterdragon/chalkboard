@@ -10,6 +10,7 @@
 #include "art.h"
 #include "dates.h"
 #include "gui.h"
+#include "homedays.h"
 #include "text.h"
 
 namespace gui {
@@ -62,6 +63,11 @@ void line_icon(Ui &ui, const std::string &name, const Rect &box, Color c) {
         rr(2.5, 4, 15, 12, 2);
         poly({P(6, 8), P(8.6, 10), P(6, 12)}, false);
         ln(10.4, 12.2, 14, 12.2);
+    } else if (name == "homeday") {   // a house with a page in it
+        poly({P(2.5, 9.5), P(10, 3.2), P(17.5, 9.5)}, false);
+        poly({P(4.8, 7.8), P(4.8, 17), P(15.2, 17), P(15.2, 7.8)}, false);
+        ln(7.8, 11, 12.2, 11);
+        ln(7.8, 13.8, 12.2, 13.8);
     } else if (name == "plus") {
         ln(10, 4, 10, 16);
         ln(4, 10, 16, 10);
@@ -179,6 +185,12 @@ void App::sidebar(const Rect &r) {
     };
     for (const auto &it : NAV_TOP) {
         item(it, y);
+        y += ih + 2 * S;
+    }
+    // at-home days, once the district's number is set
+    if (homedays::allotted(settings()) > 0 || section_ == "homedays") {
+        std::string label = store::home_day_name(settings()) + "s";
+        item({"homedays", label.c_str(), "homeday"}, y);
         y += ih + 2 * S;
     }
     // the bottom: the status line, and above it My Exports, Settings, Terminal
@@ -435,7 +447,7 @@ public:
         if (button(ui, "Day Slideshow\xE2\x80\xA6")) day_slideshow(app);
         if (button(ui, "Curriculum Map\xE2\x80\xA6")) curriculum_map(app);
         if (button(ui, "Export Everything\xE2\x80\xA6")) export_everything_dialog(app);
-        if (button(ui, "Snow Day\xE2\x80\xA6")) app.later([this] { shift_dates(app, "", today(), true); });
+        if (button(ui, "Snow Day\xE2\x80\xA6")) app.later([this] { snow_day(app); });
         ui.flow(false);
         ui.lay().gap = 0;
         ui.space(22 * S);
@@ -506,7 +518,7 @@ private:
                 ui.text(*k.fb, dh.x + 8 * S, std::round(dh.y + 7 * S + k.fb->ascent), DAY_SHORT[i] + std::string(" ") + std::to_string(d.d), fg);
                 std::string why = cal.no_school(d);
                 const schoolcal::DayOff *off = cal.day_off(d);
-                std::string sub = !why.empty() && off ? "No school: " + why : off && off->kind == "early" ? "Early release" : "";
+                std::string sub = !why.empty() && off ? "No school: " + why : off && off->school_day() ? off->name : "";
                 if (is_today) sub = sub.empty() ? "Today" : "Today \xC2\xB7 " + sub;
                 if (sub.empty()) sub = MONTH_NAMES[d.m - 1];
                 ui.text(*k.fsmall, dh.x + 8 * S, std::round(dh.y + 9 * S + k.fb->line + k.fsmall->ascent), ui.elide(*k.fsmall, sub, dh.w - 12 * S), dim);
@@ -691,10 +703,12 @@ public:
                 if (ui.has(plat::Event::DOWN) && ui.ev.button == 3 && ui.over(cell)) {
                     ui.consume();
                     int pick = popup_menu(ui, ui.mx, ui.my,
-                                          entries({"Plan a Lesson Here\xE2\x80\xA6", "Shift Lessons From Here\xE2\x80\xA6", "", "School Calendar\xE2\x80\xA6"}));
+                                          entries({"Plan a Lesson Here\xE2\x80\xA6", "Shift Lessons From Here\xE2\x80\xA6",
+                                                   store::home_day_name(app.settings()) + " Packets for This Day\xE2\x80\xA6", "", "School Calendar\xE2\x80\xA6"}));
                     if (pick == 0) app.plan_lesson(d);
                     else if (pick == 1) shift_dates(app, "", d);
-                    else if (pick == 3) school_calendar_dialog(app);
+                    else if (pick == 2) home_day_now(app, d);
+                    else if (pick == 4) school_calendar_dialog(app);
                 }
             }
     }

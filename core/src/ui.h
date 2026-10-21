@@ -419,6 +419,9 @@ struct DialogBox {
 int dialog(Ui &ui, const DialogBox &box, const std::function<int(Ui &)> &body, const std::vector<std::pair<std::string, int>> &buttons,
            int default_idx = 0, int cancel = 0);
 void alert(Ui &ui, const std::string &title, const std::string &message, const std::string &icon = "info");
+// a message with buttons (label, result); returns the result picked (cancel on Esc)
+int message(Ui &ui, const std::string &title, const std::string &msg, const std::string &icon_name, const std::vector<std::pair<std::string, int>> &buttons,
+            int default_idx, int cancel);
 bool confirm(Ui &ui, const std::string &title, const std::string &message, const std::string &yes = "OK", const std::string &no = "Cancel",
              const std::string &icon = "ask");
 // a line of text; false when cancelled

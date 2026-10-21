@@ -53,6 +53,8 @@ std::vector<Value> periods_for(const Value &settings, const Value &lesson);
 
 // dates on lessons
 std::vector<Date> lesson_dates(const Value &x);
+// what this district calls a day of school at home ("NTI Day"; usually "At-Home Day")
+std::string home_day_name(const Value &settings);
 std::vector<std::pair<Value, const Value *>> day_plan(const Value &settings, const std::vector<const Value *> &lessons, const Date &day);
 
 bool grade_span(const std::string &g, int &lo, int &hi);

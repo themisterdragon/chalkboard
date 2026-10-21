@@ -102,6 +102,10 @@ private:
         if (button(ui, "Edit School Calendar\xE2\x80\xA6")) app.later([this] { school_calendar_dialog(app); });
         if (button(ui, "Shift Lesson Dates\xE2\x80\xA6")) app.later([this] { shift_dates(app, "", today()); });
         ui.flow(false);
+        ui.space(4 * S);
+        ui.flow();
+        if (button(ui, store::home_day_name(st()) + "s\xE2\x80\xA6")) app.later([this] { app.go_section("homedays"); });
+        ui.flow(false);
         end_group(ui);
 
         ui.space(10 * S);

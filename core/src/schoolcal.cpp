@@ -13,7 +13,8 @@ namespace schoolcal {
 using dates::Span;
 
 const std::vector<std::pair<std::string, std::string>> KINDS = {
-    {"holiday", "Holiday"}, {"break", "Break"}, {"teacher", "Teacher day (no students)"}, {"early", "Early release (still a school day)"}};
+    {"holiday", "Holiday"}, {"break", "Break"}, {"teacher", "Teacher day (no students)"}, {"early", "Early release (still a school day)"},
+    {"athome", "At-home day, like NTI (still a school day)"}};
 
 std::string kind_label(const std::string &kind) {
     for (const auto &k : KINDS)
@@ -36,7 +37,7 @@ const char *FULL_MONTH[12] = {"January", "February", "March", "April", "May", "J
 bool counts(const Calendar &c, const Date &d) {   // a weekday that isn't a day off
     if (d.weekday() >= 5) return false;
     const DayOff *o = c.day_off(d);
-    return !o || o->kind == "early";
+    return !o || o->school_day();
 }
 
 // the word's capitals copied onto w: "TUES" -> "WED", "tues" -> "wed", otherwise "Wed"
@@ -143,7 +144,7 @@ Date Calendar::add_school_days(const Date &d0, int n) const {
 std::string Calendar::no_school(const Date &d) const {
     if (d.weekday() >= 5) return FULL_DAY[d.weekday()];
     if (const DayOff *o = day_off(d))
-        if (o->kind != "early") return o->name.empty() ? kind_label(o->kind) : o->name;
+        if (!o->school_day()) return o->name.empty() ? kind_label(o->kind) : o->name;
     if (first.valid() && d < first) return "Before the first day of school";
     if (last.valid() && last < d) return "After the last day of school";
     return "";
@@ -403,6 +404,9 @@ std::vector<Event> read_ics(const std::string &raw) {
                 return false;
             };
             if (has({"early release", "early dismissal", "early out", "half day", "half-day"})) e.day.kind = "early";
+            else if (has({"nti", "non-traditional", "nontraditional", "remote learning", "virtual learning", "at-home learning", "e-learning",
+                          "elearning"}))
+                e.day.kind = "athome";
             else if (has({"professional", "pd day", "in-service", "inservice", "teacher", "staff", "records", "non-student", "no students",
                           "workday", "work day"}))
                 e.day.kind = "teacher";

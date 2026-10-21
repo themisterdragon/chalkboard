@@ -2,7 +2,9 @@
 // moving lessons by school days, with a preview first and Undo after.
 #include <algorithm>
 
+#include "exporting.h"
 #include "files.h"
+#include "homedays.h"
 #include "text.h"
 #include "tui_app.h"
 
@@ -212,6 +214,172 @@ void App::undo_shift() {
     undo_moves_.clear();
     save();
     ui.msg = "PUT " + std::to_string(back) + " LESSONS BACK.";
+}
+
+// ----------------------------------------------------------------------------- at-home (NTI) days
+
+void App::home_days() {
+    auto name = [&] { return up(store::home_day_name(st())); };
+    if (homedays::allotted(st()) <= 0) {
+        std::string v;
+        if (!ui.prompt("HOW MANY AT-HOME (NTI) DAYS DOES YOUR DISTRICT ALLOW?", v, "10")) return;
+        int n = std::max(0, std::min(60, std::atoi(text::strip(v).c_str())));
+        if (n <= 0) return;
+        st()["home_days_allotted"] = n;
+        if (ui.prompt("WHAT DOES YOUR DISTRICT CALL THEM? (E.G. NTI DAY)", v, store::home_day_name(st()))) st()["home_day_name"] = text::strip(v);
+        save();
+    }
+    ui.list_screen(
+        name() + "S", [&] { return (long)homedays::allotted(st()); },
+        [&](long i, int) {
+            const Value *r = homedays::find(store_.data, (int)i + 1);
+            Date d = r ? homedays::date_of(*r) : Date{};
+            UI::Row row;
+            row.text = text::ljust(name() + " " + std::to_string(i + 1), 16) + " " + (d.valid() ? up(dates::fmt_date(d, true)) : "NOT USED YET");
+            return row;
+        },
+        [&](long i) {
+            home_log((int)i + 1);
+            return Result::move(i);
+        },
+        [&](int k, long i) -> Result {
+            std::string c = text::lower(k >= 0x20 && k < 0x7f ? std::string(1, (char)k) : "");
+            int n = (int)i + 1;
+            if (c == "p") {   // the packets for a day: each class's planned lesson, or its lesson that day
+                Date start = today();
+                auto pk = ui.calendar("PACKETS FOR WHICH DAY?", &start);
+                if (pk.kind != UI::Picked::DAYS) return Result::none();
+                std::vector<const Value *> all;
+                for (const auto &x : store_.data.get("lessons").arr())
+                    if (x.is_object()) all.push_back(&x);
+                std::vector<const Value *> ls;
+                for (const auto &cl : store::classes(st(), all)) {
+                    if (cl.first.empty()) continue;
+                    const Value *l = homedays::planned(store_.data.get("lessons"), cl.first, n);
+                    if (!l)
+                        for (const Value *x : all) {
+                            auto ds = store::lesson_dates(*x);
+                            if (x->get("home_slot").as_int() == 0 && store::in_class(*x, cl.first) && std::find(ds.begin(), ds.end(), pk.first) != ds.end()) l = x;
+                        }
+                    if (l) ls.push_back(l);
+                }
+                try {
+                    auto files = exporting::export_home_day(store_, pk.first, ls);
+                    Value &rec = homedays::make(store_.data, n);
+                    rec["date"] = pk.first.iso();
+                    save();
+                    export_done(files);
+                } catch (const exporting::ExportError &e) {
+                    ui.msg = "?" + e.message;
+                }
+                return Result::move(i);
+            }
+            if (c == "e") {
+                const Value *r = homedays::find(store_.data, n);
+                if (!r) {
+                    ui.msg = "?NOTHING LOGGED FOR THAT DAY YET.";
+                    return Result::none();
+                }
+                try {
+                    export_done(exporting::export_home_log(store_, *r));
+                } catch (const exporting::ExportError &e) {
+                    ui.msg = "?" + e.message;
+                }
+                return Result::move(i);
+            }
+            return Result::none();
+        },
+        "1-0 TEACHER LOG  P MAKE PACKETS  E EXPORT LOG  ESC BACK",
+        [&] { return std::string("PLAN EACH DAY'S LESSONS AHEAD IN THE WINDOW APP (") + name() + "S PAGE)."; });
+}
+
+void App::home_log(int n) {
+    Value &rec0 = homedays::make(store_.data, n);
+    if (rec0.get("classes").size() == 0)
+        for (const auto &c : homedays::log_classes(st(), store_.data.get("lessons"))) {
+            Value row = Value::object();
+            row["period"] = c.first;
+            row["course"] = c.second;
+            for (const char *k : {"enrolled", "participating", "technology", "paper"}) row[k] = "";
+            rec0["classes"].push(row);
+        }
+    auto rec = [&]() -> Value & { return homedays::make(store_.data, n); };
+    ui.list_screen(
+        up(store::home_day_name(st())) + " " + std::to_string(n) + " TEACHER LOG",
+        [&] { return (long)(rec()["classes"].size() + rec()["contacts"].size()); },
+        [&](long i, int) {
+            UI::Row row;
+            size_t nc = rec()["classes"].size();
+            if ((size_t)i < nc) {
+                const Value &c = rec()["classes"].at((size_t)i);
+                long a = homedays::count(c, "enrolled"), b = homedays::count(c, "participating");
+                row.text = text::ljust(up(c.s("period")), 14) + " A " + text::ljust(c.s("enrolled"), 4) + " B " + text::ljust(c.s("participating"), 4) +
+                           " C " + text::ljust(c.s("participating").empty() ? "" : homedays::percent(b, a), 5) + " D " + text::ljust(c.s("technology"), 4) +
+                           " E " + c.s("paper");
+            } else {
+                const Value &c = rec()["contacts"].at((size_t)i - nc);
+                row.text = "CONTACT: " + text::ljust(up(c.s("name")), 26) + " " + text::ljust(up(c.s("time")), 9) + " " + up(c.s("mode"));
+            }
+            return row;
+        },
+        [&](long i) {
+            size_t nc = rec()["classes"].size();
+            if ((size_t)i < nc) {
+                for (auto kv : std::vector<std::pair<const char *, const char *>>{{"enrolled", "A. STUDENTS IN CLASS"},
+                                                                                   {"participating", "B. STUDENTS WHO TOOK PART"},
+                                                                                   {"technology", "D. USED TECHNOLOGY"},
+                                                                                   {"paper", "E. USED A BOOK OR PAPER PACKET"}}) {
+                    std::string v;
+                    Value &c = rec()["classes"].at((size_t)i);
+                    if (!ui.prompt(up(c.s("period")) + ": " + kv.second, v, c.s(kv.first))) break;
+                    std::string digits;
+                    for (char ch : v)
+                        if (ch >= '0' && ch <= '9') digits += ch;
+                    rec()["classes"].at((size_t)i)[kv.first] = digits.substr(0, 5);
+                }
+                save();
+            }
+            return Result::move(i);
+        },
+        [&](int k, long i) -> Result {
+            std::string c = text::lower(k >= 0x20 && k < 0x7f ? std::string(1, (char)k) : "");
+            size_t nc = rec()["classes"].size();
+            if (c == "n") {
+                Value x = Value::object();
+                std::string v;
+                if (!ui.prompt("NAME", v)) return Result::none();
+                x["name"] = text::strip(v);
+                std::string t = strftime_now("%I:%M %p");
+                if (!t.empty() && t[0] == '0') t = t.substr(1);
+                if (!ui.prompt("TIME", v, t)) return Result::none();
+                x["time"] = text::strip(v);
+                std::vector<std::string> modes;
+                for (const auto &m : homedays::MODES) modes.push_back(up(m));
+                long j = ui.choose("MODE OF COMMUNICATION", modes, 0);
+                if (j < 0) return Result::none();
+                x["mode"] = homedays::MODES[(size_t)j];
+                if (!rec()["contacts"].is_array()) rec()["contacts"] = Value::array();
+                rec()["contacts"].push(x);
+                save();
+                return Result::move((long)(nc + rec()["contacts"].size() - 1));
+            }
+            if (c == "d" && (size_t)i >= nc && ui.confirm("REMOVE " + up(rec()["contacts"].at((size_t)i - nc).s("name")))) {
+                auto &a = rec()["contacts"].arr_ref();
+                a.erase(a.begin() + (i - (long)nc));
+                save();
+                return Result::move(std::max(0L, i - 1));
+            }
+            if (c == "e") {
+                try {
+                    export_done(exporting::export_home_log(store_, rec()));
+                } catch (const exporting::ExportError &e) {
+                    ui.msg = "?" + e.message;
+                }
+            }
+            return Result::none();
+        },
+        "1-0 TYPE A/B/D/E  N ADD CONTACT  D REMOVE CONTACT  E EXPORT LOG  ESC BACK",
+        [] { return std::string("A IN CLASS  B TOOK PART  C = B / A x 100  D TECHNOLOGY  E BOOK OR PAPER"); });
 }
 
 }  // namespace tui

@@ -31,6 +31,7 @@ Factory section_factory(const std::string &key) {
     if (key == "assessments") return assessment_list();
     if (key == "standards") return standards_library();
     if (key == "calendar") return calendar_page();
+    if (key == "homedays") return home_days_page();
     if (key.empty()) return make_home();
     return settings_view();
 }

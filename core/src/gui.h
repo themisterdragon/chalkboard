@@ -279,6 +279,13 @@ void school_calendar_dialog(App &app);
 bool shift_dates(App &app, const std::string &course, const Date &from, bool snow = false);
 void undo_shift(App &app);
 std::string no_school(App &app, const Date &d);   // why there's no class that day, or ""
+// gui_homedays.cpp: days of school at home (NTI days)
+Factory home_days_page();
+bool home_version_dialog(App &app, const std::string &lesson_id);   // a lesson's at-home version
+void plan_home_day(App &app, int n);
+bool home_day_now(App &app, const Date &day);   // make the day's packets
+void home_day_log(App &app, int n);
+void snow_day(App &app);   // no school today: move lessons, or an at-home day
 // gui_board.cpp
 void board_designer(App &app);
 // gui_layouts.cpp: Advanced Mode > Page Layouts; true when something changed

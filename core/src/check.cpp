@@ -1,10 +1,12 @@
 #include "check.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <iostream>
 
 #include "dates.h"
 #include "schoolcal.h"
+#include "homedays.h"
 #include "json.h"
 #include "files.h"
 #include "markup.h"
@@ -534,6 +536,19 @@ int dump(const std::string &what, const std::string &arg) {
     else if (what == "png") out = dump_png(arg);
     else if (what == "export") out = dump_export(arg);
     else if (what == "schoolcal") out = dump_schoolcal(arg);
+    else if (what == "homeday") {   // the first at-home day's packets and teacher log, written to the folder arg
+        store::Store st;
+        const Value &rec = st.data.get("home_days").at(0);
+        Date day = homedays::date_of(rec);
+        std::vector<const Value *> ls;
+        for (const auto &l : st.data.get("lessons").arr()) {
+            auto ds = store::lesson_dates(l);
+            if (l.get("home_slot").as_int() == rec.get("number").as_int() || std::find(ds.begin(), ds.end(), day) != ds.end()) ls.push_back(&l);
+        }
+        out = Value::array();
+        for (const auto &f : exporting::export_home_day(st, day, ls, nullptr, arg)) out.push(f);
+        for (const auto &f : exporting::export_home_log(st, rec, arg)) out.push(f);
+    }
     else if (what == "dates") {
         Date near{2026, 10, 14};
         out = date_list(dates::parse_dates(arg, near));
