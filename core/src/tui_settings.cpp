@@ -821,6 +821,7 @@ void App::settings_screen() {
         {"board_style", "BOARD SLIDE DESIGNER (VIEWBOARD)", "board"},
         {"logo", "SCHOOL LOGO (BOARD SLIDES)", "logo"},
         {"class_periods", "CLASS PERIODS & CODES", "periods"},
+        {"school_calendar", "SCHOOL CALENDAR & SHIFTS", "schoolcal"},
         {"primary_color", "SCHOOL COLOR 1 (BACKGROUND)", "color"},
         {"secondary_color", "SCHOOL COLOR 2 (HEADINGS)", "color"},
         {"text_color", "SCHOOL COLOR 3 (TEXT)", "color"},
@@ -855,7 +856,10 @@ void App::settings_screen() {
                               label_of(store::LOGO_PLACES, st().has("logo_place") ? field(st(), "logo_place") : "left")
                         : "NONE";
             } else if (f.kind == "mascot") v = art::has_mascot(raw.str()) ? art::name(raw.str()) + " ..." : "NONE ...";
-            else if (f.kind == "periods") {
+            else if (f.kind == "schoolcal") {
+                auto cal = schoolcal::read(st());
+                v = cal.empty() ? "NOT SET UP: BREAKS, HOLIDAYS, SNOW DAYS ..." : std::to_string(cal.off.size()) + " DAYS OFF LISTED ...";
+            } else if (f.kind == "periods") {
                 long n = 0;
                 for (const auto &p : st().get("class_periods").arr()) if (!text::strip(field(p, "codes")).empty()) n++;
                 v = n ? std::to_string(n) + " WITH CODES: ONE BOARD SLIDE EACH ..." : "NONE ...";
@@ -941,6 +945,7 @@ void App::settings_screen() {
             else if (f.kind == "sections") lesson_sections();
             else if (f.kind == "logo") logo_settings();
             else if (f.kind == "periods") class_periods();
+            else if (f.kind == "schoolcal") school_calendar();
             else if (f.kind == "mascot") pick_mascot();
             else if (f.kind == "backup") {
                 backup_now();

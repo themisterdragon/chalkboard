@@ -149,13 +149,18 @@ static bool full_year(const std::string &s, int &out) {
     return true;
 }
 
-std::vector<Date> parse_dates(const std::string &raw, const Date &near) {
-    std::vector<Date> found;
+std::vector<DateMatch> find_dates(const std::string &raw, const Date &near) {
+    std::vector<DateMatch> found;
     for (int n = 0; n < 3; n++) {
         const std::regex &pat = pattern(n);
         for (auto it = std::sregex_iterator(raw.begin(), raw.end(), pat); it != std::sregex_iterator(); ++it) {
             const std::smatch &m = *it;
             auto g = [&](int i) { return m[i].matched ? m[i].str() : std::string(); };
+            auto at = [&](int i) { return m[i].matched ? Span{(size_t)m.position(i), (size_t)m.length(i)} : Span{}; };
+            DateMatch dm;
+            dm.pos = (size_t)m.position(0);
+            dm.len = (size_t)m.length(0);
+            dm.kind = n;
             int y1 = 0, m1, d1, m2 = 0, y2 = 0;
             bool has_y1 = false, has_y2 = false;
             std::string d2;
@@ -163,6 +168,9 @@ std::vector<Date> parse_dates(const std::string &raw, const Date &near) {
                 y1 = std::atoi(g(1).c_str()); has_y1 = true;
                 m1 = std::atoi(g(2).c_str());
                 d1 = std::atoi(g(3).c_str());
+                dm.year1 = at(1);
+                dm.month1 = at(2);
+                dm.day1 = at(3);
             } else if (n == 0) {
                 m1 = month_of(g(1));
                 // groups: 1 month, 2 day, 3 year, then 4 month, 5 day, 6 year after "to"
@@ -179,6 +187,15 @@ std::vector<Date> parse_dates(const std::string &raw, const Date &near) {
                 d2 = g(5);
                 has_y2 = full_year(g(6), y2);
             }
+            if (n != 2) {
+                // (the month word's group is the whole word with its dot: find it from the match)
+                dm.month1 = at(1);
+                dm.day1 = at(2);
+                dm.year1 = at(3);
+                dm.month2 = at(4);
+                dm.day2 = at(5);
+                dm.year2 = at(6);
+            }
             if (!has_y1 && has_y2) { y1 = y2 - (m2 < m1 ? 1 : 0); has_y1 = true; }   // "Oct 30 - Nov 2, 2026"
             Date start, end;
             if (!make_date(has_y1 && y1 ? y1 : guess_year(m1, d1, near), m1, d1, start)) continue;
@@ -186,10 +203,20 @@ std::vector<Date> parse_dates(const std::string &raw, const Date &near) {
                 int ey = has_y2 && y2 ? y2 : start.y + (m2 < m1 ? 1 : 0);
                 if (!make_date(ey, m2, std::atoi(d2.c_str()), end)) continue;
             } else end = start;
-            long span = std::min(std::max(end.ordinal() - start.ordinal(), 0L), 30L);
-            for (long i = 0; i <= span; i++) found.push_back(start.plus(i));
+            dm.start = start;
+            dm.end = end;
+            found.push_back(dm);
         }
         if (!found.empty()) break;
+    }
+    return found;
+}
+
+std::vector<Date> parse_dates(const std::string &raw, const Date &near) {
+    std::vector<Date> found;
+    for (const DateMatch &m : find_dates(raw, near)) {
+        long span = std::min(std::max(m.end.ordinal() - m.start.ordinal(), 0L), 30L);
+        for (long i = 0; i <= span; i++) found.push_back(m.start.plus(i));
     }
     std::vector<Date> out;   // dict.fromkeys: first time each day appears
     for (const Date &d : found)

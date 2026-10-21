@@ -15,6 +15,7 @@
 #include "dates.h"
 #include "json.h"
 #include "plat.h"
+#include "schoolcal.h"
 #include "store.h"
 #include "ui.h"
 
@@ -107,6 +108,7 @@ public:
 
     std::string std_subject;   // the standards subject last picked (this session)
     std::string open_class_lesson, open_class_assessment;   // By Class: the class open in each list
+    std::vector<schoolcal::Move> undo_moves;                 // the last Shift Dates (Edit > Undo Shift)
     bool has_class_lesson = false, has_class_assessment = false;
 
 private:
@@ -270,6 +272,13 @@ struct Calendar {
 };
 std::function<bool(const Date &)> lesson_marks(App &app);
 bool pick_dates(App &app, const std::string &title, const Date *first, const Date *last, Date &a, Date &b);
+// gui_schoolcal.cpp: the school calendar (Settings), and moving lessons by school days
+std::string school_calendar_text(App &app);   // a line about it for Settings
+void school_calendar_dialog(App &app);
+// Shift Dates (snow: the Snow Day version, from today); true when lessons moved
+bool shift_dates(App &app, const std::string &course, const Date &from, bool snow = false);
+void undo_shift(App &app);
+std::string no_school(App &app, const Date &d);   // why there's no class that day, or ""
 // gui_board.cpp
 void board_designer(App &app);
 // gui_layouts.cpp: Advanced Mode > Page Layouts; true when something changed

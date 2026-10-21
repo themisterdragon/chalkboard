@@ -32,6 +32,17 @@ std::string school_year_label(int start);         // 2026 -> "2026-27"
 bool stamp_day(const std::string &stamp, Date &out);   // "2026-10-02 16:23" -> 2026-10-02
 int guess_year(int month, int day, const Date &near);
 std::vector<Date> parse_dates(const std::string &text, const Date &near);
+// Where each date is in the text, and its parts as typed (for rewriting one in the same style)
+struct Span {
+    size_t at = 0, len = 0;   // len 0: not there
+};
+struct DateMatch {
+    size_t pos = 0, len = 0;   // the whole date
+    int kind = 0;              // 0 "Oct 4-6, 2026", 1 "10/4/26", 2 "2026-10-04"
+    Date start, end;           // end == start: one day
+    Span month1, day1, year1, month2, day2, year2;
+};
+std::vector<DateMatch> find_dates(const std::string &text, const Date &near);
 std::string fmt_date(const Date &d, bool weekday = false, bool year = true);
 std::string fmt_range(const Date &a, const Date &b);
 }  // namespace dates

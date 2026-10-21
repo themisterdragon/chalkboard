@@ -95,6 +95,16 @@ private:
         end_group(ui);
 
         ui.space(10 * S);
+        begin_group(ui, "School Calendar");
+        para(ui, school_calendar_text(app));
+        ui.space(6 * S);
+        ui.flow();
+        if (button(ui, "Edit School Calendar\xE2\x80\xA6")) app.later([this] { school_calendar_dialog(app); });
+        if (button(ui, "Shift Lesson Dates\xE2\x80\xA6")) app.later([this] { shift_dates(app, "", today()); });
+        ui.flow(false);
+        end_group(ui);
+
+        ui.space(10 * S);
         begin_group(ui, "Printed Documents");
         std::string font = st().s("font").empty() ? "Times" : st().s("font"), page = st().s("page").empty() ? "Letter" : st().s("page");
         ui.flow();

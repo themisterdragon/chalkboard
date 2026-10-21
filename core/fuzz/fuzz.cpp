@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 
+#include "schoolcal.h"
 #include "dates.h"
 #include "doc.h"
 #include "export_txt.h"
@@ -162,6 +163,25 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         for (uint32_t c : {0x41u, 0x67u, 0x20ACu, 0x1F600u, 0u})
             img.fill(o->glyph(o->glyph_index(c)).path, {0, 0, 0}, 1, m);
         for (uint32_t g = 0; g < 40; g++) img.fill(o->glyph(g).path, {0, 0, 0}, 1, m);
+    }
+#elif TARGET == 11
+    // a district calendar file (.ics)
+    auto events = schoolcal::read_ics(s);
+    Date f, l;
+    schoolcal::ics_first_last(events, f, l);
+    schoolcal::Calendar cal;
+    for (const auto &e : events) cal.off.push_back(e.day);
+    auto next = schoolcal::next_year(cal);
+    volatile size_t sink = next.off.size();
+    (void)sink;
+#elif TARGET == 12
+    // a Date(s) field as typed, moved by school days (past a break)
+    schoolcal::Calendar cal;
+    cal.off.push_back({Date{2026, 10, 5}, Date{2026, 10, 9}, "Fall Break", "break"});
+    for (int n : {3, -2}) {
+        std::string out = schoolcal::move_dates(s, Date{2026, 10, 14}, [&](const Date &d) { return cal.add_school_days(d, n); }, {});
+        volatile size_t sink = out.size();
+        (void)sink;
     }
 #endif
     return 0;

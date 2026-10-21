@@ -11,7 +11,7 @@ export ASAN_OPTIONS=alloc_dealloc_mismatch=0:detect_leaks=1
 mkdir -p build/fuzz
 [ -f build/resources.cpp ] || sh build.sh >/dev/null
 SRC=$(ls src/*.cpp | grep -v src/main.cpp | grep -v src/check.cpp)
-for t in ${TARGETS:-1 2 3 4 5 6 7 8 9 10}; do
+for t in ${TARGETS:-1 2 3 4 5 6 7 8 9 10 11 12}; do
   echo "== target $t"
   clang++ -std=c++17 -g -O1 -DTARGET=$t -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined -Isrc \
     -o build/fuzz/f$t fuzz/fuzz.cpp $SRC build/resources.cpp

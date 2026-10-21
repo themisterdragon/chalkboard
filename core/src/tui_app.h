@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "json.h"
+#include "schoolcal.h"
 #include "store.h"
 #include "term.h"
 #include "tui.h"
@@ -114,6 +115,12 @@ private:
     void logo_settings();
     void class_periods();
     void period_editor(size_t i);
+    // the school calendar and moving lessons by school days (tui_schoolcal.cpp)
+    void school_calendar();
+    bool edit_day_off(schoolcal::DayOff &o);
+    void shift_lessons(const Date *from = nullptr);
+    void undo_shift();
+    std::vector<schoolcal::Move> undo_moves_;
     void backup_now();
     void export_everything();
     void import_backup();

@@ -32,6 +32,7 @@ enum MenuId {
     M_THEME = 40,                       // + 0..2
     M_BIGGER = 50, M_SMALLER, M_FILL,
     M_SHORTCUTS = 60, M_DATA_FILE, M_ABOUT,
+    M_SHIFT = 70, M_UNDO_SHIFT, M_SNOW,
     M_RECENT_ITEM = 1000,               // + index
 };
 
@@ -91,7 +92,11 @@ static std::vector<plat::MenuItem> menus(App &app) {
     MenuItem e;
     e.label = "Edit";
     e.sub = {item("Undo", M_UNDO, 'z', P), item("Redo", M_REDO, 'z', P | SH), sep, item("Cut", M_CUT, 'x', P), item("Copy", M_COPY, 'c', P),
-             item("Paste", M_PASTE, 'v', P), item("Select All", M_SELECT_ALL, 'a', P)};
+             item("Paste", M_PASTE, 'v', P), item("Select All", M_SELECT_ALL, 'a', P), sep, item("Shift Lesson Dates…", M_SHIFT),
+             item("Snow Day…", M_SNOW)};
+    MenuItem undo_shift = item("Undo Shift", M_UNDO_SHIFT);
+    undo_shift.enabled = !app.undo_moves.empty();
+    e.sub.push_back(undo_shift);
     out.push_back(e);
     MenuItem g;
     g.label = "Go";
@@ -761,6 +766,9 @@ void App::menu_command(int id) {
     case M_COPY: key('c', P); break;
     case M_PASTE: key('v', P); break;
     case M_SELECT_ALL: key('a', P); break;
+    case M_SHIFT: shift_dates(*this, "", today()); break;
+    case M_SNOW: shift_dates(*this, "", today(), true); break;
+    case M_UNDO_SHIFT: undo_shift(*this); break;
     case M_HOME: go_section(""); break;
     case M_TERMINAL: enter_terminal(); break;
     case M_BIGGER: zoom(1); break;

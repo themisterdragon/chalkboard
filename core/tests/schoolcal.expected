@@ -1,0 +1,137 @@
+{
+ "moves": [
+  "Fri., Oct. 23, 2026",
+  "Mon., Oct. 12, 2026",
+  "Mon., Nov. 30, 2026",
+  "Wed., Nov. 4, 2026",
+  "Wed., Nov. 11, 2026",
+  "Oct 30-Nov 2, 2026",
+  "11/2/26",
+  "2027-01-04",
+  "Friday, October 23, 2026 (A day)",
+  "Oct 23rd",
+  "Thu., Oct. 22, 2026",
+  "Fri., Oct. 2, 2026",
+  "Oct. 2",
+  "May 25, 2027",
+  "Tues., Nov. 24, 2026",
+  "FRI OCT 23",
+  "10/14-10/14",
+  "Oct 29 - Oct 30, 2026",
+  "Week of Oct 20: review, then Oct 23 quiz"
+ ],
+ "no_school": [
+  "Fall Break",
+  "Saturday",
+  "",
+  "Saturday",
+  "After the last day of school",
+  ""
+ ],
+ "plan": [
+  {
+   "title": "Hamlet 2",
+   "before": "Thu., Oct. 22, 2026",
+   "after": "Fri., Oct. 23, 2026",
+   "past_last": false
+  },
+  {
+   "title": "Media 2",
+   "before": "Fri., Oct. 23 - Mon., Oct. 26, 2026",
+   "after": "Mon., Oct. 26 - Tues., Oct. 27, 2026",
+   "past_last": false
+  },
+  {
+   "title": "Hamlet 1",
+   "before": "Tues., Nov. 10, 2026",
+   "after": "Wed., Nov. 11, 2026",
+   "past_last": false
+  },
+  {
+   "title": "Final",
+   "before": "Thu., May 20, 2027",
+   "after": "Fri., May 21, 2027",
+   "past_last": false
+  }
+ ],
+ "ics": [
+  {
+   "from": "2026-08-12",
+   "to": "2026-08-12",
+   "name": "First Day of School for Students",
+   "kind": "holiday",
+   "off": false
+  },
+  {
+   "from": "2026-10-05",
+   "to": "2026-10-09",
+   "name": "Fall Break - No School",
+   "kind": "break",
+   "off": true
+  },
+  {
+   "from": "2026-11-03",
+   "to": "2026-11-03",
+   "name": "Professional Development, No Students",
+   "kind": "teacher",
+   "off": true
+  },
+  {
+   "from": "2026-11-20",
+   "to": "2026-11-20",
+   "name": "Picture Day",
+   "kind": "holiday",
+   "off": false
+  },
+  {
+   "from": "2027-05-21",
+   "to": "2027-05-21",
+   "name": "Last Day of School",
+   "kind": "holiday",
+   "off": false
+  }
+ ],
+ "ics_first_last": "2026-08-12 2027-05-21",
+ "next_year": {
+  "first_day": "2027-08-12",
+  "last_day": "2028-05-21",
+  "days_off": [
+   {
+    "from": "2027-09-07",
+    "to": "2027-09-07",
+    "name": "Labor Day",
+    "kind": "holiday"
+   },
+   {
+    "from": "2027-10-05",
+    "to": "2027-10-09",
+    "name": "Fall Break",
+    "kind": "break"
+   },
+   {
+    "from": "2027-11-03",
+    "to": "2027-11-03",
+    "name": "Election Day (PD)",
+    "kind": "teacher"
+   },
+   {
+    "from": "2027-11-11",
+    "to": "2027-11-11",
+    "name": "Early Release",
+    "kind": "early"
+   },
+   {
+    "from": "2027-11-25",
+    "to": "2027-11-27",
+    "name": "Thanksgiving Break",
+    "kind": "break"
+   },
+   {
+    "from": "2027-12-21",
+    "to": "2028-01-01",
+    "name": "Winter Break",
+    "kind": "break"
+   }
+  ]
+ }
+}

@@ -435,6 +435,7 @@ public:
         if (button(ui, "Day Slideshow\xE2\x80\xA6")) day_slideshow(app);
         if (button(ui, "Curriculum Map\xE2\x80\xA6")) curriculum_map(app);
         if (button(ui, "Export Everything\xE2\x80\xA6")) export_everything_dialog(app);
+        if (button(ui, "Snow Day\xE2\x80\xA6")) app.later([this] { shift_dates(app, "", today(), true); });
         ui.flow(false);
         ui.lay().gap = 0;
         ui.space(22 * S);
@@ -460,6 +461,7 @@ private:
         mon = mon.plus(7L * week_);
         Date fri = mon.plus(4);
         auto days = lessons_by_day(app, mon, fri);
+        auto cal = schoolcal::read(app.settings());
         size_t most = 0;
         for (const auto &kv : days) most = std::max(most, kv.second.size());
         double chip_h = k.f->line + k.fsmall->line + 12 * S, gap = 6 * S;
@@ -502,8 +504,12 @@ private:
                 Color fg = is_today && !k.soft ? k["seltext"] : k["text"];
                 Color dim = is_today && !k.soft ? k["seltext"] : k["dim"];
                 ui.text(*k.fb, dh.x + 8 * S, std::round(dh.y + 7 * S + k.fb->ascent), DAY_SHORT[i] + std::string(" ") + std::to_string(d.d), fg);
-                ui.text(*k.fsmall, dh.x + 8 * S, std::round(dh.y + 9 * S + k.fb->line + k.fsmall->ascent),
-                        is_today ? "Today" : MONTH_NAMES[d.m - 1], dim);
+                std::string why = cal.no_school(d);
+                const schoolcal::DayOff *off = cal.day_off(d);
+                std::string sub = !why.empty() && off ? "No school: " + why : off && off->kind == "early" ? "Early release" : "";
+                if (is_today) sub = sub.empty() ? "Today" : "Today \xC2\xB7 " + sub;
+                if (sub.empty()) sub = MONTH_NAMES[d.m - 1];
+                ui.text(*k.fsmall, dh.x + 8 * S, std::round(dh.y + 9 * S + k.fb->line + k.fsmall->ascent), ui.elide(*k.fsmall, sub, dh.w - 12 * S), dim);
             }
             double y = dh.b() + 6 * S;
             auto it = days.find(d.ordinal());
@@ -628,6 +634,7 @@ public:
                 ui.text_in(*k.fsmallb, {col_x(c) + 6 * S, in.y, col_w(c) - 6 * S, head}, c < 5 ? DAY_NAMES[c] : DAY_SHORT[c], k["dim"]);
         double rowh = (in.h - head) / weeks;
         auto days = lessons_by_day(app, start, start.plus(7L * weeks - 1));
+        auto cal = schoolcal::read(app.settings());
         for (int w = 0; w < weeks; w++)
             for (int c = 0; c < 7; c++) {
                 Date d = start.plus(7L * w + c);
@@ -638,11 +645,20 @@ public:
                     Color lc = k.soft ? k["line"] : k["shadow"];
                     ui.fill({cell.x, cell.y, cell.w, (double)S}, lc);
                     if (c > 0) ui.fill({cell.x, cell.y, (double)S, cell.h}, lc);
-                    if (c >= 5 && k.soft) ui.fill({cell.x + S, cell.y + S, cell.w - S, cell.h - S}, mix(k["card"], k["window"], 0.6));
+                    // no class: shaded like the weekend, with the day off's name
+                    const schoolcal::DayOff *off = cal.day_off(d);
+                    bool closed = c < 5 && !cal.no_school(d).empty();
+                    if ((c >= 5 || closed) && k.soft) ui.fill({cell.x + S, cell.y + S, cell.w - S, cell.h - S}, mix(k["card"], k["window"], 0.6));
+                    else if (closed) ui.fill({cell.x + S, cell.y + S, cell.w - S, cell.h - S}, mix(k["card"], k["text"], 0.08));
                     std::string num = std::to_string(d.d);
                     Font &nf = *k.fb;
                     double nw = std::max(nf.width(num) + 12 * S, nf.line + 4 * S);
                     Rect nr{cell.x + 4 * S, cell.y + 4 * S, nw, nf.line + 4 * S};
+                    std::string note = c >= 5 ? "" : off ? off->name : d == cal.first ? "First day of school" : d == cal.last ? "Last day of school" : "";
+                    if (!note.empty()) {
+                        double nx = nr.r() + 4 * S, room = cell.r() - nx - 4 * S - (k.fb->line + 4 * S);
+                        if (room > 20 * S) ui.text_in(*k.fsmall, {nx, nr.y, room, nr.h}, ui.elide(*k.fsmall, note, room), k["dim"]);
+                    }
                     if (is_today) {
                         if (k.soft) ui.rrect(nr, nr.h / 2, k["sel"], {}, 0, true, false);
                         else ui.fill(nr, k["sel"]);
@@ -671,6 +687,15 @@ public:
                 Rect pr{cell.r() - pw - 4 * S, cell.y + 4 * S, pw, pw};
                 if (ui.over(cell) || ui.focused(ui.id("link:plan:" + std::to_string(d.ordinal()))))
                     if (link(ui, "plan:" + std::to_string(d.ordinal()), pr, "+", *k.fb, CENTER)) app.plan_lesson(d);
+                // right-click a day: plan on it, or move lessons from it
+                if (ui.has(plat::Event::DOWN) && ui.ev.button == 3 && ui.over(cell)) {
+                    ui.consume();
+                    int pick = popup_menu(ui, ui.mx, ui.my,
+                                          entries({"Plan a Lesson Here\xE2\x80\xA6", "Shift Lessons From Here\xE2\x80\xA6", "", "School Calendar\xE2\x80\xA6"}));
+                    if (pick == 0) app.plan_lesson(d);
+                    else if (pick == 1) shift_dates(app, "", d);
+                    else if (pick == 3) school_calendar_dialog(app);
+                }
             }
     }
 

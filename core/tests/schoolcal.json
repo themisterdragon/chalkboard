@@ -1,0 +1,179 @@
+{
+ "calendar": {
+  "first_day": "2026-08-12",
+  "last_day": "2027-05-21",
+  "days_off": [
+   {
+    "from": "2026-09-07",
+    "to": "2026-09-07",
+    "name": "Labor Day",
+    "kind": "holiday"
+   },
+   {
+    "from": "2026-10-05",
+    "to": "2026-10-09",
+    "name": "Fall Break",
+    "kind": "break"
+   },
+   {
+    "from": "2026-11-03",
+    "to": "2026-11-03",
+    "name": "Election Day (PD)",
+    "kind": "teacher"
+   },
+   {
+    "from": "2026-11-11",
+    "to": "2026-11-11",
+    "name": "Early Release",
+    "kind": "early"
+   },
+   {
+    "from": "2026-11-25",
+    "to": "2026-11-27",
+    "name": "Thanksgiving Break",
+    "kind": "break"
+   },
+   {
+    "from": "2026-12-21",
+    "to": "2027-01-01",
+    "name": "Winter Break",
+    "kind": "break"
+   }
+  ]
+ },
+ "near": "2026-10-14",
+ "moves": [
+  [
+   "Thu., Oct. 22, 2026",
+   1
+  ],
+  [
+   "Fri., Oct. 2, 2026",
+   1
+  ],
+  [
+   "Tues., Nov. 24, 2026",
+   1
+  ],
+  [
+   "Mon., Nov. 2, 2026",
+   1
+  ],
+  [
+   "Tues., Nov. 10, 2026",
+   1
+  ],
+  [
+   "Oct 29-30, 2026",
+   1
+  ],
+  [
+   "10/30/26",
+   1
+  ],
+  [
+   "2026-12-18",
+   1
+  ],
+  [
+   "Thursday, October 22, 2026 (A day)",
+   1
+  ],
+  [
+   "Oct 22nd",
+   1
+  ],
+  [
+   "Fri., Oct. 23, 2026",
+   -1
+  ],
+  [
+   "Mon., Oct. 12, 2026",
+   -1
+  ],
+  [
+   "Sept. 30",
+   2
+  ],
+  [
+   "May 20, 2027",
+   3
+  ],
+  [
+   "Mon., Nov. 23, 2026",
+   1
+  ],
+  [
+   "THU OCT 22",
+   1
+  ],
+  [
+   "10/4-10/6",
+   3
+  ],
+  [
+   "Oct 30 - Nov 2, 2026",
+   -1
+  ],
+  [
+   "Week of Oct 19: review, then Oct 22 quiz",
+   1
+  ]
+ ],
+ "lessons": [
+  {
+   "id": "a",
+   "title": "Hamlet 1",
+   "date": "Tues., Nov. 10, 2026",
+   "created": "2026-10-14 10:00",
+   "course": "English 4"
+  },
+  {
+   "id": "b",
+   "title": "Hamlet 2",
+   "date": "Thu., Oct. 22, 2026",
+   "created": "2026-10-14 10:00",
+   "course": "English 4"
+  },
+  {
+   "id": "c",
+   "title": "Media 1",
+   "date": "Wed., Oct. 21, 2026",
+   "created": "2026-10-14 10:00",
+   "course": "Mass Media"
+  },
+  {
+   "id": "d",
+   "title": "Media 2",
+   "date": "Fri., Oct. 23 - Mon., Oct. 26, 2026",
+   "created": "2026-10-14 10:00",
+   "course": "Mass Media"
+  },
+  {
+   "id": "e",
+   "title": "Final",
+   "date": "Thu., May 20, 2027",
+   "created": "2026-10-14 10:00",
+   "course": "English 4"
+  },
+  {
+   "id": "f",
+   "title": "No date",
+   "date": "",
+   "created": "2026-10-14 10:00",
+   "course": "English 4"
+  }
+ ],
+ "from": "2026-10-22",
+ "n": 1,
+ "course": "",
+ "days": [
+  "2026-10-06",
+  "2026-10-10",
+  "2026-11-11",
+  "2026-08-01",
+  "2027-06-01",
+  "2026-10-21"
+ ],
+ "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20260812\r\nDTEND;VALUE=DATE:20260813\r\nSUMMARY:First Day of School for Stud\r\n ents\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20261005\r\nDTEND;VALUE=DATE:20261010\r\nSUMMARY:Fall Break - No School\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART:20261015T230000Z\r\nDTEND:20261016T010000Z\r\nSUMMARY:Football game\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20261103\r\nSUMMARY:Professional Development\\, No Students\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20261120\r\nSUMMARY:Picture Day\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20270521\r\nDTEND;VALUE=DATE:20270522\r\nSUMMARY:Last Day of School\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+}

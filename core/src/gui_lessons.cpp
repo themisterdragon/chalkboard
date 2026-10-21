@@ -76,10 +76,19 @@ protected:
                 {"Export\xE2\x80\xA6", [this] { cmd_export(); }},
                 {"Board Slide", [this] { quick("PNG"); }},
                 {"Make-Up Sheet", [this] { quick("MAKEUP"); }},
+                {"Shift Dates From Here\xE2\x80\xA6", [this] { shift_from_selected(); }},
                 {"", nullptr},
                 {"Copy", [this] { cmd_duplicate(); }},
                 {"Rename\xE2\x80\xA6", [this] { cmd_rename(); }},
                 {"Delete", [this] { cmd_delete(); }}};
+    }
+    // Shift Dates, from this lesson's first day, for its class
+    void shift_from_selected() {
+        Value *l = selected();
+        if (!l) return;
+        auto ds = store::lesson_dates(*l);
+        Date from = ds.empty() ? today() : *std::min_element(ds.begin(), ds.end());
+        shift_dates(app, store::class_of(*l), from);
     }
     void cmd_new() override {
         std::string t;
@@ -345,6 +354,31 @@ private:
         if (ui.drawing) ui.text_in(*k.f, {r.x + 16 * S, r.y, r.w, r.h}, label_of("duration") + ":", k["text"]);
         line_field(app, ui, "duration", *app.lesson(id_), "duration");
         ui.row({});
+        // a day with no class in the Date(s): say so under it
+        std::string warn = day_warning();
+        if (!warn.empty()) {
+            ui.row({lw, -1});
+            ui.place(0, 1);
+            para(ui, warn, false, 0, k.fsmall.get());
+            ui.row({});
+        }
+    }
+
+    std::string day_warning() {
+        const Value *l = app.lesson(id_);
+        if (!l) return "";
+        auto cal = schoolcal::read(app.settings());
+        std::vector<std::string> bits;
+        for (const auto &d : store::lesson_dates(*l)) {
+            std::string why = cal.no_school(d);
+            if (why.empty()) continue;
+            std::string day = dates::fmt_date(d, false, false);
+            if (d.weekday() >= 5) bits.push_back(day + " is a " + why);
+            else if (const schoolcal::DayOff *o = cal.day_off(d)) bits.push_back(day + " is " + o->name);
+            else bits.push_back(day + " is " + text::lower(why.substr(0, 1)) + why.substr(1));
+            if (bits.size() == 3) break;
+        }
+        return bits.empty() ? "" : "Heads up: " + text::join(bits, "; ") + ".";
     }
 
     void pick_date() {

@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "dates.h"
+#include "schoolcal.h"
 #include "json.h"
 #include "files.h"
 #include "markup.h"
@@ -458,6 +459,68 @@ static Value dump_export(const std::string &root) {
     return out;
 }
 
+// a test file: {"calendar": {...}, "near": "2026-10-14", "moves": [[text, n], ...], "ics": "file text",
+// "lessons": [...], "from": "2026-10-20", "n": 1, "course": ""}
+static Value dump_schoolcal(const std::string &path) {
+    std::string raw;
+    files::read(path, raw);
+    Value t = json::parse(raw);
+    Value st = Value::object();
+    st["school_calendar"] = t.get("calendar");
+    auto cal = schoolcal::read(st);
+    Date near;
+    dates::stamp_day(t.s("near"), near);
+    auto words = schoolcal::weekday_words(t.get("lessons"));
+    Value out = Value::object();
+    Value moved = Value::array();
+    for (const auto &c : t.get("moves").arr()) {
+        int n = (int)c.at(1).as_int();
+        moved.push(schoolcal::move_dates(c.at(0).str(), near, [&](const Date &d) { return cal.add_school_days(d, n); }, words));
+    }
+    out["moves"] = moved;
+    Value days = Value::array();
+    for (const auto &c : t.get("days").arr()) {
+        Date d;
+        dates::stamp_day(c.str(), d);
+        days.push(cal.no_school(d));
+    }
+    out["no_school"] = days;
+    if (t.has("from")) {
+        Date from;
+        dates::stamp_day(t.s("from"), from);
+        Value plan = Value::array();
+        for (const auto &m : schoolcal::plan_shift(t.get("lessons"), cal, from, (int)t.get("n").as_int(), t.s("course"))) {
+            Value x = Value::object();
+            x["title"] = m.title;
+            x["before"] = m.before;
+            x["after"] = m.after;
+            x["past_last"] = m.past_last;
+            plan.push(x);
+        }
+        out["plan"] = plan;
+    }
+    if (t.has("ics")) {
+        Value ev = Value::array();
+        auto events = schoolcal::read_ics(t.s("ics"));
+        for (const auto &e : events) {
+            Value x = Value::object();
+            x["from"] = e.day.from.iso();
+            x["to"] = e.day.to.iso();
+            x["name"] = e.day.name;
+            x["kind"] = e.day.kind;
+            x["off"] = e.looks_off;
+            ev.push(x);
+        }
+        out["ics"] = ev;
+        Date f, l;
+        if (schoolcal::ics_first_last(events, f, l)) out["ics_first_last"] = (f.valid() ? f.iso() : "") + " " + (l.valid() ? l.iso() : "");
+    }
+    Value ny = Value::object();
+    schoolcal::write(ny, schoolcal::next_year(cal));
+    out["next_year"] = ny.get("school_calendar");
+    return out;
+}
+
 int dump(const std::string &what, const std::string &arg) {
     Value out;
     if (what == "store") out = dump_store();
@@ -470,6 +533,7 @@ int dump(const std::string &what, const std::string &arg) {
     else if (what == "board") out = dump_board(arg);
     else if (what == "png") out = dump_png(arg);
     else if (what == "export") out = dump_export(arg);
+    else if (what == "schoolcal") out = dump_schoolcal(arg);
     else if (what == "dates") {
         Date near{2026, 10, 14};
         out = date_list(dates::parse_dates(arg, near));
