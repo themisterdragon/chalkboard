@@ -71,6 +71,7 @@ public:
 
     // ---- saving
     bool save();
+    void save_last();   // save on the way out, unless another window saved since and nothing here is unsaved
     void save_soon();      // typing autosaves a moment after the last key
     void touch(Value &obj);   // obj changed: mark it and save soon
 

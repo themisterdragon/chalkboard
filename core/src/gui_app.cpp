@@ -288,8 +288,14 @@ void App::watch_os_look() {
     ui.after(3000, [this] { watch_os_look(); });
 }
 
+// on the way out: nothing unsaved and the file changed since (another window or program saved it)
+// leaves it be, or this window's older copy would write over the newer one
+void App::save_last() {
+    if (save_timer_ || file_mtime() == mtime_) save();
+}
+
 void App::quit() {
-    save();
+    save_last();
     ui.quit();
 }
 
@@ -914,7 +920,7 @@ void App::run() {
             ui.again();
         }
     });
-    save();
+    save_last();
 }
 
 }  // namespace gui
