@@ -1,5 +1,7 @@
 // A window with no screen: scripted events in, pictures out (for tests and screenshots).
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <sstream>
 #include <thread>
 
@@ -24,13 +26,30 @@ public:
         oh = h;
     }
     void present(const raster::Image &img) override {
+        frames++;
         if (shown) shown(img);
+    }
+    // timing for speed tests: time spent working (not waiting for the script), and frames drawn
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point back{};
+    double busy_ms = 0;
+    long frames = 0, events = 0;
+    ~Headless() override {
+        if (std::getenv("CHALKBOARD_TIMING"))
+            std::fprintf(stderr, "timing: %ld events, %ld frames, %.0f ms working, %.2f ms per event\n", events, frames, busy_ms,
+                         events ? busy_ms / events : 0.0);
     }
     bool fresh = false;   // an event went out since the last wait
     bool next(Event &e, int timeout) override {
+        if (back != Clock::time_point{}) busy_ms += std::chrono::duration<double, std::milli>(Clock::now() - back).count();
+        struct Back {
+            Clock::time_point &t;
+            ~Back() { t = Clock::now(); }
+        } on_return{back};
         // one event per wait, so each one gets drawn (like a person, not a flood)
         if (timeout == 0 && fresh) return false;
         fresh = true;
+        events++;
         if (ended) {
             e = Event();
             e.type = Event::CLOSE;

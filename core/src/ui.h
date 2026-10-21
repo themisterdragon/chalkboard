@@ -105,6 +105,8 @@ public:
     void dim_behind(double alpha) { dim_next_ = alpha; }   // the next modal() dims the window behind it
     // a function to run in ms milliseconds (returns an id for cancel())
     int after(int ms, std::function<void()> fn);
+    // called from a timer that changed nothing on screen: the window isn't drawn again for it
+    void quiet() { timer_quiet_ = true; }
     void cancel(int id);
     void again() { again_ = true; }   // something changed: lay out and draw once more
     void send(const plat::Event &e) { injected_.push_back(e); }   // handle e as if it had happened (menu commands)
@@ -269,6 +271,7 @@ private:
     // passes left to keep the focused control in view: set when the focus moves, counted down each
     // pass the focused control is placed, so the wheel and the scroll bar are free again afterward
     int see_focus_ = 0;
+    bool timer_quiet_ = false;
     Id wheel_owner_ = 0;      // what the wheel is scrolling (wheel_free)
     double wheel_until_ = 0;  // ... until this time (ms) with no wheel
     double dim_next_ = 0;
@@ -293,7 +296,7 @@ private:
     double now_ms() const;
     void pass(const std::function<void()> &frame, bool draw);
     void after_pass();
-    void fire_timers();
+    bool fire_timers();   // true when one changed something (needs drawing)
     int wait_ms() const;
     bool next_event(int timeout);
     void resize();

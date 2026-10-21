@@ -389,6 +389,43 @@ Mask coverage(const Path &p, const double *m) {
     return out;
 }
 
+Mask coverage_rows(const Path &p, int y0, int y1) {
+    Mask out;
+    double minx = 1e18, maxx = -1e18, miny = 1e18, maxy = -1e18;
+    for (const auto &ct : p.contours_)
+        for (const auto &q : ct) {
+            if (!std::isfinite(q.x) || !std::isfinite(q.y)) return out;
+            minx = std::min(minx, q.x);
+            maxx = std::max(maxx, q.x);
+            miny = std::min(miny, q.y);
+            maxy = std::max(maxy, q.y);
+        }
+    y0 = std::max(y0, (int)std::floor(miny));
+    y1 = std::min(y1, (int)std::ceil(maxy) + 1);
+    if (y0 >= y1 || maxx - minx > 8192) return out;
+    out.x0 = (int)std::floor(minx);
+    out.y0 = y0;
+    out.w = (int)std::ceil(maxx) + 1 - out.x0;
+    out.h = y1 - y0;
+    Acc acc(out.w, out.h, out.x0, out.y0);
+    for (const auto &ct : p.contours_) {
+        if (ct.size() < 2) continue;
+        for (size_t i = 0; i + 1 < ct.size(); i++) acc.line(ct[i].x, ct[i].y, ct[i + 1].x, ct[i + 1].y);
+        acc.line(ct.back().x, ct.back().y, ct.front().x, ct.front().y);
+    }
+    out.a.assign((size_t)out.w * (size_t)out.h, 0);
+    size_t stride = (size_t)acc.w + 2;
+    for (int y = 0; y < out.h; y++) {
+        double sum = 0;
+        const float *row = &acc.a[(size_t)y * stride];
+        for (int x = 0; x < out.w; x++) {
+            sum += row[x];
+            out.a[(size_t)y * (size_t)out.w + (size_t)x] = (uint8_t)std::lround(std::min(1.0, std::fabs(sum)) * 255);
+        }
+    }
+    return out;
+}
+
 bool Image::clipped(int &x0, int &y0, int &x1, int &y1) const {
     x0 = 0;
     y0 = 0;
@@ -424,6 +461,30 @@ void Image::mask(const Mask &m, int dx, int dy, Color c, double alpha) {
                 continue;
             }
             for (int i = 0; i < 3; i++) p[i] = (uint8_t)((p[i] * (255 - k) + cs[i] * k + 127) / 255);
+        }
+    }
+}
+
+void Image::fill_mask(const Mask &m, int dx, int dy, Color c, double alpha) {
+    int cx0, cy0, cx1, cy1;
+    if (alpha <= 0 || !clipped(cx0, cy0, cx1, cy1)) return;
+    int ox = m.x0 + dx, oy = m.y0 + dy;
+    int x0 = std::max(cx0, ox), y0 = std::max(cy0, oy), x1 = std::min(cx1, ox + m.w), y1 = std::min(cy1, oy + m.h);
+    Ink ink(c, alpha);
+    for (int y = y0; y < y1; y++) {
+        const uint8_t *a = &m.a[(size_t)(y - oy) * (size_t)m.w];
+        uint8_t *line = &px[(size_t)y * (size_t)w * 3];
+        for (int x = x0; x < x1;) {
+            uint8_t v = a[x - ox];
+            int e = x + 1;   // a run at one strength
+            while (e < x1 && a[e - ox] == v) e++;
+            if (v == 255) ink.run(line + (size_t)x * 3, e - x);
+            else if (v && e - x >= 48) {
+                Ink part(c, v / 255.0 * alpha);
+                part.run(line + (size_t)x * 3, e - x);
+            } else if (v)
+                for (int ix = x; ix < e; ix++) blend(ix, y, c, v / 255.0 * alpha);
+            x = e;
         }
     }
 }

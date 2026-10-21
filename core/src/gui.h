@@ -122,6 +122,7 @@ private:
     bool maximized_ = false;
     long long mtime_ = 0;
     std::pair<int, std::string> seen_os_;   // dark (-1 = not followed), accent
+    std::string shown_hour_;                  // watch_file: the hour last drawn (a new one redraws)
     std::string section_;                   // the sidebar's page ("" = Today)
     int menu_open_ = -1;                    // the menu bar's open menu (drawn menus)
     bool in_terminal_ = false;              // the terminal view is showing

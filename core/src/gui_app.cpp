@@ -266,7 +266,9 @@ void App::watch_file() {
         store.reload_standards();
         if (view_) view_->reloaded();
         status("Loaded changes saved by another Chalkboard window.");
-    }
+    } else if (strftime_now("%Y-%m-%d %H") == shown_hour_)
+        ui.quiet();   // nothing new (a new hour redraws: Today's greeting and dates)
+    shown_hour_ = strftime_now("%Y-%m-%d %H");
     ui.after(2000, [this] { watch_file(); });
 }
 
@@ -275,7 +277,9 @@ void App::watch_os_look() {
     if (theme() == "system" || os_accent) {
         std::pair<int, std::string> now = {theme() == "system" ? (int)plat::system_dark() : -1, os_accent ? plat::system_accent() : ""};
         if (now != seen_os_ && !modal() && !save_timer_) set_look();
-    }
+        else ui.quiet();
+    } else
+        ui.quiet();
     ui.after(3000, [this] { watch_os_look(); });
 }
 
@@ -830,7 +834,8 @@ void App::frame() {
     top = menu_bar(all);
 #endif
     Rect area{0, top, all.w, all.h - top};
-    desk(area);
+    // Modern and Glossy: the sidebar and the page cover all of it (checked on every screen)
+    if (!ui.sk().soft || !view_ || view_->bare()) desk(area);
     if (!view_) return;
     Rect body = window_frame(area);
     if (view_->bare()) {

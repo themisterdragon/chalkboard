@@ -82,6 +82,8 @@ struct Mask {
     std::vector<uint8_t> a;
 };
 Mask coverage(const Path &p, const double *m = nullptr);
+// only the rows from y0 up to (not including) y1
+Mask coverage_rows(const Path &p, int y0, int y1);
 
 class Image {
 public:
@@ -97,6 +99,8 @@ public:
     void picture(const uint8_t *rgb, const uint8_t *alpha, int sw, int sh, int channels, double x, double y, double w, double h);
     // a coverage mask in one color, its box moved by (dx, dy)
     void mask(const Mask &m, int dx, int dy, Color c, double alpha = 1);
+    // a coverage mask blended the way fill() blends a shape (for shapes worked out once and kept)
+    void fill_mask(const Mask &m, int dx, int dy, Color c, double alpha = 1);
     // the same, shaded from top (at y = y0) to bottom (at y = y1), straight down
     void mask_gradient(const Mask &m, int dx, int dy, Color top, Color bottom, double y0, double y1, double alpha = 1);
     // another image (or part of one: sx, sy, sw, sh) copied in at (x, y), no scaling

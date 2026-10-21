@@ -1,8 +1,13 @@
 #include "ui.h"
 
 #include <algorithm>
+#include <array>
+#include <map>
 #include <chrono>
+#include <climits>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 
 namespace ui {
 
@@ -185,45 +190,85 @@ static void round_path(raster::Path &p, const Rect &r, double rad) {
 
 // A rounded box, less an optional rounded hole, drawn quickly: the rows where every side is
 // straight are plain boxes, and only the curved bands at the top and bottom are traced as a shape
-// (tracing a whole big card, or a thin ring around one, costs its full area on every frame)
+// (tracing a whole big card, or a thin ring around one, costs its full area on every frame). The
+// traced bands are kept, by size and by where in its pixel the box starts: cards, buttons and
+// shadows are the same shapes frame after frame.
+namespace {
+struct RoundBands {
+    raster::Mask top, bottom;   // the curved rows, from the box's whole pixel
+    int y0 = 0, y1 = 0;         // the straight rows between them
+    bool ok = false;            // false: too short for bands (traced whole each time)
+};
+thread_local std::map<std::array<int64_t, 10>, RoundBands> g_rounds;
+}  // namespace
+
 static void fill_round(raster::Image &img, const Rect &o, double ro, const Rect *hole, double ri, Color c, double alpha = 1) {
     if (o.w <= 0 || o.h <= 0) return;
-    ro = std::max(0.0, std::min(ro, std::min(o.w, o.h) / 2));   // as round_path does
-    raster::Path p;
-    round_path(p, o, ro);
-    double m0 = o.y + ro, m1 = o.b() - ro;
-    bool fast = true;
+    if (hole && (hole->w <= 0 || hole->h <= 0)) hole = nullptr;
+    // from the pixel the box starts in
+    double px = std::floor(o.x), py = std::floor(o.y);
+    Rect lo{o.x - px, o.y - py, o.w, o.h}, lh;
+    ro = std::max(0.0, std::min(ro, std::min(lo.w, lo.h) / 2));   // as round_path does
     if (hole) {
-        if (hole->w <= 0 || hole->h <= 0) {
-            hole = nullptr;
-        } else {
-            ri = std::max(0.0, std::min(ri, std::min(hole->w, hole->h) / 2));
-            raster::Path q;
-            round_path(q, *hole, ri);
-            auto ct = q.contours_[0];
+        lh = {hole->x - px, hole->y - py, hole->w, hole->h};
+        ri = std::max(0.0, std::min(ri, std::min(lh.w, lh.h) / 2));
+    }
+    auto path = [&] {
+        raster::Path p;
+        round_path(p, lo, ro);
+        if (hole) {
+            raster::Path h;
+            round_path(h, lh, ri);
+            auto ct = h.contours_[0];
             std::reverse(ct.begin(), ct.end());   // the other way round: it cuts the hole
             p.contours_.push_back(ct);
-            m0 = std::max(m0, hole->y + ri);
-            m1 = std::min(m1, hole->b() - ri);
-            fast = hole->x >= o.x && hole->r() <= o.r() && hole->y >= o.y && hole->b() <= o.b();
         }
+        return p;
+    };
+    auto k = [](double v) {   // exactly this number
+        int64_t b;
+        std::memcpy(&b, &v, 8);
+        return b;
+    };
+    std::array<int64_t, 10> key = {k(lo.x), k(lo.y), k(lo.w), k(lo.h), k(ro), hole ? k(lh.x) : -1, hole ? k(lh.y) : -1,
+                                   hole ? k(lh.w) : -1, hole ? k(lh.h) : -1, hole ? k(ri) : -1};
+    auto it = g_rounds.find(key);
+    if (it == g_rounds.end()) {
+        if (g_rounds.size() > 3000) g_rounds.clear();   // (a window resized many times over)
+        RoundBands b;
+        double m0 = lo.y + ro, m1 = lo.b() - ro;
+        bool fast = true;
+        if (hole) {
+            m0 = std::max(m0, lh.y + ri);
+            m1 = std::min(m1, lh.b() - ri);
+            fast = lh.x >= lo.x && lh.r() <= lo.r() && lh.y >= lo.y && lh.b() <= lo.b();
+        }
+        b.y0 = (int)std::ceil(m0);
+        b.y1 = (int)std::floor(m1);
+        if (fast && b.y1 - b.y0 >= 4) {
+            raster::Path p = path();
+            b.top = raster::coverage_rows(p, INT_MIN / 2, b.y0);
+            b.bottom = raster::coverage_rows(p, b.y1, INT_MAX / 2);
+            b.ok = true;
+        }
+        it = g_rounds.emplace(key, std::move(b)).first;
     }
-    int y0 = (int)std::ceil(m0), y1 = (int)std::floor(m1);
-    if (!fast || y1 - y0 < 4) {
-        img.fill(p, c, alpha);
+    const RoundBands &b = it->second;
+    if (!b.ok) {   // (traced where it is: the same numbers as always)
+        lo = o;
+        if (hole) lh = *hole;
+        img.fill(path(), c, alpha);
         return;
     }
-    img.clip(o.x - 1, o.y - 1, o.w + 2, y0 - (o.y - 1));   // the top band
-    img.fill(p, c, alpha);
-    img.unclip();
-    img.clip(o.x - 1, y1, o.w + 2, o.b() + 1 - y1);   // the bottom band
-    img.fill(p, c, alpha);
-    img.unclip();
+    int ix = (int)px, iy = (int)py;
+    img.fill_mask(b.top, ix, iy, c, alpha);
+    img.fill_mask(b.bottom, ix, iy, c, alpha);
+    double mid = b.y1 - b.y0;
     if (!hole) {
-        img.rect(o.x, y0, o.w, y1 - y0, c, alpha);
+        img.rect(px + lo.x, py + b.y0, lo.w, mid, c, alpha);
     } else {
-        img.rect(o.x, y0, hole->x - o.x, y1 - y0, c, alpha);
-        img.rect(hole->r(), y0, o.r() - hole->r(), y1 - y0, c, alpha);
+        img.rect(px + lo.x, py + b.y0, lh.x - lo.x, mid, c, alpha);
+        img.rect(px + lh.r(), py + b.y0, lo.r() - lh.r(), mid, c, alpha);
     }
 }
 
@@ -688,7 +733,7 @@ int Ui::wait_ms() const {
     return std::max(0, (int)std::ceil(soonest - now_ms()));
 }
 
-void Ui::fire_timers() {
+bool Ui::fire_timers() {
     double now = now_ms();
     std::vector<Timer> due;
     for (auto it = timers_.begin(); it != timers_.end();) {
@@ -699,11 +744,17 @@ void Ui::fire_timers() {
             ++it;
     }
     std::sort(due.begin(), due.end(), [](const Timer &a, const Timer &b) { return a.at < b.at; });
+    bool changed = false;
     for (auto &t : due) {
         if (quitting_) break;
+        timer_quiet_ = false;
         t.fn();
-        again();
+        if (!timer_quiet_) {
+            changed = true;
+            again();
+        }
     }
+    return changed;
 }
 
 void Ui::pass(const std::function<void()> &frame, bool draw) {
@@ -820,8 +871,9 @@ void Ui::run(const std::function<void()> &frame) {
     draw();
     while (!quitting_) {
         bool got = next_event(wait_ms());
-        fire_timers();
+        bool timed = fire_timers();
         if (quitting_) break;
+        if (!got && !timed) continue;   // only quiet timers (checks that found nothing new)
         if (got) {
             pass(frame, false);
             // take whatever else is waiting before drawing (a burst of mouse moves)
@@ -892,8 +944,9 @@ void Ui::modal(const std::function<void(bool &done)> &body) {
     draw();
     while (!done && !quitting_) {
         bool got = next_event(wait_ms());
-        fire_timers();
+        bool timed = fire_timers();
         if (done || quitting_) break;
+        if (!got && !timed) continue;
         if (got) {
             pass(frame, false);
             int n = 0;
