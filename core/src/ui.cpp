@@ -11,6 +11,15 @@ Ui::Ui(plat::Window &w) : win(w) {
     resize();
 }
 
+bool Ui::wheel_free(Id id) const { return wheel_owner_ == 0 || wheel_owner_ == id || now_ms() > wheel_until_; }
+void Ui::wheel_took(Id id) {
+    wheel_owner_ = id;
+    wheel_until_ = now_ms() + 300;
+}
+void Ui::wheel_done(Id id) {
+    if (wheel_owner_ == id) wheel_owner_ = 0;
+}
+
 double Ui::now_ms() const {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -86,7 +95,7 @@ void Ui::focus(Id id) {
     want_first_ = false;   // asked for: not the first control
     if (focus_ != id) {
         focus_ = id;
-        see_focus_ = true;
+        see_focus_ = 2;
         again();
     }
 }
@@ -583,16 +592,18 @@ void Ui::end_scroll() {
     // keep the focused control in view when it moved by keyboard
     if (see_focus_ && focus_seen_ && focus_rect_.y >= fr.start - 1 && focus_rect_.b() <= fr.start + s.content + 1) {
         double pad = 8 * S();
+        double was = s.y;
         if (focus_rect_.y < r.y) s.y -= r.y - focus_rect_.y + pad;
         else if (focus_rect_.b() > r.b()) s.y += focus_rect_.b() - r.b() + pad;
         s.y = std::max(0.0, std::min(s.y, maxy));
-        again();
+        if (s.y != was) again();
     }
     // the mouse wheel
-    if (ev.type == plat::Event::WHEEL && over(r) && maxy > 0) {
+    if (ev.type == plat::Event::WHEEL && over(r) && maxy > 0 && wheel_free(fr.id)) {
         double before = s.y;
-        s.y = std::max(0.0, std::min(maxy, s.y + ev.dy * skin->line * 3));
+        s.y = std::max(0.0, std::min(maxy, s.y + wheel_px(skin->line)));
         if (s.y != before) {
+            wheel_took(fr.id);
             consume();
             again();
         }
@@ -714,6 +725,8 @@ void Ui::pass(const std::function<void()> &frame, bool draw) {
 
 void Ui::after_pass() {
     hot_ = hot_next_;
+    // the focused control was placed (and scrolled into view): one pass less to keep it there
+    if (see_focus_ > 0 && focus_seen_) see_focus_--;
     // Tab and Shift+Tab move the focus along the controls, in the order they were placed
     if (ev.type == plat::Event::KEY && ev.key == plat::K_TAB && !(ev.mods & (plat::CTRL | plat::ALT | plat::CMD)) && !tab_.empty()) {
         auto it = std::find(tab_.begin(), tab_.end(), focus_);
@@ -721,7 +734,7 @@ void Ui::after_pass() {
         if (it == tab_.end()) focus_ = back ? tab_.back() : tab_.front();
         else if (back) focus_ = it == tab_.begin() ? tab_.back() : *(it - 1);
         else focus_ = (it + 1 == tab_.end()) ? tab_.front() : *(it + 1);
-        see_focus_ = true;
+        see_focus_ = 2;
         consume();
         again();
     } else if (want_first_ && !tab_.empty()) {
@@ -757,6 +770,10 @@ bool Ui::next_event(int timeout) {
     case plat::Event::WHEEL:
         mx = e.x;
         my = e.y;
+        break;
+    case plat::Event::KEY:
+    case plat::Event::TEXT:
+        if (focus_) see_focus_ = 2;   // typing brings the box being typed in back into view
         break;
     case plat::Event::LEAVE:
         if (!active_) mx = my = -1;
@@ -795,7 +812,10 @@ void Ui::run(const std::function<void()> &frame) {
             if (!again_) break;
         }
         win.present(img);
-        base_ = img;   // the window with no dialog over it (what a dialog opens over)
+        // the window with no dialog over it (what a dialog opens over): every frame paints every
+        // pixel, so the two pictures trade places instead of copying the whole window each time
+        std::swap(base_, img);
+        if (img.w != base_.w || img.h != base_.h) img = raster::Image(base_.w, base_.h);   // first frame, or a resize
     };
     draw();
     while (!quitting_) {

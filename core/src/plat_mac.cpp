@@ -295,13 +295,17 @@ public:
             Pool pool;
             id date;
             if (timeout_ms < 0) date = msg(cls("NSDate"), "distantFuture");
+            else if (timeout_ms == 0) date = msg(cls("NSDate"), "distantPast");   // only what's already waiting
             else {
                 double left = std::chrono::duration<double>(until - std::chrono::steady_clock::now()).count();
                 if (left <= 0) return false;
                 date = msg(cls("NSDate"), "dateWithTimeIntervalSinceNow:", left);
             }
             id ev = msg(app, "nextEventMatchingMask:untilDate:inMode:dequeue:", ~0ul, date, *k_runLoopMode, (BOOL)1);
-            if (!ev) continue;
+            if (!ev) {
+                if (timeout_ms == 0) return take(e);   // nothing more waiting (sendEvent: may have queued one)
+                continue;
+            }
             if (msg<unsigned long>(ev, "type") == 15 && msg<short>(ev, "subtype") == WAKE_SUBTYPE) {
                 push_simple(Event::WAKE);
                 continue;
@@ -444,8 +448,11 @@ void v_wheel(id, SEL, id ev) {
     g_win->where(ev, e);
     e.mods = mods_of(ev);
     double dx = msg_f(ev, "scrollingDeltaX"), dy = msg_f(ev, "scrollingDeltaY");
-    // a trackpad gives points, a mouse wheel lines: both become lines (down/right positive)
-    double per = msg<BOOL>(ev, "hasPreciseScrollingDeltas") ? 1.0 / 12 : 1.0;
+    // a trackpad gives points (sent on as device pixels, so the page moves with the fingers), a
+    // mouse wheel lines (down/right positive)
+    bool precise = msg<BOOL>(ev, "hasPreciseScrollingDeltas");
+    double per = precise ? g_win->scale() : 1.0;
+    e.pixels = precise;
     e.dx = -dx * per;
     e.dy = -dy * per;
     if (e.dx != 0 || e.dy != 0) g_win->push(e);

@@ -11,7 +11,7 @@ set -e
 cd "$(dirname "$0")/.."
 SCRIPT=$(cd "$(dirname "${1:-tests/walkthrough.txt}")" && pwd)/$(basename "${1:-tests/walkthrough.txt}")
 DATA=${2:-}
-BIN=chalkboard-core
+BIN=./chalkboard-core
 [ -x build/chalkboard-asan ] && BIN=build/chalkboard-asan
 T=$(mktemp -d)
 mkdir -p "$T/data" "$T/home/Documents" "$T/out"

@@ -706,15 +706,21 @@ bool text_area(Ui &ui, const std::string &key, std::string &value, int min_lines
     Rect in{r.x + ring + padx, r.y + ring + pady, r.w - 2 * (ring + padx), r.h - 2 * (ring + pady)};
     double oy = in.y - e.sy;
     mouse(ui, e, id, in.x, oy, lh, focus);
+    if (focus && !e.lines.empty()) {   // a page scrolling to this box shows the cursor's line
+        double cy = in.y + line_of(e, e.cur) * lh - e.sy;
+        double top = std::max(r.y, cy - pady - ring), bottom = std::min(r.b(), cy + lh + pady + ring);
+        ui.focus_part({r.x, top, r.w, bottom - top});
+    }
     // the wheel scrolls a box that's full
     double content = e.lines.size() * lh;
-    if (ui.has(plat::Event::WHEEL) && ui.over(r) && content > in.h + 0.5) {
+    if (ui.has(plat::Event::WHEEL) && ui.over(r) && content > in.h + 0.5 && ui.wheel_free(id)) {
         double before = e.sy;
-        e.sy = std::max(0.0, std::min(content - in.h, e.sy + ui.ev.dy * lh * 3));
+        e.sy = std::max(0.0, std::min(content - in.h, e.sy + ui.wheel_px(lh)));
         if (e.sy != before) {
+            ui.wheel_took(id);
             ui.consume();
             ui.again();
-        }
+        } else ui.wheel_done(id);   // at its top or bottom: the page around it scrolls on
     }
     if (g_toggle && g_rich == id) {   // the format bar was pressed
         if (enabled) toggle(e, g_toggle);

@@ -832,8 +832,11 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
         ui.consume();
         ui.again();
     }
-    if (ui.has(plat::Event::WHEEL) && ui.over(r) && maxs > 0) {
-        st.scroll = std::max(0.0, std::min(maxs, st.scroll + ui.ev.dy * rh * 3));
+    if (ui.has(plat::Event::WHEEL) && ui.over(r) && maxs > 0 && ui.wheel_free(id)) {
+        double before = st.scroll;
+        st.scroll = std::max(0.0, std::min(maxs, st.scroll + ui.wheel_px(rh)));
+        if (st.scroll != before) ui.wheel_took(id);
+        else ui.wheel_done(id);
         ui.consume();
         ui.again();
     }

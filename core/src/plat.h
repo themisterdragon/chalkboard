@@ -34,7 +34,8 @@ struct Event {
     double x = 0, y = 0;   // pixels (device pixels, not points)
     int button = 0;        // 1 left, 2 middle, 3 right
     int clicks = 1;        // 2 for a double-click
-    double dx = 0, dy = 0; // wheel: lines (down/right positive)
+    double dx = 0, dy = 0; // wheel: lines (down/right positive), or device pixels when pixels is set
+    bool pixels = false;   // wheel: a trackpad's exact distance (dx/dy are pixels, not lines)
     int key = 0;           // Key or a character
     int mods = 0;          // Mod bits
     std::string text;      // TEXT: what was typed (UTF-8)

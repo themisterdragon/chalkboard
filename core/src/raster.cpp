@@ -151,10 +151,15 @@ struct Ink {
     void run(uint8_t *p, int n) {   // n pixels in a row
         if (a <= 0 || n <= 0) return;
         if (a >= 1) {
-            for (int i = 0; i < n; i++, p += 3) {
-                p[0] = full[0];
-                p[1] = full[1];
-                p[2] = full[2];
+            // one pixel, then copy what's done onto the rest, doubling each time (memcpy is fast)
+            p[0] = full[0];
+            p[1] = full[1];
+            p[2] = full[2];
+            size_t done = 3, total = (size_t)n * 3;
+            while (done < total) {
+                size_t k = std::min(done, total - done);
+                std::memcpy(p + done, p, k);
+                done += k;
             }
             return;
         }

@@ -118,6 +118,14 @@ public:
     bool drawing = false;   // false while only handling input: drawing calls do nothing
     plat::Event ev;         // what's being handled (type NONE when nothing is)
     bool has(plat::Event::Type t) const { return ev.type == t; }
+    // how far this WHEEL event scrolls, in pixels, for something whose step is line pixels: a
+    // mouse wheel's notch is three lines, a trackpad says exactly
+    double wheel_px(double line) const { return ev.pixels ? ev.dy : ev.dy * line * 3; }
+    // the wheel goes to one scrolling thing at a time: the one a gesture started on keeps it until
+    // the wheel rests, so a page scrolling past a full text box doesn't stop in it
+    bool wheel_free(Id id) const;   // this WHEEL event may scroll id
+    void wheel_took(Id id);         // id scrolled with it
+    void wheel_done(Id id);         // id is at its end: the wheel may pass on to what's around it
     void consume() { ev.type = plat::Event::NONE; }
     double mx = -1, my = -1;   // the mouse
     int W() const { return img.w; }
@@ -213,7 +221,9 @@ public:
     void begin_scroll(Id id, const Rect &r, double max_width = 0);
     void end_scroll();
     double &scroll_of(Id id) { return scrolls_[id].y; }
-    void scroll_to_focus() { see_focus_ = true; }
+    void scroll_to_focus() { see_focus_ = 2; }
+    // the focused control's part to keep in view (a tall text box: the line with the cursor)
+    void focus_part(const Rect &r) { focus_rect_ = r; }
 
     // ---- remembered state of a control (text being edited, a list's selection...)
     template <typename T>
@@ -255,7 +265,12 @@ private:
         std::function<void()> fn;
     };
 
-    bool quitting_ = false, again_ = false, see_focus_ = false;
+    bool quitting_ = false, again_ = false;
+    // passes left to keep the focused control in view: set when the focus moves, counted down each
+    // pass the focused control is placed, so the wheel and the scroll bar are free again afterward
+    int see_focus_ = 0;
+    Id wheel_owner_ = 0;      // what the wheel is scrolling (wheel_free)
+    double wheel_until_ = 0;  // ... until this time (ms) with no wheel
     double dim_next_ = 0;
     int modal_depth_ = 0;
     uint64_t pass_ = 0;
