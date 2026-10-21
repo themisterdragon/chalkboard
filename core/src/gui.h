@@ -107,9 +107,7 @@ public:
     void sync_mtime() { mtime_ = file_mtime(); }   // the data file was just written here
 
     std::string std_subject;   // the standards subject last picked (this session)
-    std::string open_class_lesson, open_class_assessment;   // By Class: the class open in each list
     std::vector<schoolcal::Move> undo_moves;                 // the last Shift Dates (Edit > Undo Shift)
-    bool has_class_lesson = false, has_class_assessment = false;
 
 private:
     bool no_boot_;
@@ -190,15 +188,14 @@ protected:
     std::vector<std::string> search_fields_ = {"title", "unit", "course", "date", "standards"};
     std::string q_, unit_, sort_;
     std::string sel_id_;   // the selected item
-    bool has_cls_ = false;   // By Class with a class open
+    bool has_cls_ = false;   // showing one class (cls_; "" = the ones with no class yet)
     std::string cls_;
     int sel_ = -1;
     std::vector<std::string> ids_;   // the items shown, in order
 
     Value &pool();
     Value *selected();
-    bool by_class() const { return sort_ == "class"; }
-    bool picking() const;
+    std::string class_key() const { return kind_ == "lesson" ? "lesson_class" : "assess_class"; }   // the setting it's kept in
     void open_class(bool has, const std::string &name);
     std::vector<std::string> items();
     std::string new_class();   // the class a new item goes in ("" = none)
@@ -207,6 +204,7 @@ protected:
     // subclasses
     virtual void tools(Ui &ui) = 0;               // the toolbar's buttons
     virtual void filters(Ui &ui) { (void)ui; }    // extra filters
+    virtual double filters_w(Ui &ui) { (void)ui; return 0; }   // ... and how wide they are
     virtual std::vector<std::string> row(const Value &x) = 0;
     virtual bool match(const Value &x) { (void)x; return true; }
     virtual std::vector<std::pair<std::string, std::function<void()>>> menu_items() = 0;
@@ -220,7 +218,6 @@ protected:
     bool tool_sel(Ui &ui, const std::string &text);   // a toolbar button that needs a selection
 
 private:
-    void picker(Ui &ui, const Rect &r);
     bool focus_list_ = true;
     bool find_ = false;
 };

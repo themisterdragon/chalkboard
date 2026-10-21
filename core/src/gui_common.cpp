@@ -15,8 +15,7 @@ const std::vector<std::pair<std::string, std::string>> SECTIONS = {
     {"lessons", "Lesson Plans"}, {"assessments", "Assessments"}, {"standards", "Standards Library"}, {"settings", "Settings"}, {"calendar", "Calendar"}};
 
 const std::vector<std::pair<std::string, std::string>> SORT_LABEL = {
-    {"updated", "Date modified"}, {"created", "Date created"}, {"scheduled", "Date scheduled"}, {"title", "Title (A-Z)"},
-    {"unit", "Unit"}, {"class", "By class"}};
+    {"scheduled", "Date scheduled"}, {"updated", "Date modified"}, {"created", "Date created"}, {"title", "Title (A-Z)"}, {"unit", "Unit"}};
 
 // the Sort by choices for a list: only lessons have days they're taught
 static std::vector<std::pair<std::string, std::string>> sorts_for(const std::string &kind) {
@@ -227,17 +226,14 @@ void standards_field(App &app, Ui &ui, const std::string &key, const std::functi
 ItemList::ItemList(App &a, const std::string &kind, const std::string &pool_key, const std::string &sort_key, const std::string &noun)
     : Screen(a), kind_(kind), pool_key_(pool_key), sort_key_(sort_key), noun_(noun) {
     sort_ = a.settings().s(sort_key);
+    if (sort_ == "class") sort_ = kind == "lesson" ? "scheduled" : "unit";   // (By Class was a sort; the class is a filter now)
     bool ok = false;
     for (const auto &s : sorts_for(kind)) ok |= s.first == sort_;
-    if (!ok) sort_ = "updated";
-    // By Class: come back to the same class
-    if (kind == "lesson") {
-        has_cls_ = a.has_class_lesson;
-        cls_ = a.open_class_lesson;
-    } else {
-        has_cls_ = a.has_class_assessment;
-        cls_ = a.open_class_assessment;
-    }
+    if (!ok) sort_ = kind == "lesson" ? "scheduled" : "updated";
+    // the class filter: as it was left (null: all classes; "": lessons with no class yet)
+    const Value &c = a.settings().get(class_key());
+    has_cls_ = c.is_string();
+    cls_ = c.str();
 }
 
 Value &ItemList::pool() { return app.store.data[pool_key_]; }
@@ -250,23 +246,17 @@ Value *ItemList::selected() {
     return nullptr;
 }
 
-bool ItemList::picking() const { return by_class() && !has_cls_ && text::strip(q_).empty(); }
 
 void ItemList::open_class(bool has, const std::string &name) {
     has_cls_ = has;
     cls_ = name;
-    if (kind_ == "lesson") {
-        app.has_class_lesson = has;
-        app.open_class_lesson = name;
-    } else {
-        app.has_class_assessment = has;
-        app.open_class_assessment = name;
-    }
+    app.settings()[class_key()] = has ? Value(name) : Value();
+    app.save_soon();
     focus_list_ = true;
     app.ui.again();
 }
 
-std::string ItemList::new_class() { return by_class() && has_cls_ ? cls_ : ""; }
+std::string ItemList::new_class() { return has_cls_ ? cls_ : ""; }
 
 std::vector<std::string> ItemList::items() {
     std::vector<const Value *> all;
@@ -276,7 +266,7 @@ std::vector<std::string> ItemList::items() {
     std::vector<std::string> out;
     std::string q = text::lower(text::strip(q_));
     for (const Value *x : xs) {
-        if (by_class() && has_cls_ && !picking() && !store::in_class(*x, cls_)) continue;
+        if (has_cls_ && !store::in_class(*x, cls_)) continue;
         if (!unit_.empty() && text::strip(x->s("unit")) != unit_) continue;
         if (!q.empty()) {
             bool hit = false;
@@ -310,10 +300,6 @@ bool ItemList::escape() {
         app.ui.again();
         return true;
     }
-    if (by_class() && has_cls_) {
-        open_class(false, "");
-        return true;
-    }
     return false;
 }
 
@@ -331,68 +317,6 @@ bool ItemList::command(const std::string &name) {
     return true;
 }
 
-void ItemList::picker(Ui &ui, const Rect &r) {
-    Skin &k = ui.sk();
-    int S = ui.S();
-    std::vector<const Value *> all;
-    for (const auto &x : pool().arr())
-        if (x.is_object()) all.push_back(&x);
-    auto found = store::classes(app.settings(), all);
-    ui.begin_scroll(ui.id("picker"), r);
-    ui.space(4 * S);
-    para(ui, found.empty() ? "No " + noun_ + "s yet. Click New to make your first one." : "Pick a class to see its " + noun_ + "s and add new ones.", false,
-         600 * S);
-    ui.space(10 * S);
-    // a card for each class: its color, its name, how many it has
-    double gap = 14 * S, ch = k.fhead->line + k.f->line + 34 * S;
-    int cols = std::max(1, (int)((ui.width() + gap) / (240 * S + gap)));
-    double cw = std::min(340.0 * S, (ui.width() - (cols - 1) * gap) / cols);
-    Rect row;
-    for (size_t i = 0; i < found.size(); i++) {
-        const auto &f = found[i];
-        if (i % (size_t)cols == 0) {
-            if (i) ui.space(gap);
-            row = ui.place(0, ch);
-        }
-        Rect c{row.x + (double)(i % (size_t)cols) * (cw + gap), row.y, cw, ch};
-        std::string name = f.first.empty() ? "No class yet" : f.first;
-        Id id = ui.id("class:" + name);
-        if (focus_list_ && i == 0) {   // the keyboard starts on the first class
-            ui.focus(id);
-            focus_list_ = false;
-        }
-        bool go = ui.hit(id, c, true, true);
-        bool focus = ui.focused(id);
-        if (focus && (ui.key(plat::K_RETURN) || ui.key(' '))) go = true;
-        bool hot = ui.over(c);
-        if (hot) ui.cursor(plat::HAND);
-        if (ui.drawing) {
-            Color stripe = class_color(k, f.first);
-            if (k.soft) {
-                ui.shadow(c, 12 * S, hot ? 10 * S : 6 * S, k.dark ? 0.35 : (hot ? 0.12 : 0.07));
-                ui.rrect(c, 12 * S, hot ? mix(k["card"], k["text"], 0.03) : k["card"], k["line"], S);
-                ui.rrect({c.x + 14 * S, c.y + 16 * S, 5.0 * S, c.h - 32 * S}, 2.5 * S, stripe, {}, 0, true, false);
-            } else {
-                ui.fill(c, hot ? k["selsoft"] : k["card"]);
-                ui.box(c, k["dark"], S);
-                ui.fill({c.x + 8 * S, c.y + 12 * S, 5.0 * S, c.h - 24 * S}, stripe);
-            }
-            Color fg = !k.soft && hot && hex(k["selsoft"]) == hex(k["sel"]) ? k["seltext"] : k["text"];
-            Color dim = !k.soft && hot && hex(k["selsoft"]) == hex(k["sel"]) ? k["seltext"] : k["dim"];
-            double tx = c.x + 32 * S, tw = c.w - 44 * S, ty = c.y + (c.h - k.fhead->line - k.f->line - 2 * S) / 2;
-            ui.text(*k.fhead, tx, std::round(ty + k.fhead->ascent), ui.elide(*k.fhead, name, tw), fg);
-            ui.text(*k.f, tx, std::round(ty + k.fhead->line + 2 * S + k.f->ascent), plural(f.second, noun_), dim);
-            if (focus) {
-                if (k.soft) ui.rrect(c.in(-3 * S), 14 * S, {}, k["focus"], 2 * S, false, true);
-                else ui.dotted(c.in(3 * S), k["focus"]);
-            }
-        }
-        if (go) open_class(true, f.first);
-    }
-    ui.end_scroll();
-    (void)k;
-    app.status(std::to_string(found.size()) + " class" + (found.size() != 1 ? "es" : ""));
-}
 
 void ItemList::frame(Ui &ui, const Rect &body) {
     Skin &k = ui.sk();
@@ -401,57 +325,71 @@ void ItemList::frame(Ui &ui, const Rect &body) {
     begin_toolbar(ui);
     tools(ui);
     end_toolbar(ui);
-    // the filters
-    Rect filt = ui.cut_top(ui.ctl_h() + 6 * S);
-    ui.begin({filt.x + 8 * S, filt.y, filt.w - 16 * S, ui.ctl_h()}, 0);
-    ui.flow();
-    label_mid(ui, "Search:");
-    ui.place(6 * S, 1);
-    Id sid = ui.id("entry:search");
-    if (find_) {
-        ui.focus(sid);
-        find_ = false;
-    }
-    if (ui.focused(sid) && (ui.key(plat::K_DOWN) || ui.key(plat::K_RETURN))) focus_list_ = true;
-    entry(ui, "search", q_, 22 * k.f->width("0") + 20 * S);
-    ui.place(14 * S, 1);
-    label_mid(ui, "Unit:");
-    ui.place(6 * S, 1);
+    // the filters: each label with its box, wrapping to a second row in a narrow window
     std::vector<const Value *> all;
     for (const auto &x : pool().arr())
         if (x.is_object()) all.push_back(&x);
-    auto units = app.store.units(all);
-    std::vector<std::pair<std::string, std::string>> uopts = {{"", "All units"}};
-    for (const auto &u : units) uopts.push_back({u, u});
-    if (!unit_.empty() && std::find(units.begin(), units.end(), unit_) == units.end()) unit_.clear();
-    dropdown(ui, "unit", uopts, unit_, 14);
-    ui.place(14 * S, 1);
-    filters(ui);
-    label_mid(ui, "Sort by:");
-    ui.place(6 * S, 1);
-    if (dropdown(ui, "sort", sorts_for(kind_), sort_, 14)) {
-        app.settings()[sort_key_] = sort_;
-        app.save();
+    Rect top = ui.remaining();
+    ui.begin({top.x + 8 * S, top.y, top.w - 16 * S, 1e9}, 0);
+    ui.flow();
+    auto dw = [&](double chars) { return std::ceil(std::min(k.f->width("0") * chars, 520.0 * S) + k.line + 16 * S + (k.soft ? 6 * S : 0)); };
+    auto pair = [&](const std::string &label, double w, const std::function<void()> &fn) {
+        Rect r = ui.place(k.f->width(label) + 6 * S + w + 14 * S, ui.ctl_h() + (k.soft ? 2 * S : 0));
+        ui.begin(r, 0);
+        ui.flow();
+        label_mid(ui, label);
+        ui.place(6 * S, 1);
+        fn();
+        ui.end();
+    };
+    double ew = 18 * k.f->width("0") + 20 * S;
+    pair("Search:", ew, [&] {
+        Id sid = ui.id("entry:search");
+        if (find_) {
+            ui.focus(sid);
+            find_ = false;
+        }
+        if (ui.focused(sid) && (ui.key(plat::K_DOWN) || ui.key(plat::K_RETURN))) focus_list_ = true;
+        entry(ui, "search", q_, ew);
+    });
+    pair("Class:", dw(16), [&] {
+        std::vector<std::pair<std::string, std::string>> copts = {{"\x01all", "All classes"}};
+        bool loose = false;
+        for (const auto &c : store::classes(app.settings(), all))
+            if (c.first.empty()) loose |= c.second > 0;
+            else copts.push_back({c.first, c.first});
+        if (loose) copts.push_back({"\x01none", "No class yet"});
+        std::string pick = !has_cls_ ? "\x01all" : cls_.empty() ? "\x01none" : cls_;
+        if (dropdown(ui, "class", copts, pick, 16)) {
+            if (pick == "\x01all") open_class(false, "");
+            else open_class(true, pick == "\x01none" ? "" : pick);
+        }
+    });
+    pair("Unit:", dw(14), [&] {
+        auto units = app.store.units(all);
+        std::vector<std::pair<std::string, std::string>> uopts = {{"", "All units"}};
+        for (const auto &u : units) uopts.push_back({u, u});
+        if (!unit_.empty() && std::find(units.begin(), units.end(), unit_) == units.end()) unit_.clear();
+        dropdown(ui, "unit", uopts, unit_, 14);
+    });
+    if (double fw = filters_w(ui)) {
+        Rect r = ui.place(fw, ui.ctl_h() + (k.soft ? 2 * S : 0));
+        ui.begin(r, 0);
+        ui.flow();
+        filters(ui);
+        ui.end();
     }
-    ui.end();
+    pair("Sort by:", dw(14), [&] {
+        if (dropdown(ui, "sort", sorts_for(kind_), sort_, 14)) {
+            app.settings()[sort_key_] = sort_;
+            app.save();
+        }
+    });
+    Rect used = ui.end();
+    ui.cut_top(used.h + 6 * S);
     Rect rest = ui.remaining();
     ui.end();
     rest = {rest.x + 8 * S, rest.y, rest.w - 16 * S, rest.h - 8 * S};
-    if (picking()) {
-        picker(ui, rest);
-        return;
-    }
-    if (by_class() && has_cls_ && text::strip(q_).empty()) {
-        // "◄ All Classes" over the list inside a class
-        ui.begin({rest.x, rest.y, rest.w, ui.ctl_h()}, 0);
-        ui.flow();
-        if (button(ui, "\xE2\x97\x84 All Classes", true, false, true)) open_class(false, "");
-        ui.place(10 * S, 1);
-        label_mid(ui, cls_.empty() ? "No class yet" : cls_, true);
-        ui.end();
-        rest.y += ui.ctl_h() + 6 * S;
-        rest.h -= ui.ctl_h() + 6 * S;
-    }
     ids_ = items();
     std::vector<std::vector<std::string>> rows;
     sel_ = -1;

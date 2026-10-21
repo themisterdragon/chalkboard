@@ -289,6 +289,13 @@ private:
     bool skip_draw() const { return !changed_ && sig_ok_ && sig_input_ == sig_drawn_; }
     void drawn();                  // after a frame is drawn
     void missed();
+    // a scroll that glides on by itself: a wheel click eased over a few frames, or a trackpad
+    // flick coasting to a stop (the distance left goes out as WHEEL events, a step each frame)
+    double glide_left_ = 0, glide_tau_ = 0, glide_at_ = 0;
+    int glide_timer_ = 0;
+    std::vector<std::pair<double, double>> recent_px_;   // (ms, pixels): the fingers' last moves
+    void glide(double px, double tau);
+    void glide_step();
     Id wheel_owner_ = 0;      // what the wheel is scrolling (wheel_free)
     double wheel_until_ = 0;  // ... until this time (ms) with no wheel
     double dim_next_ = 0;

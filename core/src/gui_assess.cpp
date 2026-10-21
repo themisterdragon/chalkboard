@@ -448,6 +448,11 @@ protected:
         dropdown(ui, "type", opts, type_, 14);
         ui.place(14 * S, 1);
     }
+    double filters_w(Ui &ui) override {
+        Skin &k = ui.sk();
+        int S = ui.S();
+        return k.f->width("Type:") + 6 * S + std::ceil(std::min(k.f->width("0") * 14, 520.0 * S) + k.line + 16 * S + (k.soft ? 6 * S : 0)) + 14 * S;
+    }
     bool match(const Value &a) override { return type_.empty() || a.s("kind") == type_; }
     std::vector<std::string> row(const Value &a) override {
         return {a.s("kind"), a.s("title").empty() ? "(untitled)" : a.s("title"), a.s("unit"), size_text(a), a.s("updated")};

@@ -21,6 +21,7 @@ public:
     std::string clip;
     bool ended = false;
     double scale() override { return k; }
+    bool animates() override { return false; }
     void size(int &ow, int &oh) override {
         ow = w;
         oh = h;

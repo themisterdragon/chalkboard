@@ -1,6 +1,7 @@
 // Linux (and other Unix desktops): a GTK 3 window, with GTK loaded when the program starts, so
 // the program still runs (as the terminal app) on a computer without it. Works on X11 and Wayland.
 #if !defined(_WIN32) && !defined(__APPLE__)
+#include <cmath>
 #include <dlfcn.h>
 
 #include <cstdint>
@@ -69,6 +70,7 @@ struct GdkEventScroll_ {
     int direction;
     gp device;
     double x_root, y_root, delta_x, delta_y;
+    unsigned is_stop : 1;
 };
 struct GdkEventWindowState_ {
     int type;
@@ -127,6 +129,10 @@ struct Alloc {
     X(gp, gdk_atom_intern, const char *, gboolean)                                           \
     X(gp, gdk_cursor_new_from_name, gp, const char *)                                        \
     X(gp, gdk_display_get_default, void)                                                     \
+    X(const char *, gdk_display_get_name, gp)                                                \
+    X(gboolean, gdk_event_get_pointer_emulated, gp)                                          \
+    X(gp, gdk_event_get_source_device, gp)                                                   \
+    X(int, gdk_device_get_source, gp)                                                        \
     X(void, gdk_window_set_cursor, gp, gp)                                                   \
     X(gp, gdk_pixbuf_new_from_data, const uint8_t *, int, gboolean, int, int, int, int, gp, gp) \
     X(unsigned long, g_signal_connect_data, gp, const char *, gp, gp, gp, int)               \
@@ -314,16 +320,39 @@ public:
         e.x = s->x * k;
         e.y = s->y * k;
         e.mods = mods_of(s->state);
+        // a wheel click comes twice (a click, and the same as a smooth step): only the smooth one
+        if (gdk_event_get_pointer_emulated(s)) return 1;
         switch (s->direction) {
         case 0: e.dy = -1; break;
         case 1: e.dy = 1; break;
         case 2: e.dx = -1; break;
         case 3: e.dx = 1; break;
-        default:
-            e.dx = s->delta_x;
-            e.dy = s->delta_y;
+        default: {
+            // smooth steps: a trackpad's are distances (Wayland: tenths of the fingers' pixels;
+            // X11: steps of 15 pixels), a mouse wheel's are clicks (Wayland: 1.5 each)
+            gp dev = gdk_event_get_source_device(s);
+            int src = dev ? gdk_device_get_source(dev) : 0;
+            bool pad = src == 6 || src == 5 || src == 7;   // touchpad, touchscreen, trackpoint
+            const char *dn = gdk_display_get_name(gdk_display_get_default());
+            bool x11 = dn && dn[0] == ':';
+            if (pad) {
+                double per = (x11 ? 15.0 : 10.0) * k;
+                e.dx = s->delta_x * per;
+                e.dy = s->delta_y * per;
+                e.pixels = true;
+                e.stop = s->is_stop;
+            } else {
+                // Wayland gives 1.5 a click (newer: 1.0); X11 1.0
+                auto clicks = [&](double d) {
+                    if (x11 || d == std::floor(d)) return d;
+                    return d / 1.5;
+                };
+                e.dx = clicks(s->delta_x);
+                e.dy = clicks(s->delta_y);
+            }
         }
-        if (e.dx == 0 && e.dy == 0) return 1;
+        }
+        if (e.dx == 0 && e.dy == 0 && !e.stop) return 1;
         g->push(e);
         return 1;
     }

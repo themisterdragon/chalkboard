@@ -36,6 +36,8 @@ struct Event {
     int clicks = 1;        // 2 for a double-click
     double dx = 0, dy = 0; // wheel: lines (down/right positive), or device pixels when pixels is set
     bool pixels = false;   // wheel: a trackpad's exact distance (dx/dy are pixels, not lines)
+    bool stop = false;     // wheel: the fingers left the trackpad (a flick coasts on from here)
+    bool glide = false;    // wheel: a step of a scroll gliding on by itself (made by the Ui)
     int key = 0;           // Key or a character
     int mods = 0;          // Mod bits
     std::string text;      // TEXT: what was typed (UTF-8)
@@ -61,6 +63,7 @@ struct Filter {
 class Window {
 public:
     virtual ~Window() = default;
+    virtual bool animates() { return true; }   // false: scripted tests (scrolling doesn't glide)
     // w, h: the size in points; nullptr when this computer can't show a window
     static std::unique_ptr<Window> open(const std::string &title, int w, int h, const raster::Image *icon = nullptr);
 

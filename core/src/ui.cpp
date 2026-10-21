@@ -19,6 +19,46 @@ Ui::Ui(plat::Window &w) : win(w) {
     resize();
 }
 
+void Ui::glide(double px, double tau) {
+    glide_left_ += px;
+    glide_tau_ = tau;
+    if (!glide_timer_) {
+        glide_at_ = now_ms();
+        glide_timer_ = after(8, [this] {
+            glide_timer_ = 0;
+            glide_step();
+            quiet();
+        });
+    }
+}
+
+void Ui::glide_step() {
+    double now = now_ms(), dt = std::max(1.0, now - glide_at_);
+    glide_at_ = now;
+    if (std::fabs(glide_left_) < 0.5) {
+        glide_left_ = 0;
+        return;
+    }
+    // this frame's share of what's left (it eases out), as if the wheel had moved that far
+    double step = glide_left_ * (1 - std::exp(-dt / glide_tau_));
+    if (std::fabs(step) < 0.5) step = glide_left_ < 0 ? -0.5 : 0.5;
+    glide_left_ -= step;
+    plat::Event e;
+    e.type = plat::Event::WHEEL;
+    e.x = mx;
+    e.y = my;
+    e.dy = step;
+    e.pixels = true;
+    e.glide = true;
+    injected_.push_back(e);
+    if (!glide_timer_)
+        glide_timer_ = after(8, [this] {
+            glide_timer_ = 0;
+            glide_step();
+            quiet();   // (the step is drawn when it's handled)
+        });
+}
+
 bool Ui::wheel_free(Id id) const { return wheel_owner_ == 0 || wheel_owner_ == id || now_ms() > wheel_until_; }
 void Ui::wheel_took(Id id) {
     wheel_owner_ = id;
@@ -839,9 +879,37 @@ bool Ui::next_event(int timeout) {
         mx = e.x;
         my = e.y;
         break;
-    case plat::Event::DOWN:
-    case plat::Event::UP:
     case plat::Event::WHEEL:
+        mx = e.x;
+        my = e.y;
+        if (e.glide) break;
+        if (!win.animates()) {
+            if (e.stop) ev.type = plat::Event::NONE;
+        } else if (e.pixels && e.stop) {   // the fingers lifted: a flick coasts on (about a third of a second)
+            double now = now_ms(), sum = 0, first = now;
+            for (const auto &p : recent_px_)
+                if (now - p.first < 90) sum += p.second, first = std::min(first, p.first);
+            recent_px_.clear();
+            double v = sum / std::max(16.0, now - first);   // pixels a millisecond
+            if (std::fabs(v) > 0.25) glide(v * 300, 300);
+            ev.type = plat::Event::NONE;
+        } else if (e.pixels) {   // the fingers move it themselves; a glide still going stops
+            glide_left_ = 0;
+            recent_px_.push_back({now_ms(), e.dy});
+            if (recent_px_.size() > 12) recent_px_.erase(recent_px_.begin());
+        } else if (e.dy != 0 && skin) {   // a wheel click: eased over about a fifth of a second
+            if (glide_left_ * e.dy < 0) glide_left_ = 0;   // (turned the other way)
+            glide(e.dy * skin->line * 3, 55);
+            ev.type = plat::Event::NONE;
+            glide_step();
+        }
+        break;
+    case plat::Event::DOWN:
+        glide_left_ = 0;   // a click stops a glide
+        mx = e.x;
+        my = e.y;
+        break;
+    case plat::Event::UP:
         mx = e.x;
         my = e.y;
         break;
@@ -878,14 +946,18 @@ bool Ui::next_event(int timeout) {
 
 void Ui::run(const std::function<void()> &frame) {
     resize();
+    static const bool timing = std::getenv("CHALKBOARD_TIMING") != nullptr;
     auto draw = [&] {
+        double t0 = timing ? now_ms() : 0;
         for (int i = 0; i < 4; i++) {
             again_ = false;
             ev = plat::Event();
             pass(frame, true);
             if (!again_) break;
         }
+        double t1 = timing ? now_ms() : 0;
         win.present(img);
+        if (timing) std::fprintf(stderr, "frame at %.0f: drawn in %.1f ms, shown in %.1f ms\n", t0, t1 - t0, now_ms() - t1);
         // the window with no dialog over it (what a dialog opens over): every frame paints every
         // pixel, so the two pictures trade places instead of copying the whole window each time
         std::swap(base_, img);
