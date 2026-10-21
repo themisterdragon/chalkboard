@@ -1,6 +1,7 @@
 #include "doc.h"
 
 #include "homedays.h"
+#include "markup.h"
 
 #include <algorithm>
 #include <cmath>
@@ -372,7 +373,8 @@ Value home_day_doc(const Value &lesson, store::Store &st, const Date &day, const
         }
         blocks.push(obj({{"t", "space"}, {"h", 4}}));
     }
-    for (const Value *a : classwork) blocks.push(obj({{"t", "check"}, {"text", std::to_string(++i) + ". " + handout_name(*a) + " (attached)"}}));
+    if (text::strip(work).empty())   // (written steps already say what to do with the worksheets)
+        for (const Value *a : classwork) blocks.push(obj({{"t", "check"}, {"text", std::to_string(++i) + ". " + handout_name(*a) + " (attached)"}}));
     if (!held.empty()) {
         blocks.push(obj({{"t", "space"}, {"h", 6}}));
         std::vector<std::string> names;
@@ -397,6 +399,71 @@ Value home_day_doc(const Value &lesson, store::Store &st, const Date &day, const
     }
     std::string footer = join_truthy({who, field(lesson, "course"), field(s, "school")}, " - ");
     return make_doc(name + " Work - " + title, pg.footer(footer), blocks);
+}
+
+// The same at-home lesson as plain text to paste into Google Classroom (a question or an
+// assignment): the lesson explained, what to do, then the worksheets' questions numbered, with
+// lettered choices. No formatting marks, nothing that needs a printer.
+std::string classroom_text(const Value &lesson, store::Store &st, const Value *settings) {
+    const Value &s = settings_of(st, settings);
+    auto plain = [](const std::string &t) { return markup::plain(t); };
+    std::string out, title = field(lesson, "title");
+    out += title.empty() ? "Today's Lesson" : title;
+    out += "\n\n";
+    std::string explain = text::strip(field(lesson, "nti_explain"));
+    if (explain.empty() && !text::strip(field(lesson, "targets")).empty()) explain = "Today we're learning to:\n" + field(lesson, "targets");
+    if (!explain.empty()) out += plain(explain) + "\n\n";
+    std::vector<std::string> steps;
+    for (const auto &line : text::split(field(lesson, "nti_work"), "\n"))
+        if (!text::strip(line).empty()) steps.push_back(text::strip(line));
+    if (!steps.empty()) {
+        out += "What to do:\n";
+        for (size_t i = 0; i < steps.size(); i++) {
+            std::string t = steps[i];
+            if (t.rfind("- ", 0) == 0) t = t.substr(2);
+            out += std::to_string(i + 1) + ". " + plain(t) + "\n";
+        }
+        out += "\n";
+    }
+    for (const Value *a : st.attached(lesson)) {
+        std::string k = a->s("kind");
+        if (std::find(store::MAKEUP_HELD.begin(), store::MAKEUP_HELD.end(), k) != store::MAKEUP_HELD.end()) continue;
+        out += text::upper(handout_name(*a)) + "\n";
+        if (!text::strip(a->s("instructions")).empty()) out += plain(a->s("instructions")) + "\n";
+        out += "\n";
+        int n = 0;
+        for (const auto &q : a->get("questions").arr()) {
+            std::string t = q.s("type"), prompt = plain(text::strip(q.s("prompt")));
+            if (t == "section") {
+                out += text::upper(q.s("title")) + "\n\n";
+            } else if (t == "passage") {
+                if (!q.s("title").empty()) out += q.s("title") + "\n";
+                out += plain(q.s("text")) + "\n\n";
+            } else if (t == "mc") {
+                out += std::to_string(++n) + ". " + prompt + "\n";
+                int i = 0;
+                for (const auto &c : q.get("choices").arr()) out += std::string("   ") + (char)('A' + i++) + ". " + plain(store::text_of(c)) + "\n";
+                out += "\n";
+            } else if (t == "tf") {
+                out += std::to_string(++n) + ". True or false: " + prompt + "\n\n";
+            } else if (t == "match") {
+                out += std::to_string(++n) + ". " + (prompt.empty() ? "Match each one with its meaning." : prompt) + "\n";
+                std::vector<std::string> rights;
+                for (const auto &p : q.get("pairs").arr()) rights.push_back(plain(store::text_of(p.at(1))));
+                std::sort(rights.begin(), rights.end());
+                int i = 0;
+                for (const auto &p : q.get("pairs").arr()) out += "   " + std::to_string(++i) + ". " + plain(store::text_of(p.at(0))) + "\n";
+                out += "   Choices: ";
+                for (size_t j = 0; j < rights.size(); j++) out += std::string(j ? ", " : "") + (char)('A' + j) + ". " + rights[j];
+                out += "\n\n";
+            } else if (!prompt.empty()) {   // short answer, a paragraph, a chart
+                out += std::to_string(++n) + ". " + prompt + "\n\n";
+            }
+        }
+    }
+    std::string contact = text::strip(field(s, "home_day_contact"));
+    if (!contact.empty()) out += "Questions? " + plain(contact) + "\n";
+    return out;
 }
 
 // The teacher log for an at-home day: who, when, where; each class's participation (A in class,

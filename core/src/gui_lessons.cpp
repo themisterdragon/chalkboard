@@ -5,6 +5,7 @@
 
 #include "doc.h"
 #include "gui.h"
+#include "homedays.h"
 #include "text.h"
 
 namespace gui {
@@ -68,7 +69,9 @@ protected:
         if (tool(ui, "Curriculum Map\xE2\x80\xA6")) cmd_map();
     }
     std::vector<std::string> row(const Value &l) override {
-        return {l.s("title").empty() ? "(untitled lesson)" : l.s("title"), l.s("unit"), l.s("course"), first_line(l.s("date")), l.s("updated")};
+        std::string when = first_line(l.s("date"));
+        if (when.empty() && homedays::is_home(l)) when = store::home_day_name(app.settings()) + " lesson";   // kept for a day at home
+        return {l.s("title").empty() ? "(untitled lesson)" : l.s("title"), l.s("unit"), l.s("course"), when, l.s("updated")};
     }
     std::vector<std::pair<std::string, std::function<void()>>> menu_items() override {
         return {{"Open", [this] { cmd_open(); }},
@@ -286,7 +289,7 @@ public:
         if (tool(ui, "Export\xE2\x80\xA6")) export_dialog(app, "lesson", id_);
         if (tool(ui, "Board Slide")) run_export(app, "lesson", id_, "PNG");
         if (tool(ui, "Make-Up Sheet")) run_export(app, "lesson", id_, "MAKEUP");
-        if (tool(ui, store::home_day_name(app.settings()) + " Version\xE2\x80\xA6")) home_version_dialog(app, id_);
+        if (tool(ui, store::home_day_name(app.settings()) + " Lesson\xE2\x80\xA6")) home_version_dialog(app, id_);
         tool_gap(ui);
         if (tool(ui, "Sections\xE2\x80\xA6")) lesson_sections(app);
         tool_gap(ui);

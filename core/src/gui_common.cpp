@@ -85,7 +85,7 @@ void label_mid(Ui &ui, const std::string &text, bool bold, bool dim) {
 // ----------------------------------------------------------------------------- fields
 
 bool line_field(App &app, Ui &ui, const std::string &key, Value &obj, const std::string &field, double width) {
-    std::string v = store::text_of(obj.get(field));
+    std::string v = obj.get(field).is_null() ? std::string() : store::text_of(obj.get(field));   // (missing: empty, not "None")
     if (!entry(ui, key, v, width)) return false;
     if (obj.s(field) != v || !obj.get(field).is_string()) {
         obj[field] = v;
@@ -95,7 +95,7 @@ bool line_field(App &app, Ui &ui, const std::string &key, Value &obj, const std:
 }
 
 bool auto_text(App &app, Ui &ui, const std::string &key, Value &obj, const std::string &field, int min_lines, int max_lines) {
-    std::string v = store::text_of(obj.get(field));
+    std::string v = obj.get(field).is_null() ? std::string() : store::text_of(obj.get(field));   // (missing: empty, not "None")
     if (!text_area(ui, key, v, min_lines, max_lines)) return false;
     if (obj.s(field) != v || !obj.get(field).is_string()) {
         obj[field] = v;

@@ -228,6 +228,10 @@ std::vector<std::string> export_home_day(store::Store &st, const Date &day, cons
             auto wrote = render(st, f, d, files::join(folder, base + ext_of(f)));
             written.insert(written.end(), wrote.begin(), wrote.end());
         }
+        // the same, ready to paste into Google Classroom
+        std::string gc = files::join(folder, base + " - Google Classroom.txt");
+        if (!files::write(gc, doc::classroom_text(*l, st), &err)) throw ExportError{"EXPORT FAILED: " + err};
+        written.push_back(gc);
     }
     if (progress) progress(total, total, "");
     return written;

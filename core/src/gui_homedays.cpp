@@ -4,7 +4,9 @@
 // the teacher log the district asks for afterward.
 #include <algorithm>
 #include <cmath>
+#include <map>
 
+#include "doc.h"
 #include "exporting.h"
 #include "gui.h"
 #include "homedays.h"
@@ -102,14 +104,43 @@ bool edit_contact(App &app, Value &c, const std::string &title) {
 
 // ----------------------------------------------------------------------------- a lesson's at-home version
 
+namespace {
+
+// how ready an at-home lesson is, in a few words
+std::string readiness(App &app, const Value &l) {
+    if (homedays::used(l)) {
+        Date d;
+        return dates::stamp_day(store::field(l, "home_used"), d) ? "Used " + dates::fmt_date(d, false, false) : "Used";
+    }
+    bool qs = false;
+    for (const Value *a : app.store.attached(l)) qs |= a->get("questions").size() > 0;
+    if (!explained(l)) return "Needs a written explanation";
+    return qs ? "Ready" : "Ready (no questions)";
+}
+
+std::string lesson_name(const Value &l) {
+    std::string t = store::field(l, "title");
+    return t.empty() ? "(untitled lesson)" : t;
+}
+
+void copy_for_classroom(App &app, const std::string &id) {
+    const Value *l = app.lesson(id);
+    if (!l) return;
+    app.win.set_clipboard(doc::classroom_text(*l, app.store));
+    app.status("Copied \"" + lesson_name(*l) + "\" for Google Classroom: paste it into a question or an assignment.");
+}
+
+}  // namespace
+
 bool home_version_dialog(App &app, const std::string &id) {
     Value *l = app.lesson(id);
     if (!l) return false;
     std::string explain = store::field(*l, "nti_explain"), work = store::field(*l, "nti_work");
-    std::string title = store::field(*l, "title");
+    std::string title = store::field(*l, "title"), unit = text::strip(store::field(*l, "unit"));
+    bool ready = homedays::is_home(*l);
     bool first = true;
     int r = dialog(
-        app.ui, {day_name(app) + " Version: " + (title.empty() ? std::string("Untitled Lesson") : title), 720, 0},
+        app.ui, {day_name(app) + " Lesson: " + (title.empty() ? std::string("Untitled Lesson") : title), 720, 0},
         [&](Ui &u) {
             Skin &k = u.sk();
             int S = u.S();
@@ -119,8 +150,10 @@ bool home_version_dialog(App &app, const std::string &id) {
                 u.focus(u.id("text:explain"));
                 first = false;
             }
+            check(u, "Keep this in " + (unit.empty() ? std::string("its unit") : unit) + "'s " + day_name(app) + " lessons, ready for a day at home", ready);
+            u.space(10 * S);
             label(u, "Explain it in writing", true);
-            para(u, "Students can't ask you today, so teach it here: what we're learning and why, with one short example. A few sentences.", true, 0,
+            para(u, "Students can't ask you that day, so teach it here: what we're learning and why, with one short example. A few sentences.", true, 0,
                  k.fsmall.get());
             u.space(4 * S);
             text_area(u, "explain", explain, 4, 10);
@@ -130,9 +163,7 @@ bool home_version_dialog(App &app, const std::string &id) {
             }
             u.space(12 * S);
             label(u, "What students do", true);
-            para(u, "One step per line, in order. Cut it down to what matters most: less than a class period's worth (about 20 to 30 minutes). "
-                    "Students won't see a time.",
-                 true, 0, k.fsmall.get());
+            para(u, "One step per line, in order. Keep it to about half an hour. Students won't see a time.", true, 0, k.fsmall.get());
             u.space(4 * S);
             text_area(u, "work", work, 4, 10, false);
             if (text::strip(work).empty() && (!text::strip(store::field(*x, "guided")).empty() || !text::strip(store::field(*x, "independent")).empty())) {
@@ -141,7 +172,9 @@ bool home_version_dialog(App &app, const std::string &id) {
                     work = text::strip(store::field(*x, "guided") + "\n" + store::field(*x, "independent"));
             }
             u.space(8 * S);
-            para(u, "Worksheets linked to this lesson print with the packet. Quizzes and tests wait until you're back.", true, 0, k.fsmall.get());
+            para(u, "Worksheets linked to this lesson print with the packet, and their questions go in the Google Classroom copy. Quizzes and tests "
+                    "wait until you're back.",
+                 true, 0, k.fsmall.get());
             return 0;
         },
         {{"OK", 1}, {"Cancel", 2}}, 0, 2);
@@ -150,85 +183,150 @@ bool home_version_dialog(App &app, const std::string &id) {
     if (!l) return false;
     (*l)["nti_explain"] = explain;
     (*l)["nti_work"] = work;
+    if (ready) (*l)["home_ready"] = true;
+    else {
+        l->erase("home_ready");
+        l->erase("home_slot");
+    }
     app.touch(*l);
     return true;
 }
 
-// ----------------------------------------------------------------------------- planning ahead
+// ----------------------------------------------------------------------------- the lessons kept for at-home days
 
-void plan_home_day(App &app, int n) {
-    int sel = 0;
+namespace {
+
+// a new at-home lesson: its class, its unit, its name; "" when cancelled
+std::string new_home_lesson(App &app, const std::string &course0, const Value *from) {
+    auto cs = courses(app);
+    if (cs.empty()) {
+        alert(app.ui, day_name(app) + " Lessons", "Plan a lesson with a class (its Course) first.");
+        return "";
+    }
+    std::string course = course0.empty() ? cs[0] : course0, title = from ? store::field(*from, "title") : "", unit;
+    if (from) unit = text::strip(store::field(*from, "unit"));
     bool first = true;
-    std::string open_id;
-    dialog(
-        app.ui, {"Plan " + day_label(app, n), 720, 0},
+    int r = dialog(
+        app.ui, {from ? "Copy a Lesson" : "New " + day_name(app) + " Lesson", 520, 0},
         [&](Ui &u) {
             Skin &k = u.sk();
             int S = u.S();
-            para(u, "A lesson for each class, ready before the day comes. When " + day_label(app, n) +
-                        " happens, each class's packet is made from its lesson here. Keep it short, and explain it in writing.");
-            u.space(10 * S);
-            auto cs = courses(app);
-            std::vector<std::vector<std::string>> rows;
-            for (const auto &c : cs) {
-                const Value *l = homedays::planned(app.store.data["lessons"], c, n);
-                rows.push_back({c, l ? (store::field(*l, "title").empty() ? "(untitled lesson)" : store::field(*l, "title")) : "Not planned yet",
-                                !l ? "" : explained(*l) ? "Explained" : "Needs a written explanation"});
-            }
-            double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
-            Rect lr = u.place(0, 7 * rh + hh + 2 * S);
+            double lw = k.f->width("Class:") + 8 * S;
+            std::vector<std::pair<std::string, std::string>> copts;
+            for (const auto &c : cs) copts.push_back({c, c});
+            std::vector<const Value *> mine;
+            for (const auto &x : app.store.data["lessons"].arr())
+                if (x.is_object() && store::in_class(x, course)) mine.push_back(&x);
+            std::vector<std::pair<std::string, std::string>> uopts;
+            for (const auto &un : app.store.units(mine)) uopts.push_back({un, un});
+            if (unit.empty() && !uopts.empty()) unit = homedays::unit_on(app.store.data["lessons"], course, today());
+            if (unit.empty() && !uopts.empty()) unit = uopts.front().first;
+            if (!unit.empty() && std::find_if(uopts.begin(), uopts.end(), [&](const auto &o) { return o.first == unit; }) == uopts.end())
+                uopts.push_back({unit, unit});
             if (first) {
-                u.focus(u.id("list:plan"));
+                focus_at_end(u, u.id("entry:title"));
                 first = false;
             }
-            ListResult res = list_view(u, "plan", lr, {{"Class", 170, false}, {"Lesson", 300, true}, {"Ready?", 210, false}}, rows, sel,
-                                       "No classes yet. Plan a lesson with a course first.");
-            std::string course = sel >= 0 && sel < (int)cs.size() ? cs[(size_t)sel] : "";
-            Value *l = course.empty() ? nullptr : homedays::planned(app.store.data["lessons"], course, n);
-            std::string lid = l ? l->s("id") : "";
-            auto make_new = [&](const Value *from) {
-                Value x = from ? *from : store::new_lesson(app.settings());
-                x["id"] = store::new_id();
-                x["title"] = from ? store::field(*from, "title") : day_label(app, n);
-                x["course"] = course;
-                x["date"] = "";
-                x["home_slot"] = n;
-                x["created"] = store::now();
-                x["updated"] = store::now();
-                x["assessments"] = from ? from->get("assessments") : Value::array();
-                std::string id = x.s("id");
-                app.store.data["lessons"].push(std::move(x));
-                app.save();
-                home_version_dialog(app, id);
-                u.again();
-            };
-            if (res.open) {
-                if (l) home_version_dialog(app, lid);
-                else if (!course.empty()) make_new(nullptr);
+            u.row({lw, 0}, u.ctl_h());
+            label_mid(u, "Class:");
+            dropdown(u, "class", copts, course, 20);
+            u.row({lw, 0}, u.ctl_h());
+            label_mid(u, "Unit:");
+            if (uopts.empty()) entry(u, "unit", unit, 14 * k.f->width("0"));
+            else dropdown(u, "unit", uopts, unit, 20);
+            u.row({lw, -1}, u.ctl_h());
+            label_mid(u, "Name:");
+            entry(u, "title", title);
+            u.row({});
+            return 0;
+        },
+        {{"OK", 1}, {"Cancel", 2}}, 0, 2);
+    if (r != 1) return "";
+    Value x = from ? *from : store::new_lesson(app.settings());
+    x["id"] = store::new_id();
+    x["title"] = text::strip(title).empty() ? day_name(app) + " Lesson" : text::strip(title);
+    x["course"] = course;
+    x["unit"] = unit;
+    x["date"] = "";
+    x["home_ready"] = true;
+    x.erase("home_slot");
+    x.erase("home_used");
+    x["created"] = store::now();
+    x["updated"] = store::now();
+    std::string id = x.s("id");
+    app.store.data["lessons"].push(std::move(x));
+    app.save();
+    return id;
+}
+
+}  // namespace
+
+void home_lessons_dialog(App &app, const std::string &course0) {
+    std::string course = course0, open_id;
+    int sel = 0;
+    bool first = true;
+    dialog(
+        app.ui, {day_name(app) + " Lessons", 880, 0},
+        [&](Ui &u) {
+            Skin &k = u.sk();
+            int S = u.S();
+            para(u, "Lessons kept ready for a " + day_name(app) + ", with their unit. On the day, each class gets an unused one from the unit it's "
+                    "in. Keep each one simple, about half an hour, explained in writing, with questions you can paste into Google Classroom.");
+            u.space(8 * S);
+            auto cs = courses(app);
+            std::vector<std::pair<std::string, std::string>> copts = {{"", "All classes"}};
+            for (const auto &c : cs) copts.push_back({c, c});
+            u.row({k.f->width("Class:") + 8 * S, 0}, u.ctl_h());
+            label_mid(u, "Class:");
+            dropdown(u, "class", copts, course, 20);
+            u.row({});
+            u.space(6 * S);
+            std::vector<const Value *> ls;
+            for (const auto &c : cs)
+                if (course.empty() || c == course)
+                    for (const Value *l : homedays::bank(app.store.data["lessons"], c)) ls.push_back(l);
+            std::vector<std::vector<std::string>> rows;
+            for (const Value *l : ls) rows.push_back({store::class_of(*l), store::field(*l, "unit"), lesson_name(*l), readiness(app, *l)});
+            double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
+            Rect lr = u.place(0, 9 * rh + hh + 2 * S);
+            if (first) {
+                u.focus(u.id("list:bank"));
+                first = false;
             }
+            ListResult res = list_view(u, "bank", lr, {{"Class", 140, false}, {"Unit", 90, false}, {"Lesson", 380, true}, {"Ready?", 210, false}}, rows,
+                                       sel, "None yet. Click New Lesson, or turn one on from a lesson (" + day_name(app) + " Lesson\xE2\x80\xA6).");
+            std::string lid = sel >= 0 && sel < (int)ls.size() ? ls[(size_t)sel]->s("id") : "";
+            if (res.open && !lid.empty()) home_version_dialog(app, lid);
             u.space(8 * S);
             u.flow();
-            if (button(u, "New Lesson", !course.empty() && !l, false, true)) make_new(nullptr);
-            if (button(u, "Copy a Lesson\xE2\x80\xA6", !course.empty() && !l, false, true)) {
+            if (button(u, "New Lesson\xE2\x80\xA6", true, false, true)) {
+                std::string id = new_home_lesson(app, course, nullptr);
+                if (!id.empty()) home_version_dialog(app, id);
+            }
+            if (button(u, "Copy a Lesson\xE2\x80\xA6", true, false, true)) {
                 std::vector<std::pair<std::string, std::string>> opts;
                 for (const auto &x : app.store.data["lessons"].arr())
-                    if (x.is_object() && store::in_class(x, course) && x.get("home_slot").as_int() == 0)
-                        opts.push_back({x.s("id"), store::field(x, "title") + "   (" + store::field(x, "date") + ")"});
-                std::string pick = opts.empty() ? "" : choose(u, "Copy a Lesson", "Start " + day_label(app, n) + " from a copy of which lesson?", opts);
-                if (opts.empty()) alert(u, "Copy a Lesson", "No " + course + " lessons to copy yet.");
-                if (Value *from = app.lesson(pick)) {
+                    if (x.is_object() && !homedays::is_home(x) && (course.empty() || store::in_class(x, course)))
+                        opts.push_back({x.s("id"), lesson_name(x) + "   (" + store::class_of(x) + ", " + store::field(x, "unit") + ")"});
+                std::string pick = opts.empty() ? "" : choose(u, "Copy a Lesson", "Start a " + day_name(app) + " lesson from a copy of which lesson?", opts);
+                if (const Value *from = app.lesson(pick)) {
                     Value copy = *from;
-                    make_new(&copy);
+                    std::string id = new_home_lesson(app, store::class_of(copy), &copy);
+                    if (!id.empty()) home_version_dialog(app, id);
                 }
             }
-            if (button(u, "Write the " + day_name(app) + " Version\xE2\x80\xA6", l != nullptr, false, true)) home_version_dialog(app, lid);
-            if (button(u, "Open Lesson", l != nullptr, false, true)) {
+            if (button(u, "Write It\xE2\x80\xA6", !lid.empty(), false, true)) home_version_dialog(app, lid);
+            if (button(u, "Copy for Google Classroom", !lid.empty(), false, true)) copy_for_classroom(app, lid);
+            if (button(u, "Open Lesson", !lid.empty(), false, true)) {
                 open_id = lid;
                 return 1;
             }
-            if (button(u, "Remove", l != nullptr, false, true) &&
-                confirm(u, "Remove", "Take this lesson off " + day_label(app, n) + "? The lesson itself stays in your Lesson Plans.", "Remove")) {
+            if (button(u, "Remove", !lid.empty(), false, true) &&
+                confirm(u, "Remove", "Take \"" + lesson_name(*app.lesson(lid)) + "\" out of the " + day_name(app) +
+                                         " lessons? The lesson itself stays in your Lesson Plans.",
+                        "Remove")) {
                 if (Value *x = app.lesson(lid)) {
+                    x->erase("home_ready");
                     x->erase("home_slot");
                     app.save();
                 }
@@ -247,8 +345,8 @@ bool home_day_now(App &app, const Date &day0) {
     if (!have_allotted(app)) return false;
     Date day = day0.valid() ? day0 : today();
     int allot = homedays::allotted(app.settings());
-    const Value *used = homedays::on_date(app.store.data, day);
-    int n = used ? (int)used->get("number").as_int() : homedays::next_unused(app.store.data, app.settings());
+    const Value *was = homedays::on_date(app.store.data, day);
+    int n = was ? (int)was->get("number").as_int() : homedays::next_unused(app.store.data, app.settings());
     if (n <= 0) n = allot;
     std::string n_key = std::to_string(n);
     std::vector<std::pair<std::string, std::string>> numbers;
@@ -260,29 +358,29 @@ bool home_day_now(App &app, const Date &day0) {
     bool move_regular = true;
     int sel = 0;
     bool first = true;
+    std::map<std::string, std::string> chosen;   // class -> the lesson picked by hand ("" = no packet)
     struct Pick {
-        std::string course, lesson_id;
-        bool planned = false, replaces = false;
+        std::string course, lesson_id, regular;
+        bool home = false;
     };
     std::vector<Pick> picks;
     auto work_out = [&] {
         picks.clear();
-        int num = std::atoi(n_key.c_str());
         for (const auto &c : courses(app)) {
             Pick p;
             p.course = c;
-            std::string regular = lesson_on(app, c, day);
-            if (const Value *l = homedays::planned(app.store.data["lessons"], c, num)) {
-                p.lesson_id = l->s("id");
-                p.planned = true;
-                p.replaces = !regular.empty();
-            } else
-                p.lesson_id = regular;
+            p.regular = lesson_on(app, c, day);
+            auto it = chosen.find(c);
+            if (it != chosen.end()) p.lesson_id = it->second;
+            else if (const Value *l = homedays::pick(app.store.data["lessons"], c, day)) p.lesson_id = l->s("id");
+            else p.lesson_id = p.regular;
+            const Value *l = app.lesson(p.lesson_id);
+            p.home = l && homedays::is_home(*l);
             picks.push_back(p);
         }
     };
     int r = dialog(
-        app.ui, {day_name(app) + " Packets", 760, 0},
+        app.ui, {day_name(app) + " Packets", 860, 0},
         [&](Ui &u) {
             Skin &k = u.sk();
             int S = u.S();
@@ -297,21 +395,18 @@ bool home_day_now(App &app, const Date &day0) {
             }
             u.row({});
             u.space(8 * S);
-            para(u, "A packet for each class: its lesson explained in writing, a short list of what to do, the worksheets, and how to reach you. "
-                    "Double-click a class to write or fix its at-home version.");
+            para(u, "A packet for each class, from a " + day_name(app) + " lesson in the unit it's in (or that day's lesson): explained in writing, "
+                    "a short list of what to do, the questions, and how to reach you. Each one also comes as a Google Classroom copy.");
             u.space(8 * S);
             std::vector<std::vector<std::string>> rows;
             int missing = 0, unexplained = 0;
             for (const auto &p : picks) {
                 const Value *l = app.lesson(p.lesson_id);
-                std::string t = l ? store::field(*l, "title") : "";
-                std::string from = !l                                                      ? "Nothing planned: no packet"
-                                   : p.planned && (t.empty() || t == day_label(app, std::atoi(n_key.c_str()))) ? "Planned lesson"
-                                   : p.planned                                                ? "Planned lesson: " + t
-                                                                                              : "Today's lesson: " + (t.empty() ? "(untitled)" : t);
+                std::string from = !l ? "Nothing ready: no packet"
+                                       : (p.home ? store::field(*l, "unit") + ", " + day_name(app) + " lesson: " : "That day's lesson: ") + lesson_name(*l);
                 missing += !l;
                 unexplained += l && !explained(*l);
-                rows.push_back({p.course, from, !l ? "" : explained(*l) ? "Explained" : "No written explanation yet"});
+                rows.push_back({p.course, from, !l ? "" : readiness(app, *l)});
             }
             double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
             Rect lr = u.place(0, 6 * rh + hh + 2 * S);
@@ -319,29 +414,40 @@ bool home_day_now(App &app, const Date &day0) {
                 u.focus(u.id("list:packets"));
                 first = false;
             }
-            ListResult res = list_view(u, "packets", lr, {{"Class", 160, false}, {"Packet from", 360, true}, {"Ready?", 200, false}}, rows, sel);
+            ListResult res = list_view(u, "packets", lr, {{"Class", 150, false}, {"Packet from", 450, true}, {"Ready?", 200, false}}, rows, sel);
             const Pick *p = sel >= 0 && sel < (int)picks.size() ? &picks[(size_t)sel] : nullptr;
-            if (res.open && res.col < 0) return 1;   // Return: Make Packets (a double-click edits the class's version)
+            if (res.open && res.col < 0) return 1;   // Return: Make Packets (a double-click edits the lesson)
             if (res.open && p && !p->lesson_id.empty()) home_version_dialog(app, p->lesson_id);
             u.space(6 * S);
             u.flow();
-            if (button(u, "Write the " + day_name(app) + " Version\xE2\x80\xA6", p && !p->lesson_id.empty(), false, true)) home_version_dialog(app, p->lesson_id);
-            if (button(u, "Plan " + day_label(app, std::atoi(n_key.c_str())) + "\xE2\x80\xA6", true, false, true)) plan_home_day(app, std::atoi(n_key.c_str()));
+            if (button(u, "Change Lesson\xE2\x80\xA6", p != nullptr, false, true)) {
+                std::vector<std::pair<std::string, std::string>> opts;
+                for (const Value *l : homedays::bank(app.store.data["lessons"], p->course))
+                    opts.push_back({l->s("id"), store::field(*l, "unit") + ": " + lesson_name(*l) + (homedays::used(*l) ? "  (" + readiness(app, *l) + ")" : "")});
+                if (const Value *reg = app.lesson(p->regular)) opts.push_back({reg->s("id"), "That day's lesson: " + lesson_name(*reg)});
+                opts.push_back({"\x01none", "No packet for this class"});
+                std::string c = p->course;
+                std::string got = choose(u, "Change Lesson", "The " + c + " packet comes from:", opts);
+                if (!got.empty()) chosen[c] = got == "\x01none" ? "" : got;
+            }
+            if (button(u, "Write It\xE2\x80\xA6", p && !p->lesson_id.empty(), false, true)) home_version_dialog(app, p->lesson_id);
+            if (button(u, "Copy for Google Classroom", p && !p->lesson_id.empty(), false, true)) copy_for_classroom(app, p->lesson_id);
+            if (button(u, day_name(app) + " Lessons\xE2\x80\xA6", true, false, true)) home_lessons_dialog(app, p ? p->course : "");
             u.flow(false);
             if (unexplained || missing) {
                 u.space(6 * S);
                 std::string t = unexplained ? plural(unexplained, "packet has", "packets have") +
                                                   " no written explanation, so students get the steps only. A few sentences make a big difference."
                                             : "";
-                if (missing) t += std::string(t.empty() ? "" : " ") + plural(missing, "class has", "classes have") + " no lesson for this day.";
+                if (missing) t += std::string(t.empty() ? "" : " ") + plural(missing, "class has", "classes have") + " nothing ready for this day.";
                 para(u, "Heads up: " + t);
             }
             bool replacing = false;
-            for (const auto &q : picks) replacing |= q.replaces;
+            for (const auto &q : picks) replacing |= q.home && !q.regular.empty();
             if (replacing) {
                 u.space(6 * S);
-                check(u, "Move the regular lessons planned for this day (and after) back one school day, in the classes using a planned " +
-                             day_name(app) + " lesson",
+                check(u, "Move the regular lessons planned for this day (and after) back one school day, in the classes using a " + day_name(app) +
+                             " lesson",
                       move_regular, true, u.width() - 30 * S);
             }
             return 0;
@@ -354,10 +460,10 @@ bool home_day_now(App &app, const Date &day0) {
     for (const auto &p : picks)
         if (const Value *l = app.lesson(p.lesson_id)) lessons.push_back(l);
     if (lessons.empty()) {
-        alert(app.ui, day_name(app) + " Packets", "No class has a lesson for this day yet. Plan one first.");
+        alert(app.ui, day_name(app) + " Packets", "No class has a lesson ready for this day yet.");
         return false;
     }
-    // the day on the school calendar (a school day), the regular lessons moved, the planned ones dated
+    // the day on the school calendar (a school day), the regular lessons moved, the at-home ones marked used
     auto cal = schoolcal::read(app.settings());
     if (!cal.day_off(day)) {
         cal.off.push_back({day, day, day_label(app, num), "athome"});
@@ -365,7 +471,7 @@ bool home_day_now(App &app, const Date &day0) {
     }
     std::vector<schoolcal::Move> moved;
     for (const auto &p : picks)
-        if (p.planned && p.replaces && move_regular) {
+        if (p.home && !p.regular.empty() && move_regular) {
             auto plan = schoolcal::plan_shift(app.store.data["lessons"], cal, day, 1, p.course);
             for (const auto &m : plan)
                 if (Value *l = app.lesson(m.id)) (*l)["date"] = m.after;
@@ -373,8 +479,11 @@ bool home_day_now(App &app, const Date &day0) {
         }
     if (!moved.empty()) app.undo_moves = moved;
     for (const auto &p : picks)
-        if (p.planned)
-            if (Value *l = app.lesson(p.lesson_id)) (*l)["date"] = dates::fmt_date(day, true);
+        if (p.home)
+            if (Value *l = app.lesson(p.lesson_id)) {
+                (*l)["home_used"] = day.iso();
+                if (store::lesson_dates(*l).empty()) (*l)["date"] = dates::fmt_date(day, true);   // on the Calendar that day
+            }
     Value &rec = homedays::make(app.store.data, num);
     rec["date"] = day.iso();
     if (rec.get("classes").size() == 0)
@@ -397,7 +506,7 @@ bool home_day_now(App &app, const Date &day0) {
         return false;
     }
     export_done(app, files);
-    app.status("Packets made. After the day, fill in the teacher log on the " + day_name(app) + "s page." +
+    app.status("Packets made, with a Google Classroom copy of each. After the day, fill in the teacher log on the " + day_name(app) + "s page." +
                (moved.empty() ? "" : " Moved " + plural((long long)moved.size(), "regular lesson") + " back a day (Edit \xE2\x80\xBA Undo Shift)."));
     return true;
 }
@@ -563,7 +672,7 @@ namespace {
 
 class HomeDaysPage : public Screen {
 public:
-    explicit HomeDaysPage(App &a) : Screen(a) { a.status("Plan ahead, make packets on the day, then fill in the teacher log."); }
+    explicit HomeDaysPage(App &a) : Screen(a) { a.status("Keep a few lessons ready for each unit, make packets on the day, then fill in the teacher log."); }
     std::string title() override { return day_name(app) + "s"; }
     void frame(Ui &ui, const Rect &body) override {
         Skin &k = ui.sk();
@@ -576,17 +685,35 @@ public:
         ui.flow();
         if (button(ui, "Make Today's Packets\xE2\x80\xA6", true, true))
             app.later([this] { home_day_now(app, today()); });
-        if (button(ui, "Plan Lessons\xE2\x80\xA6", sel_ >= 0 && sel_ < allot)) app.later([this] { plan_home_day(app, sel_ + 1); });
+        if (button(ui, day_name(app) + " Lessons\xE2\x80\xA6")) app.later([this] { home_lessons_dialog(app, ""); });
         if (button(ui, "Teacher Log\xE2\x80\xA6", sel_ >= 0 && sel_ < allot)) app.later([this] { home_day_log(app, sel_ + 1); });
         ui.flow(false);
         ui.space(12 * S);
-        // the days, and how far along each one is
-        auto cs = courses(app);
+        // how many lessons each class has ready, unit by unit
+        {
+            std::vector<std::string> bits;
+            for (const auto &c : courses(app)) {
+                std::map<std::string, int> per;
+                std::vector<std::string> order;
+                for (const Value *l : homedays::bank(app.store.data["lessons"], c))
+                    if (!homedays::used(*l)) {
+                        std::string un = store::field(*l, "unit");
+                        if (!per.count(un)) order.push_back(un);
+                        per[un]++;
+                    }
+                if (order.empty()) continue;
+                std::vector<std::string> us;
+                for (const auto &un : order) us.push_back((un.empty() ? std::string("no unit") : un) + " (" + std::to_string(per[un]) + ")");
+                bits.push_back(c + ": " + text::join(us, ", "));
+            }
+            label(ui, "Lessons ready", true);
+            ui.space(2 * S);
+            para(ui, bits.empty() ? "None yet. Click " + day_name(app) + " Lessons to make some, a few for each unit." : text::join(bits, "\n"));
+            ui.space(12 * S);
+        }
+        // the days used, and their teacher logs
         std::vector<std::vector<std::string>> rows;
         for (int n = 1; n <= allot; n++) {
-            int planned = 0, ready = 0;
-            for (const auto &c : cs)
-                if (const Value *l = homedays::planned(app.store.data["lessons"], c, n)) planned++, ready += explained(*l);
             const Value *r = homedays::find(app.store.data, n);
             Date d = r ? homedays::date_of(*r) : Date{};
             std::string log;
@@ -595,20 +722,13 @@ public:
                 for (const auto &c : r->get("classes").arr()) filled += !text::strip(c.s("participating")).empty();
                 log = filled == 0 ? "Not started" : filled == (long)r->get("classes").size() ? "Filled in" : "Started";
             }
-            rows.push_back({day_label(app, n), d.valid() ? dates::fmt_date(d, true) : "Not used yet",
-                            std::to_string(planned) + " of " + std::to_string(cs.size()) + " classes" +
-                                (planned ? ", " + std::to_string(ready) + " explained" : ""),
-                            d.valid() ? log : ""});
+            rows.push_back({day_label(app, n), d.valid() ? dates::fmt_date(d, true) : "Not used yet", d.valid() ? log : ""});
         }
         double rh = k.line + (k.soft ? 10 : 6) * S, hh = k.fb->line + 2 * (k.soft ? 5 : 2) * S + (k.bevel ? 2 * S : S);
         Rect lr = ui.place(0, std::max(4, std::min(allot, 12)) * rh + hh + 2 * S);
-        ListResult res = list_view(ui, "days", lr, {{"Day", 170, false}, {"Date", 200, false}, {"Lessons planned", 300, true}, {"Teacher log", 150, false}},
-                                   rows, sel_, "Type how many days your district allows below.");
-        if (res.open && sel_ >= 0 && sel_ < allot) {
-            const Value *r = homedays::find(app.store.data, sel_ + 1);
-            bool used = r && homedays::date_of(*r).valid();
-            app.later([this, used] { used ? home_day_log(app, sel_ + 1) : plan_home_day(app, sel_ + 1); });
-        }
+        ListResult res = list_view(ui, "days", lr, {{"Day", 200, false}, {"Date", 240, true}, {"Teacher log", 180, false}}, rows, sel_,
+                                   "Type how many days your district allows below.");
+        if (res.open && sel_ >= 0 && sel_ < allot) app.later([this] { home_day_log(app, sel_ + 1); });
         ui.space(16 * S);
         begin_group(ui, "Setup");
         double lw = k.f->width("What your district calls them:") + 8 * S;

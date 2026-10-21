@@ -14,15 +14,40 @@ int allotted(const Value &settings) { return (int)std::max<int64_t>(0, std::min<
 
 static bool same_class(const Value &l, const std::string &course) { return text::lower(store::class_of(l)) == text::lower(text::strip(course)); }
 
-const Value *planned(const Value &lessons, const std::string &course, int n) {
-    for (const auto &l : lessons.arr())
-        if (l.is_object() && l.get("home_slot").as_int() == n && same_class(l, course)) return &l;
-    return nullptr;
+bool is_home(const Value &l) { return l.get("home_ready").truthy() || l.get("home_slot").as_int() > 0; }
+bool used(const Value &l) { return !text::strip(store::field(l, "home_used")).empty(); }
+
+std::string unit_on(const Value &lessons, const std::string &course, const Date &d) {
+    std::string unit;
+    long best = -1;   // the latest day on or before d
+    for (const auto &l : lessons.arr()) {
+        if (!l.is_object() || is_home(l) || !same_class(l, course)) continue;
+        for (const auto &x : store::lesson_dates(l))
+            if (x.ordinal() <= d.ordinal() && x.ordinal() > best) {
+                best = x.ordinal();
+                unit = text::strip(store::field(l, "unit"));
+            }
+    }
+    return unit;
 }
 
-Value *planned(Value &lessons, const std::string &course, int n) {
-    for (auto &l : lessons.arr_ref())
-        if (l.is_object() && l.get("home_slot").as_int() == n && same_class(l, course)) return &l;
+std::vector<const Value *> bank(const Value &lessons, const std::string &course, const std::string *unit) {
+    std::vector<const Value *> out;
+    for (const auto &l : lessons.arr())
+        if (l.is_object() && is_home(l) && same_class(l, course) && (!unit || text::strip(store::field(l, "unit")) == *unit)) out.push_back(&l);
+    std::stable_sort(out.begin(), out.end(), [](const Value *a, const Value *b) {
+        if (used(*a) != used(*b)) return !used(*a);
+        auto ua = store::unit_sort_key(store::field(*a, "unit")), ub = store::unit_sort_key(store::field(*b, "unit"));
+        if (ua < ub || ub < ua) return ua < ub;
+        return text::lower(store::field(*a, "title")) < text::lower(store::field(*b, "title"));
+    });
+    return out;
+}
+
+const Value *pick(const Value &lessons, const std::string &course, const Date &d) {
+    std::string unit = unit_on(lessons, course, d);
+    for (const Value *l : bank(lessons, course, &unit))
+        if (!used(*l)) return l;
     return nullptr;
 }
 

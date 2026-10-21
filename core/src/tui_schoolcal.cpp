@@ -252,19 +252,24 @@ void App::home_days() {
                 std::vector<const Value *> all;
                 for (const auto &x : store_.data.get("lessons").arr())
                     if (x.is_object()) all.push_back(&x);
+                // each class: an unused at-home lesson from the unit it's in, or else that day's lesson
                 std::vector<const Value *> ls;
+                std::vector<std::string> used_ids;
                 for (const auto &cl : store::classes(st(), all)) {
                     if (cl.first.empty()) continue;
-                    const Value *l = homedays::planned(store_.data.get("lessons"), cl.first, n);
-                    if (!l)
+                    const Value *l = homedays::pick(store_.data.get("lessons"), cl.first, pk.first);
+                    if (l) used_ids.push_back(l->s("id"));
+                    else
                         for (const Value *x : all) {
                             auto ds = store::lesson_dates(*x);
-                            if (x->get("home_slot").as_int() == 0 && store::in_class(*x, cl.first) && std::find(ds.begin(), ds.end(), pk.first) != ds.end()) l = x;
+                            if (!homedays::is_home(*x) && store::in_class(*x, cl.first) && std::find(ds.begin(), ds.end(), pk.first) != ds.end()) l = x;
                         }
                     if (l) ls.push_back(l);
                 }
                 try {
                     auto files = exporting::export_home_day(store_, pk.first, ls);
+                    for (const auto &id : used_ids)
+                        if (Value *l = lesson(id)) (*l)["home_used"] = pk.first.iso();
                     Value &rec = homedays::make(store_.data, n);
                     rec["date"] = pk.first.iso();
                     save();
@@ -290,7 +295,7 @@ void App::home_days() {
             return Result::none();
         },
         "1-0 TEACHER LOG  P MAKE PACKETS  E EXPORT LOG  ESC BACK",
-        [&] { return std::string("PLAN EACH DAY'S LESSONS AHEAD IN THE WINDOW APP (") + name() + "S PAGE)."; });
+        [&] { return std::string("KEEP LESSONS READY FOR EACH UNIT IN THE WINDOW APP (") + name() + "S PAGE)."; });
 }
 
 void App::home_log(int n) {

@@ -4,7 +4,8 @@
 //
 // settings: home_day_name ("Remote Learning Day"), home_day_contact (office hours, for packets),
 //           home_days_allotted (how many the district allows)
-// lessons:  "home_slot": n (1..allotted) marks a lesson planned for at-home day n in its class
+// lessons:  "home_ready": true keeps a lesson in its unit's at-home lessons (ready for a day off;
+//           the older "home_slot": n counts too), "home_used": "2026-12-08" once a day used it
 // data:     "home_days": [{"number": 3, "date": "2026-10-22",
 //                          "classes": [{"period", "course", "enrolled", "participating", "technology", "paper"}],
 //                          "contacts": [{"name", "time", "mode"}]}]
@@ -22,9 +23,14 @@ using json::Value;
 extern const std::vector<std::string> MODES;   // ways of reaching someone: "Phone call", "Email", ...
 
 int allotted(const Value &settings);
-// the lesson planned for at-home day n in a class, or null
-const Value *planned(const Value &lessons, const std::string &course, int n);
-Value *planned(Value &lessons, const std::string &course, int n);
+bool is_home(const Value &lesson);   // one of its unit's at-home lessons
+bool used(const Value &lesson);      // an at-home day has used it
+// the unit a class is in on a day: its lesson that day's, or else the last one before it
+std::string unit_on(const Value &lessons, const std::string &course, const Date &d);
+// a class's at-home lessons (in one unit, or all of them when unit is null): unused first, then by unit and title
+std::vector<const Value *> bank(const Value &lessons, const std::string &course, const std::string *unit = nullptr);
+// the at-home lesson for a class on a day: an unused one in that day's unit (null: none ready)
+const Value *pick(const Value &lessons, const std::string &course, const Date &d);
 // the day's record (null when day n hasn't been used); make() adds it when it's missing
 const Value *find(const Value &data, int n);
 Value &make(Value &data, int n);

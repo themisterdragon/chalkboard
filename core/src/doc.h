@@ -25,6 +25,8 @@ Value lesson_doc(const Value &lesson, store::Store &st, const Value *settings = 
 Value makeup_doc(const Value &lesson, store::Store &st, const Value *settings = nullptr);
 // a packet for a day of school at home: settings home_day_name, home_day_contact
 Value home_day_doc(const Value &lesson, store::Store &st, const Date &day, const Value *settings = nullptr);
+// an at-home lesson as plain text for Google Classroom: explained, what to do, the questions
+std::string classroom_text(const Value &lesson, store::Store &st, const Value *settings = nullptr);
 // the teacher log for an at-home day (a data.home_days record)
 Value home_log_doc(store::Store &st, const Value &rec, const Value *settings = nullptr);
 Value code_blocks(const std::string &codes);

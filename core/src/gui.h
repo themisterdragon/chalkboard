@@ -279,7 +279,7 @@ std::string no_school(App &app, const Date &d);   // why there's no class that d
 // gui_homedays.cpp: days of school at home
 Factory home_days_page();
 bool home_version_dialog(App &app, const std::string &lesson_id);   // a lesson's at-home version
-void plan_home_day(App &app, int n);
+void home_lessons_dialog(App &app, const std::string &course);   // the lessons kept for at-home days
 bool home_day_now(App &app, const Date &day);   // make the day's packets
 void home_day_log(App &app, int n);
 void snow_day(App &app);   // no school today: move lessons, or an at-home day
