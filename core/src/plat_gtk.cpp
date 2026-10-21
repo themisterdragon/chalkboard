@@ -1,6 +1,9 @@
 // Linux (and other Unix desktops): a GTK 3 window, with GTK loaded when the program starts, so
 // the program still runs (as the terminal app) on a computer without it. Works on X11 and Wayland.
 #if !defined(_WIN32) && !defined(__APPLE__)
+#include <string>
+#include <cstdio>
+#include <chrono>
 #include <cmath>
 #include <dlfcn.h>
 
@@ -237,9 +240,29 @@ public:
     }
     double sc() { return area ? gtk_widget_get_scale_factor(area) : 1; }
 
+    static double ms_now() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+    static bool timing() {
+        static const bool on = std::getenv("CHALKBOARD_TIMING") != nullptr;
+        return on;
+    }
     static gboolean on_draw(gp, gp cr, gp self) {
         Gtk *g = (Gtk *)self;
         if (g->buf.empty()) return 1;
+        double t0 = timing() ? ms_now() : 0;
+        struct Done {
+            Gtk *g;
+            double t0;
+            ~Done() {
+                if (timing()) std::fprintf(stderr, "paint at %.0f: %.1f ms\n", t0, ms_now() - t0);
+                g->painted = true;
+                if (g->wants) {   // the program has a newer picture waiting to be drawn
+                    g->wants = false;
+                    Event e;
+                    e.type = Event::WAKE;
+                    g->push(e);
+                }
+            }
+        } done{g, t0};
         gp s = cairo_image_surface_create_for_data(g->buf.data(), 1 /* RGB24 */, g->bw, g->bh, g->bw * 4);
         double k = g->sc();
         cairo_surface_set_device_scale(s, k, k);
@@ -352,6 +375,10 @@ public:
             }
         }
         }
+        if (timing())
+            std::fprintf(stderr, "scroll at %.0f: dir %d delta %.3f, %s%s -> %.2f%s\n", ms_now(), s->direction, s->delta_y,
+                         gdk_event_get_source_device(s) ? std::to_string(gdk_device_get_source(gdk_event_get_source_device(s))).c_str() : "?",
+                         s->is_stop ? " stop" : "", e.dy, e.pixels ? " px" : " lines");
         if (e.dx == 0 && e.dy == 0 && !e.stop) return 1;
         g->push(e);
         return 1;
@@ -474,7 +501,13 @@ public:
         w = (int)(gtk_widget_get_allocated_width(area) * k);
         h = (int)(gtk_widget_get_allocated_height(area) * k);
     }
+    bool painted = true, wants = false;
+    double presented_at = 0;
+    bool ready() override { return painted || ms_now() - presented_at > 100; }   // (a hidden window never paints)
+    void want_frame() override { wants = true; }
     void present(const raster::Image &img) override {
+        painted = false;
+        presented_at = ms_now();
         bw = img.w;
         bh = img.h;
         buf.resize((size_t)bw * (size_t)bh * 4);

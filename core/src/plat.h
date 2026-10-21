@@ -64,6 +64,10 @@ class Window {
 public:
     virtual ~Window() = default;
     virtual bool animates() { return true; }   // false: scripted tests (scrolling doesn't glide)
+    // the last picture is on the screen, so a new one can be drawn (drawing faster than the screen
+    // shows them only makes the ones shown arrive unevenly); want_frame(): send a WAKE when it is
+    virtual bool ready() { return true; }
+    virtual void want_frame() {}
     // w, h: the size in points; nullptr when this computer can't show a window
     static std::unique_ptr<Window> open(const std::string &title, int w, int h, const raster::Image *icon = nullptr);
 

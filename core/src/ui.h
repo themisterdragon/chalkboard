@@ -292,6 +292,7 @@ private:
     // a scroll that glides on by itself: a wheel click eased over a few frames, or a trackpad
     // flick coasting to a stop (the distance left goes out as WHEEL events, a step each frame)
     double glide_left_ = 0, glide_tau_ = 0, glide_at_ = 0;
+    double wheel_carry_ = 0;   // the part of a pixel scrolled but not shown yet (pages move by whole pixels)
     int glide_timer_ = 0;
     std::vector<std::pair<double, double>> recent_px_;   // (ms, pixels): the fingers' last moves
     void glide(double px, double tau);

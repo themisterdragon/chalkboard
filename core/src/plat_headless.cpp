@@ -152,6 +152,12 @@ struct Script {
                 in >> e.x >> e.y >> e.dy;
                 return true;
             }
+            if (op == "pwheel") {   // a trackpad: pixels, often a fraction
+                e.type = Event::WHEEL;
+                e.pixels = true;
+                in >> e.x >> e.y >> e.dy;
+                return true;
+            }
             if (op == "type") {
                 e.type = Event::TEXT;
                 std::getline(in, e.text);

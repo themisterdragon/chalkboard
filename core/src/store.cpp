@@ -7,6 +7,7 @@
 #include <climits>
 #include <map>
 #include <set>
+#include <unordered_map>
 
 #include "files.h"
 #include "pyrand.h"
@@ -247,7 +248,14 @@ std::string home_day_name(const Value &settings) {
 std::vector<Date> lesson_dates(const Value &x) {
     Date near;
     if (!dates::stamp_day(field(x, "created"), near) && !dates::stamp_day(field(x, "updated"), near)) near = today();
-    return dates::parse_dates(field(x, "date"), near);
+    // read once per text: the window asks for every lesson's days on every frame (Today, the
+    // Calendar, sorting by date), and reading free text is slow
+    thread_local std::unordered_map<std::string, std::vector<Date>> seen;
+    std::string key = field(x, "date") + '\x1f' + near.iso();
+    auto it = seen.find(key);
+    if (it != seen.end()) return it->second;
+    if (seen.size() > 8192) seen.clear();
+    return seen.emplace(key, dates::parse_dates(field(x, "date"), near)).first->second;
 }
 
 std::vector<std::pair<Value, const Value *>> day_plan(const Value &settings, const std::vector<const Value *> &lessons, const Date &day) {

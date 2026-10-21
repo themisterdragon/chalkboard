@@ -903,6 +903,13 @@ bool Ui::next_event(int timeout) {
             ev.type = plat::Event::NONE;
             glide_step();
         }
+        // whole pixels only: a page at a fraction of a pixel draws every card and shadow anew
+        if (ev.type == plat::Event::WHEEL && ev.pixels) {
+            double v = ev.dy + wheel_carry_;
+            ev.dy = std::round(v);
+            wheel_carry_ = v - ev.dy;
+            if (ev.dy == 0) ev.type = plat::Event::NONE;
+        }
         break;
     case plat::Event::DOWN:
         glide_left_ = 0;   // a click stops a glide
@@ -949,15 +956,19 @@ void Ui::run(const std::function<void()> &frame) {
     static const bool timing = std::getenv("CHALKBOARD_TIMING") != nullptr;
     auto draw = [&] {
         double t0 = timing ? now_ms() : 0;
+        int passes = 0;
         for (int i = 0; i < 4; i++) {
             again_ = false;
             ev = plat::Event();
             pass(frame, true);
+            passes++;
             if (!again_) break;
         }
         double t1 = timing ? now_ms() : 0;
         win.present(img);
-        if (timing) std::fprintf(stderr, "frame at %.0f: drawn in %.1f ms, shown in %.1f ms\n", t0, t1 - t0, now_ms() - t1);
+        if (timing)
+            std::fprintf(stderr, "frame at %.0f: drawn in %.1f ms (%d pass%s), shown in %.1f ms\n", t0, t1 - t0, passes, passes == 1 ? "" : "es",
+                         now_ms() - t1);
         // the window with no dialog over it (what a dialog opens over): every frame paints every
         // pixel, so the two pictures trade places instead of copying the whole window each time
         std::swap(base_, img);
@@ -990,6 +1001,10 @@ void Ui::run(const std::function<void()> &frame) {
             pass(frame, false);
         }
         if (quitting_) break;
+        if (!win.ready()) {   // the screen hasn't shown the last picture yet: draw when it has
+            win.want_frame();
+            continue;
+        }
         if (skip_draw()) {   // only mouse moves, over the same things: the picture would be the same
             if (!check_skip_) continue;
             draw();
@@ -1068,6 +1083,10 @@ void Ui::modal(const std::function<void(bool &done)> &body) {
             pass(frame, false);
         }
         if (done || quitting_) break;
+        if (!win.ready()) {
+            win.want_frame();
+            continue;
+        }
         if (skip_draw()) {
             if (!check_skip_) continue;
             raster::Image before = img;
