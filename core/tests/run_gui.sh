@@ -30,7 +30,8 @@ st.update({"gui_skin": os.environ.get("LOOK", "modern"), "gui_theme": os.environ
 json.dump(d, open(sys.argv[2], "w", encoding="utf-8"))
 PY
 fi
-env -i PATH=/usr/bin:/bin HOME="$T/home" CHALKBOARD_DATA="$T/data" \
+# (CHALKBOARD_TIMING=1 and CHALKBOARD_CHECK_SKIP=1 pass through: timings, and checking skipped frames)
+env -i PATH=/usr/bin:/bin HOME="$T/home" CHALKBOARD_DATA="$T/data" ${CHALKBOARD_TIMING:+CHALKBOARD_TIMING=1} ${CHALKBOARD_CHECK_SKIP:+CHALKBOARD_CHECK_SKIP=1} \
     ASAN_OPTIONS=detect_leaks=1:abort_on_error=0:log_path="$T/asan" UBSAN_OPTIONS=print_stacktrace=1:log_path="$T/ubsan" \
     "$BIN" --no-boot --script "$SCRIPT" "$T/out"
 echo "pictures: $T/out ($(ls "$T/out" | wc -l))"

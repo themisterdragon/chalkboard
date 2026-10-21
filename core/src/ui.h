@@ -108,7 +108,13 @@ public:
     // called from a timer that changed nothing on screen: the window isn't drawn again for it
     void quiet() { timer_quiet_ = true; }
     void cancel(int id);
-    void again() { again_ = true; }   // something changed: lay out and draw once more
+    void again() { again_ = changed_ = true; }   // something changed: lay out and draw once more
+    // a mouse-position fact a control reads straight from mx/my (which list row is hovered...):
+    // noted, so that a mouse move that changes nothing on screen isn't drawn again
+    int note(int v) const {
+        sig_ = (sig_ ^ (uint64_t)(int64_t)v) * 1099511628211ull;
+        return v;
+    }
     void send(const plat::Event &e) { injected_.push_back(e); }   // handle e as if it had happened (menu commands)
     // what happens when the window's close box is clicked (the default quits)
     std::function<void()> on_close;
@@ -272,6 +278,17 @@ private:
     // pass the focused control is placed, so the wheel and the scroll bar are free again afterward
     int see_focus_ = 0;
     bool timer_quiet_ = false;
+    // skipping frames a mouse move doesn't change: what this pass found under the mouse (over(),
+    // note()), the last input pass's, and the one that was drawn
+    mutable uint64_t sig_ = 0;
+    uint64_t sig_input_ = 0, sig_drawn_ = 0;
+    bool sig_ok_ = false;          // sig_drawn_ is what's on screen
+    bool changed_ = true;          // anything but mouse moves since the last frame
+    bool check_skip_ = false;      // tests: draw skipped frames anyway and report any that differ
+    long missed_ = 0;
+    bool skip_draw() const { return !changed_ && sig_ok_ && sig_input_ == sig_drawn_; }
+    void drawn();                  // after a frame is drawn
+    void missed();
     Id wheel_owner_ = 0;      // what the wheel is scrolling (wheel_free)
     double wheel_until_ = 0;  // ... until this time (ms) with no wheel
     double dim_next_ = 0;

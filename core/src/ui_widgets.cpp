@@ -911,7 +911,7 @@ ListResult list_view(Ui &ui, const std::string &key, const Rect &r, const std::v
     int first = (int)(st.scroll / rh), last = std::min(n, (int)((st.scroll + body.h) / rh) + 1);
     // a list without the keyboard focus shows its selection more softly
     Color soft_text = hex(k["selsoft"]) == hex(k["sel"]) ? k["seltext"] : k["text"];
-    int hover = ui.over(body) && !ui.held(bid) ? (int)std::floor((ui.my - body.y + st.scroll) / rh) : -1;
+    int hover = ui.note(ui.over(body) && !ui.held(bid) ? (int)std::floor((ui.my - body.y + st.scroll) / rh) : -1);
     for (int i = std::max(0, first); i < last; i++) {
         double y = body.y + i * rh - st.scroll;
         bool on = i == sel;

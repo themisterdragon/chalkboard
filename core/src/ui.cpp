@@ -6,12 +6,15 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <cstdlib>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 
 namespace ui {
 
 Ui::Ui(plat::Window &w) : win(w) {
+    check_skip_ = std::getenv("CHALKBOARD_CHECK_SKIP") != nullptr;
     on_close = [this] { quit(); };
     resize();
 }
@@ -59,7 +62,7 @@ void Ui::pop_id() {
 
 // ----------------------------------------------------------------------------- input
 
-bool Ui::over(const Rect &r) const { return r.has(mx, my) && clip_rect().has(mx, my); }
+bool Ui::over(const Rect &r) const { return note(r.has(mx, my) && clip_rect().has(mx, my)); }
 
 bool Ui::hit(Id id, const Rect &r, bool focusable, bool enabled) {
     last_ = id;
@@ -687,11 +690,12 @@ void Ui::end_scroll() {
         active_ = 0;
         consume();
     }
+    bool on_thumb = note(thumb.has(mx, my));
     if (!drawing) return;
     fill(bar, k["trough"]);
     if (k.soft) {
         Rect t = thumb.in(3 * S());
-        bool hot = (active_ == bid) || thumb.has(mx, my);
+        bool hot = (active_ == bid) || on_thumb;
         rrect(t, t.w / 2, hot ? k["text"] : k["thumb"], k["thumb"], 0, true, false);
         return;
     }
@@ -768,10 +772,25 @@ void Ui::pass(const std::function<void()> &frame, bool draw) {
     layouts_.clear();
     while (!clips_.empty()) unclip();
     scroll_stack_.clear();
+    sig_ = 14695981039346656037ull;
     frame();
     while (!clips_.empty()) unclip();
     after_pass();
+    if (!draw) {
+        note((int)hot_);
+        note((int)(hot_ >> 32));
+        note((int)active_);
+        note((int)focus_);
+        sig_input_ = sig_;
+    }
     drawing = false;
+}
+
+void Ui::drawn() {
+    // the input pass just before matches the picture, unless drawing changed something itself
+    sig_ok_ = !changed_;
+    sig_drawn_ = sig_input_;
+    changed_ = false;
 }
 
 void Ui::after_pass() {
@@ -814,8 +833,12 @@ bool Ui::next_event(int timeout) {
     } else if (!win.next(e, timeout))
         return false;
     ev = e;
+    if (e.type != plat::Event::MOVE) changed_ = true;
     switch (e.type) {
     case plat::Event::MOVE:
+        mx = e.x;
+        my = e.y;
+        break;
     case plat::Event::DOWN:
     case plat::Event::UP:
     case plat::Event::WHEEL:
@@ -867,6 +890,7 @@ void Ui::run(const std::function<void()> &frame) {
         // pixel, so the two pictures trade places instead of copying the whole window each time
         std::swap(base_, img);
         if (img.w != base_.w || img.h != base_.h) img = raster::Image(base_.w, base_.h);   // first frame, or a resize
+        drawn();
     };
     draw();
     while (!quitting_) {
@@ -893,8 +917,21 @@ void Ui::run(const std::function<void()> &frame) {
             ev = plat::Event();
             pass(frame, false);
         }
-        if (!quitting_) draw();
+        if (quitting_) break;
+        if (skip_draw()) {   // only mouse moves, over the same things: the picture would be the same
+            if (!check_skip_) continue;
+            draw();
+            if (img.w == base_.w && img.h == base_.h && img.px != base_.px) missed(); // (img: the frame before)
+            continue;
+        }
+        draw();
     }
+}
+
+void Ui::missed() {
+    missed_++;
+    std::fprintf(stderr, "chalkboard: a mouse move to (%.0f, %.0f) changed the picture but would not have been drawn (%ld)\n", mx, my,
+                 missed_);
 }
 
 void Ui::modal(const std::function<void(bool &done)> &body) {
@@ -940,6 +977,7 @@ void Ui::modal(const std::function<void(bool &done)> &body) {
             if (!again_) break;
         }
         if (!done) win.present(img);
+        drawn();
     };
     draw();
     while (!done && !quitting_) {
@@ -957,7 +995,15 @@ void Ui::modal(const std::function<void(bool &done)> &body) {
             ev = plat::Event();
             pass(frame, false);
         }
-        if (!done && !quitting_) draw();
+        if (done || quitting_) break;
+        if (skip_draw()) {
+            if (!check_skip_) continue;
+            raster::Image before = img;
+            draw();
+            if (!done && img.px != before.px) missed();
+            continue;
+        }
+        draw();
     }
     modal_depth_--;
     focus_ = old_focus;

@@ -105,6 +105,7 @@ struct Script {
                 std::string name;
                 in >> name;
                 files::write(dir + "/" + name + ".png", last.png());
+                if (std::getenv("CHALKBOARD_CHECK_SKIP")) std::fprintf(stderr, "shot %s\n", name.c_str());   // (where reports happen)
                 continue;
             }
             if (op == "pick") {   // the next file picker's answer
