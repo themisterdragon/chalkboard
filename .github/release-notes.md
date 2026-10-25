@@ -1,44 +1,32 @@
-**Chalkboard 3** is the same Chalkboard, rebuilt from the ground up in C++: one small program for
-each computer, nothing else to install (no Python, no extra tools), and still completely offline.
-Your lessons, assessments, standards, and settings carry over on their own.
+**Chalkboard 3.1**: smoother, plus a school calendar, snow days, and at-home days.
 
-### A fresh new look
+### What's new
 
-- **A sidebar that takes you anywhere:** Today, Lessons, Assessments, Calendar, Standards, Exports,
-  Settings, and the Terminal view, always one click away.
-- **Today:** your week at a glance, quick actions, recent work, and your school mascot. Plan any day
-  from here.
-- **Calendar:** a month of your lessons, color-coded by class.
-- **Modern look** in light or dark, in Chalkboard green, your school's colors, or your computer's
-  accent color. Prefer something fun? Pick **Glossy** (shiny 2000s glass), **Bevel**, or **Pinstripe**
-  from the View menu. Every look passes the WCAG AA contrast check.
-- With a menu open, slide across the menu bar to see the others.
-
-### Faster and simpler
-
-- **Board slides are drawn by Chalkboard itself.** No image tool to install on Linux or Windows, and
-  slides look the same on every computer.
-- Opens fast and stays small, on Windows, Mac (Apple silicon and Intel), and Linux (Intel/AMD and ARM,
-  like a Raspberry Pi 4 or 5).
-- The terminal app is in the same program: run `chalkboard` in a terminal, or use the Terminal view in
-  the window. Over SSH with no desktop, it starts as the terminal app.
+- **Smooth scrolling everywhere.** Lessons, lists, and settings scroll all the way down, follow a
+  trackpad exactly, and glide with a mouse wheel. The whole window is quicker too.
+- **Lesson Plans: filter by class, sort by anything.** Pick a class, then sort by the date it's
+  taught, date changed, date made, title, or unit.
+- **School calendar** (Settings): your first and last day, breaks, holidays, and teacher days, typed
+  in or read from your district's calendar file (.ics). The Calendar and Today show them, and a
+  lesson's date warns when it lands on one.
+- **Shift lesson dates and Snow Day.** Move lessons later or earlier by school days, skipping
+  weekends and days off. A preview first, a backup, and Edit > Undo Shift puts them back.
+- **At-home days.** Set how many your district allows (and what it calls them), and keep a few
+  at-home lessons ready for each unit (or for any unit, for classes that don't use units): explained
+  in writing, about half an hour, with questions. On the day, each class gets an unused one from the
+  unit it's in, as a simple packet (PDF and Word) plus a plain-text copy to paste into Google
+  Classroom. Then fill in the teacher log (how many took part, by technology or on paper, and who you
+  talked to) and export it for the office.
 
 ### Fixes
 
-- The lesson and assessment editors now scroll when your work runs past the bottom of the window.
-- A dialog over another dialog no longer darkens the window twice.
+- Closing an older Chalkboard window no longer saves its out-of-date copy over newer changes.
+- Lesson editors no longer jump back to the Title while you scroll or type.
 
-### Changes
-
-- **Plugins are gone.** Chalkboard 3 runs no add-on code at all. Exports (PDF, Word, text, board slides,
-  slideshows, spreadsheets) are all built in.
-- Using the Bevel look? Chalkboard 3 opens in the new Modern look once, with a note to switch back
-  (View > Bevel, or the **Go Back to Bevel** button).
-
-**Upgrading from 2.x:** install Chalkboard 3 and your work is already there. It lives in your data file,
-not in the app. Back up first if you like (File > Back Up Everything in 2.x).
-Tried a 3.0 beta? The beta kept its own copy of your lessons. To bring that work over: in the beta,
-File > Back Up Everything; then in Chalkboard 3, File > Import Backup and choose "Add what I don't
+**Upgrading:** install Chalkboard 3.1 over 3.0 (or 2.x) and your work is already there. It lives in
+your data file, not in the app.
+Tried a 3.1 beta? Betas keep their own copy of your lessons. To bring that work over: in the beta,
+File > Back Up Everything; then in Chalkboard 3.1, File > Import Backup and choose "Add what I don't
 have." After that you can delete the beta.
 
 ## Download

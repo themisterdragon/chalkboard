@@ -88,9 +88,24 @@ LMS. A make-up sheet for absent students is one more click.
   lesson's folder, and the make-up sheet lists them under What You'll Need.
 - **Default materials**: set what you always need under Settings > Default
   Materials Needed, and every new lesson starts with it in Materials & Texts.
-- **Finding things**: filter lesson and assessment lists by unit (and
-  assessments by type), search, and sort by date modified, date created,
-  title, or unit.
+- **Finding things**: filter lesson and assessment lists by class and unit
+  (and assessments by type), search, and sort by the date a lesson is
+  taught, date modified, date created, title, or unit.
+- **School calendar**: your first and last day, breaks, holidays, and
+  teacher days (Settings > School Calendar), typed in or read from your
+  district's calendar file (.ics). The Calendar and Today show them, and a
+  lesson's date warns when it lands on one.
+- **Shift lesson dates and Snow Day**: move lessons later or earlier by
+  school days, skipping weekends and days off. You see a preview first,
+  Chalkboard makes a backup, and Edit > Undo Shift puts them back.
+- **At-home days**: set how many your district allows (and what it calls
+  them), and keep a few at-home lessons ready for each unit (or for any
+  unit, for classes without units): explained in writing, about half an
+  hour, with questions. On the day, each class gets an unused one from the
+  unit it's in, as a simple packet (PDF and Word) plus a plain-text copy to
+  paste into Google Classroom. Then fill in the teacher log (how many took
+  part, by technology or on paper, and who you talked to) and export it for
+  the office.
 - **Standards**: import your state's, district's, or school's standards from
   a CSV or JSON file (see [Standards files](#standards-files)), or type your
   own in. Filter by subject and grade, search, browse, and attach them to
@@ -419,7 +434,7 @@ GTK 3 on Linux and Cocoa on macOS while it runs). The code is in `core/`.
     sh core/tests/run_gui.sh                  # the window walk-through on a copy of your data
     sh core/tools/check_offline.sh core/chalkboard-core
 
-Pushing a version tag (`git tag v3.0.0 && git push origin v3.0.0`) builds every
+Pushing a version tag (`git tag v3.1.0 && git push origin v3.1.0`) builds every
 download on GitHub (macOS, Windows, and Linux), runs each one through the
 walk-through and the offline check, and publishes the release. A tag like
-`beta-3.1.0b1` makes a pre-release instead.
+`beta-3.2.0b1` makes a pre-release instead.
